@@ -40,10 +40,15 @@ jobs:
       - name: Build & package (Mac)
         run: npm run build && npx electron-builder --mac --config electron-builder.yml
 
+      - name: Generate checksums (Mac)
+        run: shasum -a 256 dist/*.dmg | tee dist/checksums-mac.txt
+
       - name: Upload Mac artifacts
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.dmg
+          files: |
+            dist/*.dmg
+            dist/checksums-mac.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -63,9 +68,14 @@ jobs:
       - name: Build & package (Windows)
         run: npm run build && npx electron-builder --win --config electron-builder.yml
 
+      - name: Generate checksums (Windows)
+        run: Get-FileHash dist\*.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $($_.Path | Split-Path -Leaf)" } | Out-File -FilePath dist\checksums-win.txt -Encoding utf8
+
       - name: Upload Windows artifacts
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.exe
+          files: |
+            dist/*.exe
+            dist/checksums-win.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
