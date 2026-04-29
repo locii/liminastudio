@@ -136,7 +136,7 @@ export default function Home() {
         </span>
         <span className="font-sans text-xs text-forest-muted">
           Part of{" "}
-          <a href="#" className="underline underline-offset-2 hover:text-forest transition-colors">
+          <a href="https://musicforbreathwork.com" className="underline underline-offset-2 hover:text-forest transition-colors">
             Music for Breathwork
           </a>
         </span>
