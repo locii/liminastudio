@@ -28,7 +28,7 @@ mac:
   darkModeSupport: true
 
 win:
-  icon: resources/icon.icns
+  icon: resources/icon.ico
   target:
     - target: nsis
       arch:
