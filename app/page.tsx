@@ -1,7 +1,6 @@
 import Image from "next/image";
 
-const DOWNLOAD_URL =
-  "https://github.com/your-org/liminastudio/releases/latest";
+const DOWNLOAD_URL = "https://github.com/locii/liminastudio/releases/latest";
 
 const features = [
   {
