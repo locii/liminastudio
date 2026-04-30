@@ -22,6 +22,8 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
   const waveformData = waveforms[clip.filePath]
   const selectedClipIds = useSessionStore((s) => s.selectedClipIds)
   const updateClip = useSessionStore((s) => s.updateClip)
+  const updateClipSilent = useSessionStore((s) => s.updateClipSilent)
+  const pushHistorySnapshot = useSessionStore((s) => s.pushHistorySnapshot)
   const setWaveform = useSessionStore((s) => s.setWaveform)
   const removeClip = useSessionStore((s) => s.removeClip)
   const splitClip = useSessionStore((s) => s.splitClip)
@@ -61,6 +63,9 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
       const alreadySelected = useSessionStore.getState().selectedClipIds.includes(clip.id)
       if (!alreadySelected || e.shiftKey) selectClip(clip.id, e.shiftKey)
 
+      // Capture pre-drag state for a single undo step on release
+      const preDragSnap = { tracks: useSessionStore.getState().tracks, clips: useSessionStore.getState().clips }
+
       // Snapshot start positions of all clips to move (multi or single)
       const { selectedClipIds: ids, clips: allClips } = useSessionStore.getState()
       const idsToMove = ids.includes(clip.id) ? ids : [clip.id]
@@ -82,7 +87,7 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
         const rawDelta = (me.clientX - dragState.current.startX) / zoom
         const snappedDelta = Math.round(rawDelta * 2) / 2
         for (const [id, startTime] of startTimesMap) {
-          updateClip(id, { startTime: Math.max(0, startTime + snappedDelta) })
+          updateClipSilent(id, { startTime: Math.max(0, startTime + snappedDelta) })
         }
 
         // Broadcast primary clip position for drop placeholder
@@ -111,16 +116,18 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
           const targetIdx = Math.max(0, Math.min(rawIdx, tracks.length - 1))
           const targetTrack = tracks[targetIdx]
           if (targetTrack && targetTrack.id !== clip.trackId) {
-            updateClip(clip.id, { trackId: targetTrack.id })
+            updateClipSilent(clip.id, { trackId: targetTrack.id })
           }
         }
+        // Commit the entire drag as one undo step
+        pushHistorySnapshot(preDragSnap)
         const { clips, tracks: latestTracks } = useSessionStore.getState()
         audioEngine.softReload(clips, latestTracks)
       }
       window.addEventListener('mousemove', onMove)
       window.addEventListener('mouseup', onUp)
     },
-    [clip.id, clip.startTime, clip.trackId, effectiveDuration, zoom, trackHeight, tracks, selectClip, updateClip, setWaveform, setDragState]
+    [clip.id, clip.startTime, clip.trackId, effectiveDuration, zoom, trackHeight, tracks, selectClip, updateClipSilent, pushHistorySnapshot, setDragState]
   )
 
   // ── Left trim handle ─────────────────────────────────────────────────────────
@@ -130,6 +137,7 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
       if (e.button !== 0) return
       e.stopPropagation()
       selectClip(clip.id)
+      const preTrimSnap = { tracks: useSessionStore.getState().tracks, clips: useSessionStore.getState().clips }
       trimState.current = {
         active: true, startX: e.clientX,
         startTrimStart: clip.trimStart, startTrimEnd: clip.trimEnd,
@@ -140,11 +148,10 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
         if (!trimState.current.active) return
         const { startX, startTrimStart, startTrimEnd, startStartTime } = trimState.current
         const delta = (me.clientX - startX) / zoom
-        // Clamp: trimStart >= 0, startTime >= 0, effectiveDuration >= MIN_CLIP_DURATION
         const maxDelta = clip.duration - startTrimEnd - MIN_CLIP_DURATION - startTrimStart
         const minDelta = Math.max(-startTrimStart, -startStartTime)
         const clampedDelta = Math.max(minDelta, Math.min(delta, maxDelta))
-        updateClip(clip.id, {
+        updateClipSilent(clip.id, {
           trimStart: startTrimStart + clampedDelta,
           startTime: startStartTime + clampedDelta,
         })
@@ -153,13 +160,14 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
         trimState.current.active = false
         window.removeEventListener('mousemove', onMove)
         window.removeEventListener('mouseup', onUp)
+        pushHistorySnapshot(preTrimSnap)
         const { clips, tracks } = useSessionStore.getState()
         audioEngine.softReload(clips, tracks)
       }
       window.addEventListener('mousemove', onMove)
       window.addEventListener('mouseup', onUp)
     },
-    [clip.id, clip.startTime, clip.trimStart, clip.trimEnd, clip.duration, zoom, selectClip, updateClip]
+    [clip.id, clip.startTime, clip.trimStart, clip.trimEnd, clip.duration, zoom, selectClip, updateClipSilent, pushHistorySnapshot]
   )
 
   // ── Right trim handle ────────────────────────────────────────────────────────
@@ -169,6 +177,7 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
       if (e.button !== 0) return
       e.stopPropagation()
       selectClip(clip.id)
+      const preTrimSnap = { tracks: useSessionStore.getState().tracks, clips: useSessionStore.getState().clips }
       trimState.current = {
         active: true, startX: e.clientX,
         startTrimStart: clip.trimStart, startTrimEnd: clip.trimEnd,
@@ -179,22 +188,22 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
         if (!trimState.current.active) return
         const { startX, startTrimStart, startTrimEnd } = trimState.current
         const delta = (me.clientX - startX) / zoom
-        // Dragging right = less trim (delta positive = less trimEnd)
         const maxTrimEnd = clip.duration - startTrimStart - MIN_CLIP_DURATION
         const newTrimEnd = Math.max(0, Math.min(startTrimEnd - delta, maxTrimEnd))
-        updateClip(clip.id, { trimEnd: newTrimEnd })
+        updateClipSilent(clip.id, { trimEnd: newTrimEnd })
       }
       const onUp = (): void => {
         trimState.current.active = false
         window.removeEventListener('mousemove', onMove)
         window.removeEventListener('mouseup', onUp)
+        pushHistorySnapshot(preTrimSnap)
         const { clips, tracks } = useSessionStore.getState()
         audioEngine.softReload(clips, tracks)
       }
       window.addEventListener('mousemove', onMove)
       window.addEventListener('mouseup', onUp)
     },
-    [clip.id, clip.trimStart, clip.trimEnd, clip.duration, zoom, selectClip, updateClip]
+    [clip.id, clip.trimStart, clip.trimEnd, clip.duration, zoom, selectClip, updateClipSilent, pushHistorySnapshot]
   )
 
   // ── Fade handle drag ─────────────────────────────────────────────────────────
@@ -204,6 +213,7 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
       if (e.button !== 0) return
       e.stopPropagation()
       selectClip(clip.id)
+      const preFadeSnap = { tracks: useSessionStore.getState().tracks, clips: useSessionStore.getState().clips }
       fadeState.current = {
         active: true, type,
         startX: e.clientX, startFade: type === 'in' ? clip.fadeIn : clip.fadeOut,
@@ -216,17 +226,16 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
         const { startX, startFade, startY, startCurve } = fadeState.current
         const deltaX = (me.clientX - startX) / zoom
         const maxFade = effectiveDuration / 2
-        // Up = more convex (positive curve), down = more concave
         const newCurve = Math.max(-1, Math.min(1, startCurve - (me.clientY - startY) / (trackHeight / 2)))
         if (type === 'in') {
           const v = Math.max(0, Math.min(startFade + deltaX, maxFade))
-          updateClip(clip.id, {
+          updateClipSilent(clip.id, {
             fadeIn: Math.round(v * 100) / 100,
             fadeInCurve: Math.round(newCurve * 100) / 100,
           })
         } else {
           const v = Math.max(0, Math.min(startFade - deltaX, maxFade))
-          updateClip(clip.id, {
+          updateClipSilent(clip.id, {
             fadeOut: Math.round(v * 100) / 100,
             fadeOutCurve: Math.round(newCurve * 100) / 100,
           })
@@ -237,14 +246,14 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
         document.body.style.cursor = ''
         window.removeEventListener('mousemove', onMove)
         window.removeEventListener('mouseup', onUp)
-        // Resync audio engine with updated fade values
+        pushHistorySnapshot(preFadeSnap)
         const { clips, tracks } = useSessionStore.getState()
         audioEngine.softReload(clips, tracks)
       }
       window.addEventListener('mousemove', onMove)
       window.addEventListener('mouseup', onUp)
     },
-    [clip.id, clip.fadeIn, clip.fadeOut, clip.fadeInCurve, clip.fadeOutCurve, effectiveDuration, zoom, trackHeight, selectClip, updateClip]
+    [clip.id, clip.fadeIn, clip.fadeOut, clip.fadeInCurve, clip.fadeOutCurve, effectiveDuration, zoom, trackHeight, selectClip, updateClipSilent, pushHistorySnapshot]
   )
 
   useEffect(() => {

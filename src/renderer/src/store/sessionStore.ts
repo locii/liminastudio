@@ -71,6 +71,8 @@ interface SessionState {
   removeTrack: (trackId: string) => void
   updateTrack: (trackId: string, patch: Partial<Track>) => void
   updateClip: (clipId: string, patch: Partial<Clip>) => void
+  updateClipSilent: (clipId: string, patch: Partial<Clip>) => void
+  pushHistorySnapshot: (snap: { tracks: Track[]; clips: Clip[] }) => void
   removeClip: (clipId: string) => void
   removeClips: (clipIds: string[]) => void
   splitClip: (clipId: string, splitTime: number) => void
@@ -240,7 +242,6 @@ export const useSessionStore = create<SessionState>((set, get) => {
 
     updateClip: (clipId, patch) => {
       const snap = snapshot()
-      // These keys don't affect clip positions, so skip computeCrossfades to avoid resetting fades
       const BYPASS_KEYS = ['fadeIn', 'fadeOut', 'fadeInCurve', 'fadeOutCurve', 'automation', 'volume']
       const fadeOnly = Object.keys(patch).every((k) => BYPASS_KEYS.includes(k))
       set((s) => {
@@ -250,6 +251,25 @@ export const useSessionStore = create<SessionState>((set, get) => {
           ...historyPush(snap),
         }
       })
+    },
+
+    // Silent update — no history push. Use during drag; call pushHistorySnapshot on mouseup.
+    updateClipSilent: (clipId, patch) => {
+      const BYPASS_KEYS = ['fadeIn', 'fadeOut', 'fadeInCurve', 'fadeOutCurve', 'automation', 'volume']
+      const fadeOnly = Object.keys(patch).every((k) => BYPASS_KEYS.includes(k))
+      set((s) => {
+        const next = s.clips.map((c) => (c.id === clipId ? { ...c, ...patch } : c))
+        return { clips: fadeOnly ? next : computeCrossfades(next), isDirty: true }
+      })
+    },
+
+    // Commit a pre-captured snapshot as a single undo step (call once on drag end).
+    pushHistorySnapshot: (snap) => {
+      set((s) => ({
+        past: [...s.past.slice(-(MAX_HISTORY - 1)), snap],
+        future: [],
+        isDirty: true,
+      }))
     },
 
     removeClip: (clipId) => {
