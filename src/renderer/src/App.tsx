@@ -30,12 +30,15 @@ export default function App(): JSX.Element {
   const [warmup, setWarmup] = useState<{ done: number; total: number } | null>(null)
   const tracks = useSessionStore((s) => s.tracks)
   const fitToWindowRef = useRef<(() => void) | null>(null)
+  const scrollToPlayheadRef = useRef<(() => void) | null>(null)
 
   useAutoSave()
 
   const selectedClipId = useSessionStore((s) => s.selectedClipId)
+  const selectedClipIds = useSessionStore((s) => s.selectedClipIds)
   const selectClip = useSessionStore((s) => s.selectClip)
   const removeClip = useSessionStore((s) => s.removeClip)
+  const removeClips = useSessionStore((s) => s.removeClips)
   const splitClip = useSessionStore((s) => s.splitClip)
   const copyClip = useSessionStore((s) => s.copyClip)
   const pasteClip = useSessionStore((s) => s.pasteClip)
@@ -341,10 +344,11 @@ export default function App(): JSX.Element {
 
       if (inInput) return
 
+      if (e.key === 'p' || e.key === 'P') { e.preventDefault(); scrollToPlayheadRef.current?.(); return }
       if (e.key === 'Escape') { selectClip(null); return }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedClipId) {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedClipIds.length > 0) {
         e.preventDefault()
-        removeClip(selectedClipId)
+        removeClips(selectedClipIds)
       }
       if (e.key === 's' && selectedClipId) {
         e.preventDefault()
@@ -353,7 +357,7 @@ export default function App(): JSX.Element {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [saveSession, openSession, handleAddTrack, undo, redo, selectClip, removeClip, splitClip, copyClip, pasteClip, selectedClipId])
+  }, [saveSession, openSession, handleAddTrack, undo, redo, selectClip, removeClip, removeClips, splitClip, copyClip, pasteClip, selectedClipId, selectedClipIds])
 
   // ── App menu → renderer relay ────────────────────────────────────────────
 
@@ -428,7 +432,7 @@ export default function App(): JSX.Element {
           />
         ) : (
           <>
-            <Timeline fitToWindowRef={fitToWindowRef} />
+            <Timeline fitToWindowRef={fitToWindowRef} scrollToPlayheadRef={scrollToPlayheadRef} />
             <MasterChannel />
           </>
         )}

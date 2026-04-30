@@ -20,7 +20,7 @@ const MIN_CLIP_DURATION = 1
 export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JSX.Element {
   const waveforms = useSessionStore((s) => s.waveforms)
   const waveformData = waveforms[clip.filePath]
-  const selectedClipId = useSessionStore((s) => s.selectedClipId)
+  const selectedClipIds = useSessionStore((s) => s.selectedClipIds)
   const updateClip = useSessionStore((s) => s.updateClip)
   const setWaveform = useSessionStore((s) => s.setWaveform)
   const removeClip = useSessionStore((s) => s.removeClip)
@@ -29,7 +29,7 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
   const selectClip = useSessionStore((s) => s.selectClip)
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null)
   const { setDragState } = useDragContext()
-  const isSelected = selectedClipId === clip.id
+  const isSelected = selectedClipIds.includes(clip.id)
 
   const effectiveDuration = clip.duration - clip.trimStart - clip.trimEnd
   const width = Math.max(4, effectiveDuration * zoom)
@@ -55,7 +55,20 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
     (e: React.MouseEvent) => {
       if (e.button !== 0) return
       e.stopPropagation()
-      selectClip(clip.id)
+
+      // If the clip is already selected and no modifier, keep the multi-selection so
+      // dragging works across all selected clips. Only reset if clicking outside the selection.
+      const alreadySelected = useSessionStore.getState().selectedClipIds.includes(clip.id)
+      if (!alreadySelected || e.shiftKey) selectClip(clip.id, e.shiftKey)
+
+      // Snapshot start positions of all clips to move (multi or single)
+      const { selectedClipIds: ids, clips: allClips } = useSessionStore.getState()
+      const idsToMove = ids.includes(clip.id) ? ids : [clip.id]
+      const startTimesMap = new Map<string, number>()
+      for (const id of idsToMove) {
+        const c = allClips.find((x) => x.id === id)
+        if (c) startTimesMap.set(id, c.startTime)
+      }
 
       const startTrackIndex = tracks.findIndex((t) => t.id === clip.trackId)
       dragState.current = {
@@ -65,12 +78,15 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
 
       const onMove = (me: MouseEvent): void => {
         if (!dragState.current.active) return
-        const deltaX = (me.clientX - dragState.current.startX) / zoom
-        const raw = Math.max(0, dragState.current.startTime + deltaX)
-        const newStartTime = Math.round(raw * 2) / 2
-        updateClip(clip.id, { startTime: newStartTime })
+        // Snap the delta so all clips move together without drifting relative to each other
+        const rawDelta = (me.clientX - dragState.current.startX) / zoom
+        const snappedDelta = Math.round(rawDelta * 2) / 2
+        for (const [id, startTime] of startTimesMap) {
+          updateClip(id, { startTime: Math.max(0, startTime + snappedDelta) })
+        }
 
-        // Determine which track row the cursor is over and broadcast for placeholder
+        // Broadcast primary clip position for drop placeholder
+        const primaryStart = Math.max(0, dragState.current.startTime + snappedDelta)
         const deltaY = me.clientY - dragState.current.startY
         const rawIdx = dragState.current.startTrackIndex + Math.round(deltaY / trackHeight)
         const targetIdx = Math.max(0, Math.min(rawIdx, tracks.length - 1))
@@ -79,7 +95,7 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
           clipId: clip.id,
           targetTrackId: targetTrack?.id ?? null,
           width: effectiveDuration * zoom,
-          left: newStartTime * zoom,
+          left: primaryStart * zoom,
         })
       }
       const onUp = (me: MouseEvent): void => {
@@ -88,13 +104,15 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
         window.removeEventListener('mouseup', onUp)
         setDragState({ clipId: null, targetTrackId: null, width: 0, left: 0 })
 
-        // Commit cross-track drop
-        const deltaY = me.clientY - dragState.current.startY
-        const rawIdx = dragState.current.startTrackIndex + Math.round(deltaY / trackHeight)
-        const targetIdx = Math.max(0, Math.min(rawIdx, tracks.length - 1))
-        const targetTrack = tracks[targetIdx]
-        if (targetTrack && targetTrack.id !== clip.trackId) {
-          updateClip(clip.id, { trackId: targetTrack.id })
+        // Cross-track drop only for single-clip drags
+        if (idsToMove.length === 1) {
+          const deltaY = me.clientY - dragState.current.startY
+          const rawIdx = dragState.current.startTrackIndex + Math.round(deltaY / trackHeight)
+          const targetIdx = Math.max(0, Math.min(rawIdx, tracks.length - 1))
+          const targetTrack = tracks[targetIdx]
+          if (targetTrack && targetTrack.id !== clip.trackId) {
+            updateClip(clip.id, { trackId: targetTrack.id })
+          }
         }
         const { clips, tracks: latestTracks } = useSessionStore.getState()
         audioEngine.softReload(clips, latestTracks)

@@ -20,9 +20,10 @@ const MAX_LANE_HEIGHT = 160
 
 interface Props {
   fitToWindowRef?: React.MutableRefObject<(() => void) | null>
+  scrollToPlayheadRef?: React.MutableRefObject<(() => void) | null>
 }
 
-export function Timeline({ fitToWindowRef }: Props = {}): JSX.Element {
+export function Timeline({ fitToWindowRef, scrollToPlayheadRef }: Props = {}): JSX.Element {
   const tracks = useSessionStore((s) => s.tracks)
   const clips = useSessionStore((s) => s.clips)
   const markers = useSessionStore((s) => s.markers)
@@ -147,6 +148,17 @@ export function Timeline({ fitToWindowRef }: Props = {}): JSX.Element {
       if (w > 0) setZoom(w / totalDuration)
     }
   }, [fitToWindowRef, totalDuration, setZoom])
+
+  // Wire scroll-to-playhead callback
+  useEffect(() => {
+    if (!scrollToPlayheadRef) return
+    scrollToPlayheadRef.current = () => {
+      const el = timelineRef.current
+      if (!el) return
+      const pos = useTransportStore.getState().playhead
+      el.scrollLeft = Math.max(0, pos * zoomRef.current - el.clientWidth / 2)
+    }
+  }, [scrollToPlayheadRef])
 
   // Group clips by trackId
   const clipsByTrack = useMemo(() => {

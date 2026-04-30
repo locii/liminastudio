@@ -48,6 +48,7 @@ interface SessionState {
   markers: Marker[]
   waveforms: Record<string, WaveformData>
   selectedClipId: string | null
+  selectedClipIds: string[]
   selectedTrackId: string | null
   copiedClip: Clip | null
   currentFilePath: string | null
@@ -71,6 +72,7 @@ interface SessionState {
   updateTrack: (trackId: string, patch: Partial<Track>) => void
   updateClip: (clipId: string, patch: Partial<Clip>) => void
   removeClip: (clipId: string) => void
+  removeClips: (clipIds: string[]) => void
   splitClip: (clipId: string, splitTime: number) => void
   duplicateClip: (clipId: string) => void
   copyClip: (clipId: string) => void
@@ -83,7 +85,7 @@ interface SessionState {
 
   // Waveforms / selection / persistence
   setWaveform: (filePath: string, data: Partial<WaveformData>) => void
-  selectClip: (clipId: string | null) => void
+  selectClip: (clipId: string | null, addToSelection?: boolean) => void
   selectTrack: (trackId: string | null) => void
   loadSnapshot: (snapshot: { tracks: Track[]; clips: Clip[]; markers?: Marker[]; sessionLabel?: string }) => void
   newSession: () => void
@@ -113,6 +115,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
     markers: [],
     waveforms: {},
     selectedClipId: null,
+    selectedClipIds: [],
     selectedTrackId: null,
     copiedClip: null,
     currentFilePath: null,
@@ -254,6 +257,18 @@ export const useSessionStore = create<SessionState>((set, get) => {
       set((s) => ({
         clips: computeCrossfades(s.clips.filter((c) => c.id !== clipId)),
         selectedClipId: s.selectedClipId === clipId ? null : s.selectedClipId,
+        selectedClipIds: s.selectedClipIds.filter((id) => id !== clipId),
+        ...historyPush(snap),
+      }))
+    },
+
+    removeClips: (clipIds) => {
+      const snap = snapshot()
+      const idSet = new Set(clipIds)
+      set((s) => ({
+        clips: computeCrossfades(s.clips.filter((c) => !idSet.has(c.id))),
+        selectedClipId: idSet.has(s.selectedClipId ?? '') ? null : s.selectedClipId,
+        selectedClipIds: [],
         ...historyPush(snap),
       }))
     },
@@ -325,7 +340,24 @@ export const useSessionStore = create<SessionState>((set, get) => {
       }))
     },
 
-    selectClip: (clipId) => set({ selectedClipId: clipId }),
+    selectClip: (clipId, addToSelection = false) => {
+      if (!addToSelection || clipId === null) {
+        set({ selectedClipId: clipId, selectedClipIds: clipId ? [clipId] : [] })
+        return
+      }
+      set((s) => {
+        const already = s.selectedClipIds.includes(clipId)
+        const next = already
+          ? s.selectedClipIds.filter((id) => id !== clipId)
+          : [...s.selectedClipIds, clipId]
+        return {
+          selectedClipId: already && s.selectedClipId === clipId
+            ? (next[next.length - 1] ?? null)
+            : clipId,
+          selectedClipIds: next,
+        }
+      })
+    },
     selectTrack: (trackId) => set({ selectedTrackId: trackId }),
 
     addMarker: (time) => {
@@ -349,7 +381,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
     },
 
     loadSnapshot: ({ tracks, clips, markers, sessionLabel }) => {
-      set({ tracks, clips, markers: markers ?? [], sessionLabel: sessionLabel ?? '', past: [], future: [], isDirty: false, selectedClipId: null })
+      set({ tracks, clips, markers: markers ?? [], sessionLabel: sessionLabel ?? '', past: [], future: [], isDirty: false, selectedClipId: null, selectedClipIds: [] })
     },
 
     newSession: () => {
@@ -365,6 +397,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
           [t2.id]: { trackId: t2.id, peaks: [], loading: false },
         },
         selectedClipId: null,
+        selectedClipIds: [],
         selectedTrackId: null,
         currentFilePath: null,
         past: [],

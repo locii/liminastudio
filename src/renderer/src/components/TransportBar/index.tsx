@@ -201,6 +201,11 @@ export function TransportBar({
             <circle cx="5" cy="5" r="3.5" /><path d="M8 8l2.5 2.5" strokeLinecap="round" />
             <path d="M3.5 5h3M5 3.5v3" strokeLinecap="round" />
           </svg>
+          <button
+            onClick={() => setZoom(Math.max(0.5, zoom / 1.25))}
+            className="w-5 h-5 flex items-center justify-center text-[12px] text-gray-400 hover:text-gray-200 bg-surface-hover hover:bg-surface-border border border-surface-border rounded transition-colors leading-none"
+            title="Zoom out"
+          >−</button>
           <input
             type="range"
             min={0} max={100} step={0.5}
@@ -210,6 +215,11 @@ export function TransportBar({
             title={`Zoom: ${zoom.toFixed(0)} px/s`}
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           />
+          <button
+            onClick={() => setZoom(Math.min(2000, zoom * 1.25))}
+            className="w-5 h-5 flex items-center justify-center text-[12px] text-gray-400 hover:text-gray-200 bg-surface-hover hover:bg-surface-border border border-surface-border rounded transition-colors leading-none"
+            title="Zoom in"
+          >+</button>
           <span className="text-[10px] text-gray-400 tabular-nums w-12">{zoom.toFixed(0)} px/s</span>
           <button
             onClick={onFitToWindow}

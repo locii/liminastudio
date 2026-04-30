@@ -52,7 +52,7 @@ const STEPS: TourStep[] = [
   {
     id: 'timeline',
     title: 'The Timeline',
-    body: 'Clips appear here as coloured blocks. Drag a clip horizontally to reposition it. Drag a clip\'s right edge to trim. When two clips overlap on the same track, a crossfade is applied automatically.',
+    body: 'Clips appear here as coloured blocks. Drag a clip horizontally to reposition it. Drag its edges to trim. When two clips overlap on the same track, a crossfade is applied automatically. Shift-click to select multiple clips and drag them together — Delete removes them all at once. Press P to scroll back to the playhead.',
     target: '[data-tour="timeline"]',
     placement: 'center',
     spotlight: false,
@@ -124,7 +124,7 @@ const STEPS: TourStep[] = [
   {
     id: 'done',
     title: 'You\'re all set!',
-    body: 'Press ? at any time to see the full keyboard shortcut reference. Happy mixing!',
+    body: 'Press ? at any time to see the full keyboard shortcut reference. Key tips: Space to play/pause, R to return to start, P to scroll to playhead, Shift-click to multi-select clips. Happy mixing!',
     placement: 'center',
   },
 ]
