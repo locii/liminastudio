@@ -20,6 +20,7 @@ asarUnpack:
 mac:
   category: public.app-category.music
   icon: resources/icon.icns
+  identity: null
   target:
     - target: dmg
       arch:
