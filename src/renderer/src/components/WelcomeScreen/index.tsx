@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { basename } from '../../utils/path'
 import logo from '../../assets/limina-logo.png'
+import bgSphere from '../../assets/creamLogo.png'
 
 interface Props {
   onOpen: () => void
@@ -16,21 +17,28 @@ export function WelcomeScreen({ onOpen, onOpenRecent, onNewSession }: Props): JS
   }, [])
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-8 bg-surface-base select-none">
+    <div className="flex overflow-hidden relative flex-col flex-1 gap-8 justify-center items-center select-none bg-surface-base">
+      {/* Background sphere */}
+      <img
+        src={bgSphere}
+        alt=""
+        className="absolute inset-0 w-full h-full object-cover opacity-[0.01] pointer-events-none select-none"
+        draggable={false}
+      />
       {/* Logo */}
-      <img src={logo} alt="Limina Studio" className="w-40 rounded-2xl opacity-90 select-none mt-8" draggable={false} />
+
 
       {/* Actions */}
       <div className="flex gap-3">
         <button
           onClick={onOpen}
-          className="px-4 py-2 rounded bg-accent text-white text-sm font-medium hover:bg-accent/80 transition-colors"
+          className="px-4 py-2 text-sm font-medium text-white rounded transition-colors bg-accent hover:bg-accent/80"
         >
           Open Session…
         </button>
         <button
           onClick={onNewSession}
-          className="px-4 py-2 rounded bg-surface-panel border border-surface-border text-gray-300 text-sm hover:bg-surface-hover transition-colors"
+          className="px-4 py-2 text-sm text-gray-300 rounded border transition-colors bg-surface-panel border-surface-border hover:bg-surface-hover"
         >
           New Session
         </button>
@@ -44,9 +52,9 @@ export function WelcomeScreen({ onOpen, onOpenRecent, onNewSession }: Props): JS
             <button
               key={fp}
               onClick={() => onOpenRecent(fp)}
-              className="text-left px-3 py-2 rounded bg-surface-panel hover:bg-surface-hover border border-surface-border transition-colors group"
+              className="px-3 py-2 text-left rounded border transition-colors bg-surface-panel hover:bg-surface-hover border-surface-border group"
             >
-              <span className="text-sm text-gray-300 group-hover:text-white truncate block">
+              <span className="block text-sm text-gray-300 truncate group-hover:text-white">
                 {basename(fp)}
               </span>
               <span className="text-[10px] text-gray-600 truncate block">{fp}</span>
