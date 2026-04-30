@@ -150,6 +150,9 @@ function createWindow(): void {
   mainWindow.on('ready-to-show', () => {
     mainWindow!.show()
     mainWindow!.setTitle('Limina Studio')
+    // Prevent Electron from intercepting pinch-to-zoom for page zoom —
+    // we handle it ourselves in the renderer with wheel+ctrlKey.
+    mainWindow!.webContents.setVisualZoomLevelLimits(1, 1)
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {

@@ -50,7 +50,7 @@ export function MiniWaveform({ peaks, color, duration, trimStart, trimEnd, gain 
       const scale = Math.min(2, Math.max(0, gain))
       for (let i = 0; i < visible.length; i++) {
         const h = Math.max(1, visible[i] * cssH * scale)
-        ctx.fillRect(i * barW, (cssH - h) / 2, Math.max(0.5, barW - 0.5), h)
+        ctx.fillRect(i * barW, (cssH - h) / 2, Math.max(0.5, barW - 0.25), h)
       }
     }
 

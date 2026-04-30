@@ -142,7 +142,7 @@ export default function App(): JSX.Element {
       const clipsForTrack = data.clips.filter((c) => c.trackId === track.id)
       for (const clip of clipsForTrack) {
         window.electronAPI
-          .getWaveformPeaks(clip.filePath, 1200)
+          .getWaveformPeaks(clip.filePath, 4000)
           .then((peaks) => setWaveform(clip.filePath, { peaks, loading: false }))
           .catch(() => setWaveform(clip.filePath, { peaks: [], loading: false }))
       }
@@ -181,7 +181,7 @@ export default function App(): JSX.Element {
         const clipsForTrack = data.clips.filter((c) => c.trackId === track.id)
         for (const clip of clipsForTrack) {
           window.electronAPI
-            .getWaveformPeaks(clip.filePath, 1200)
+            .getWaveformPeaks(clip.filePath, 4000)
             .then((peaks) => setWaveform(clip.filePath, { peaks, loading: false }))
             .catch(() => setWaveform(clip.filePath, { peaks: [], loading: false }))
         }
@@ -244,7 +244,7 @@ export default function App(): JSX.Element {
         duration: file.duration,
       })
       window.electronAPI
-        .getWaveformPeaks(file.path, 1200)
+        .getWaveformPeaks(file.path, 4000)
         .then((peaks) => setWaveform(file.path, { peaks, loading: false }))
         .catch((err) => {
           console.error('[waveform] extraction failed for', file.path, err)
@@ -296,7 +296,7 @@ export default function App(): JSX.Element {
       await Promise.all(
         uniquePaths.map(async (filePath) => {
           const peaks = await window.electronAPI
-            .getWaveformPeaks(filePath, 1200)
+            .getWaveformPeaks(filePath, 4000)
             .catch(() => [] as number[])
           setWaveform(filePath, { peaks, loading: false })
           done++
@@ -374,7 +374,7 @@ export default function App(): JSX.Element {
   }, [saveSession, openSession, openRecentSession, handleCollect, handleExportZip, undo, redo, handleAddTrack, selectedClipId, removeClip])
 
   return (
-    <div className="flex flex-col h-full bg-surface-base text-gray-200">
+    <div className="flex flex-col h-full text-gray-200 bg-surface-base">
       {/* macOS traffic-light drag region */}
       <div
         className="h-7 shrink-0 bg-surface-panel"
@@ -400,14 +400,16 @@ export default function App(): JSX.Element {
 
       {/* Warmup progress bar — full width strip below transport bar */}
       {warmup && warmup.total > 0 && (
-        <div className="shrink-0 relative h-5 bg-surface-panel border-b border-surface-border flex items-center px-3 gap-3">
-          <div className="flex-1 h-1 rounded-full bg-surface-hover overflow-hidden">
-            <div
-              className="h-full rounded-full bg-accent transition-all duration-300"
-              style={{ width: `${Math.round((warmup.done / warmup.total) * 100)}%` }}
-            />
-          </div>
-          <span className="text-[10px] text-gray-500 tabular-nums shrink-0">
+        <div className="flex overflow-hidden relative gap-3 items-center h-5 border-b shrink-0 bg-surface-panel border-surface-border">
+          <div
+            className="absolute inset-y-0 left-0 transition-all duration-300 bg-accent/30"
+            style={{ width: `${Math.round((warmup.done / warmup.total) * 100)}%` }}
+          />
+          <div
+            className="absolute inset-y-0 left-0 w-px transition-all duration-300 bg-accent"
+            style={{ left: `${Math.round((warmup.done / warmup.total) * 100)}%` }}
+          />
+          <span className="text-[10px] text-gray-500 tabular-nums shrink-0 relative pl-[10px]">
             {warmup.done < warmup.total
               ? `Buffering ${warmup.done} / ${warmup.total} files`
               : 'Ready'}
@@ -416,7 +418,7 @@ export default function App(): JSX.Element {
       )}
 
       {/* Timeline + master channel side-by-side, or welcome screen */}
-      <div className="flex flex-1 overflow-hidden min-h-0">
+      <div className="flex overflow-hidden flex-1 min-h-0">
         {tracks.length === 0 ? (
           <WelcomeScreen
             onOpen={openSession}

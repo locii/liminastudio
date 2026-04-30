@@ -47,6 +47,7 @@ export function Timeline({ fitToWindowRef }: Props = {}): JSX.Element {
   }, [])
 
   const timelineRef = useRef<HTMLDivElement>(null)
+  const rightPanelRef = useRef<HTMLDivElement>(null)
   const headerRef = useRef<HTMLDivElement>(null)
   const rulerContentRef = useRef<HTMLDivElement>(null)
   const zoomRef = useRef(zoom)
@@ -67,27 +68,31 @@ export function Timeline({ fitToWindowRef }: Props = {}): JSX.Element {
   // Track the center time continuously so resize can restore it.
   const centerTimeRef = useRef(0)
 
-  // Pinch-to-zoom — must be non-passive to call preventDefault
+  // Pinch-to-zoom — attached to the whole right panel (ruler + tracks) so it
+  // works regardless of where the user pinches. Must be non-passive to preventDefault.
   useEffect(() => {
-    const el = timelineRef.current
-    if (!el) return
+    const panel = rightPanelRef.current
+    if (!panel) return
     const handler = (e: WheelEvent): void => {
       if (!e.ctrlKey) return
       e.preventDefault()
+      const scrollEl = timelineRef.current
+      if (!scrollEl) return
       const currentZoom = zoomRef.current
-      const newZoom = currentZoom * Math.pow(0.999, e.deltaY)
+      // exp() gives smooth, proportional feel regardless of event rate
+      const factor = Math.exp(-e.deltaY * 0.008)
+      const newZoom = Math.min(2000, Math.max(0.5, currentZoom * factor))
       // Keep the time under the cursor fixed while zooming
-      const rect = el.getBoundingClientRect()
+      const rect = scrollEl.getBoundingClientRect()
       const mouseX = e.clientX - rect.left
-      const timeAtCursor = (el.scrollLeft + mouseX) / currentZoom
+      const timeAtCursor = (scrollEl.scrollLeft + mouseX) / currentZoom
       setZoom(newZoom)
-      // Adjust scroll so the same time stays under the cursor
       requestAnimationFrame(() => {
-        el.scrollLeft = timeAtCursor * newZoom - mouseX
+        scrollEl.scrollLeft = Math.max(0, timeAtCursor * newZoom - mouseX)
       })
     }
-    el.addEventListener('wheel', handler, { passive: false })
-    return () => el.removeEventListener('wheel', handler)
+    panel.addEventListener('wheel', handler, { passive: false })
+    return () => panel.removeEventListener('wheel', handler)
   }, [setZoom])
 
   // Sync vertical scroll between headers and timeline; translate the ruler strip
@@ -228,7 +233,7 @@ export function Timeline({ fitToWindowRef }: Props = {}): JSX.Element {
       </div>
 
       {/* Right: ruler strip + scrollable tracks */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div ref={rightPanelRef} className="flex-1 flex flex-col overflow-hidden">
         {/* Ruler — sits outside the scroll container so it never scrolls vertically.
             Horizontal position is kept in sync via CSS transform in onTimelineScroll. */}
         <div
