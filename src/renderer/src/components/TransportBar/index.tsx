@@ -68,7 +68,7 @@ export function TransportBar({
   const menuAction = (fn: () => void) => () => { setFileMenuOpen(false); fn() }
 
   const handlePlayStop = async (): Promise<void> => {
-    if (playing) { audioEngine.stop() } else { await audioEngine.play(clips, tracks) }
+    if (playing) { audioEngine.pause() } else { await audioEngine.play(clips, tracks) }
   }
   const handleStop = (): void => { audioEngine.seek(0) }
 

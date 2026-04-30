@@ -31,7 +31,7 @@ export function BottomTransport(): JSX.Element {
   const clips = useSessionStore((s) => s.clips)
 
   const handlePlayStop = useCallback(async () => {
-    if (playing) audioEngine.stop()
+    if (playing) audioEngine.pause()
     else await audioEngine.play(clips, tracks)
   }, [playing, clips, tracks])
 
