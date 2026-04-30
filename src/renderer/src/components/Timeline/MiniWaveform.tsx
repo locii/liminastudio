@@ -16,20 +16,26 @@ export function MiniWaveform({ peaks, color, duration, trimStart, trimEnd, gain 
     const canvas = canvasRef.current
     if (!canvas || peaks.length === 0 || duration <= 0) return
 
+    // Most browsers cap canvas width at 32767 physical px. If the clip is very
+    // wide we cap the buffer and let CSS stretch it — still a clear overview.
+    const MAX_CANVAS_PX = 16383
+
     const draw = (): void => {
       const dpr = window.devicePixelRatio || 1
       const cssW = canvas.offsetWidth
       const cssH = canvas.offsetHeight
       if (cssW === 0 || cssH === 0) return
 
-      // Match buffer to physical pixels so nothing is upscaled
-      canvas.width = Math.round(cssW * dpr)
-      canvas.height = Math.round(cssH * dpr)
+      const physW = Math.min(Math.round(cssW * dpr), MAX_CANVAS_PX)
+      const physH = Math.round(cssH * dpr)
+      canvas.width = physW
+      canvas.height = physH
 
       const ctx = canvas.getContext('2d')
       if (!ctx) return
 
-      // Scale once so all drawing coordinates stay in CSS-pixel space
+      // Drawing coordinates in effective CSS pixels (may be < cssW when capped)
+      const effectiveCssW = physW / dpr
       ctx.scale(dpr, dpr)
 
       const startIdx = Math.floor((trimStart / duration) * peaks.length)
@@ -37,10 +43,10 @@ export function MiniWaveform({ peaks, color, duration, trimStart, trimEnd, gain 
       const visible = peaks.slice(Math.max(0, startIdx), Math.min(peaks.length, endIdx))
       if (visible.length === 0) return
 
-      ctx.clearRect(0, 0, cssW, cssH)
+      ctx.clearRect(0, 0, effectiveCssW, cssH)
       ctx.fillStyle = color + 'aa'
 
-      const barW = cssW / visible.length
+      const barW = effectiveCssW / visible.length
       const scale = Math.min(2, Math.max(0, gain))
       for (let i = 0; i < visible.length; i++) {
         const h = Math.max(1, visible[i] * cssH * scale)

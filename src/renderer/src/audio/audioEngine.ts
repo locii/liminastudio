@@ -36,6 +36,16 @@ class AudioEngine {
   private playStartPosition = 0
   private playStartAudioTime = 0
 
+  // Windowed scheduling — only schedule clips starting within this many seconds.
+  // An interval advances the window as playback progresses so we never schedule
+  // more than a couple of tracks worth of HTTP requests simultaneously.
+  private readonly scheduleWindowSec = 60
+  private schedulerInterval: ReturnType<typeof setInterval> | null = null
+
+  // Warmup
+  private warmupPool: HTMLAudioElement[] = []
+  private warmupCancelled = false
+
   private localUrl(filePath: string): string {
     return (
       `http://127.0.0.1:${this.audioServerPort}` +
@@ -104,51 +114,90 @@ class AudioEngine {
   private scheduleClip(clip: Clip, track: Track, seekPosition: number): void {
     const effectiveDuration = clip.duration - clip.trimStart - clip.trimEnd
     const clipEnd = clip.startTime + effectiveDuration
-    if (seekPosition >= clipEnd) return // clip already finished
+    if (seekPosition >= clipEnd) return
 
+    const posInFile = clip.trimStart + Math.max(0, seekPosition - clip.startTime)
+    const delayMs = (clip.startTime - seekPosition) * 1000
+    const isFuture = delayMs > 50  // clip starts more than 50 ms from now
+
+    const fadeIn = Math.max(clip.fadeIn, clip.crossfadeIn ?? 0)
+    const hasFadeInFromStart = fadeIn > 0 && seekPosition <= clip.startTime
+    const baseGain = track.muted ? 0 : track.volume * clip.volume
+
+    // Future clips start at gain=0 so the 50 ms early audio.play() produces no
+    // audible bleed before the clip's visual start position.
     const clipGain = this.ctx.createGain()
-    clipGain.gain.value = track.muted ? 0 : track.volume * clip.volume
+    clipGain.gain.value = (hasFadeInFromStart || isFuture) ? 0 : baseGain
     clipGain.connect(this.getMasterGain())
     clipGain.connect(this.getOrCreateTrackAnalyser(track.id))
     this.activeGains.set(clip.id, clipGain)
 
-    // crossOrigin must be set BEFORE src — renderer (localhost) and local:// are different origins,
-    // and a tainted element cannot be used with createMediaElementSource
+    // crossOrigin must be set BEFORE src — renderer (localhost) and local:// are different
+    // origins, and a tainted element cannot be used with createMediaElementSource.
     const audio = document.createElement('audio')
     audio.crossOrigin = 'anonymous'
     audio.preload = 'auto'
     audio.src = this.localUrl(clip.filePath)
     this.activeElements.set(clip.id, audio)
 
-    const startPlayback = (): void => {
-      let source: MediaElementAudioSourceNode
-      try {
-        source = this.ctx.createMediaElementSource(audio)
-      } catch (err) {
-        console.error('[audioEngine] createMediaElementSource failed:', err)
-        return
-      }
-      source.connect(clipGain)
-      this.activeSources.set(clip.id, source)
+    // Connect to the audio graph immediately — this starts HTTP buffering in
+    // parallel with any scheduling delay so files are ready when play() fires.
+    let source: MediaElementAudioSourceNode
+    try {
+      source = this.ctx.createMediaElementSource(audio)
+    } catch (err) {
+      console.error('[audioEngine] createMediaElementSource failed:', err)
+      return
+    }
+    source.connect(clipGain)
+    this.activeSources.set(clip.id, source)
 
-      const posInFile = clip.trimStart + Math.max(0, seekPosition - clip.startTime)
-      audio.currentTime = posInFile
-      audio.play().catch(console.error)
+    // GainNode automation is AudioContext-clock based so scheduling it now is
+    // correct regardless of when audio.play() is actually called.
+    this.scheduleFadesAndAutomation(clip, track, clipGain, seekPosition, effectiveDuration, baseGain)
 
-      // Stop precisely at the clip's trimmed end so split clips don't bleed
-      const remainingMs = (clipEnd - Math.max(seekPosition, clip.startTime)) * 1000
-      const stopTid = setTimeout(() => { audio.pause() }, remainingMs)
-      this.pendingTimeouts.push(stopTid)
-
-      this.scheduleFadesAndAutomation(clip, track, clipGain, seekPosition, effectiveDuration)
+    // For future clips without a fade-in: snap the gain to baseGain at exactly
+    // the clip's start time.  Combined with gain=0 above this eliminates the
+    // 50 ms audio bleed that the early play() would otherwise produce.
+    if (isFuture && !hasFadeInFromStart) {
+      clipGain.gain.setValueAtTime(baseGain, this.ctx.currentTime + delayMs / 1000)
     }
 
-    const delayMs = (clip.startTime - seekPosition) * 1000
-    if (delayMs <= 50) {
-      startPlayback()
+    // Seek early so the browser buffers the target region during any delay.
+    audio.currentTime = posInFile
+
+    if (delayMs <= 0) {
+      // Clip is already in progress.  For a mid-file position, audio.currentTime
+      // is async — wait for the seeked event so play() starts at the right frame.
+      const stopMs = (clipEnd - Math.max(seekPosition, clip.startTime)) * 1000
+      const doPlay = (): void => {
+        audio.play().catch(console.error)
+        if (stopMs > 0) {
+          const stopTid = setTimeout(() => { audio.pause() }, stopMs)
+          this.pendingTimeouts.push(stopTid)
+        }
+      }
+
+      if (posInFile < 0.01) {
+        doPlay()
+      } else {
+        // Wait for seek to finish, with a 1.5 s safety fallback.
+        audio.addEventListener('seeked', doPlay, { once: true })
+        const fallbackTid = setTimeout(() => {
+          audio.removeEventListener('seeked', doPlay)
+          doPlay()
+        }, 1500)
+        this.pendingTimeouts.push(fallbackTid)
+      }
     } else {
-      // Pre-buffer while waiting, start 50ms early to hide scheduling jitter
-      const tid = setTimeout(startPlayback, delayMs - 50)
+      // Future clip — fire 50 ms early so the element is warmed up and any
+      // remaining buffering jitter is absorbed.
+      const stopMs = (clipEnd - clip.startTime) * 1000
+      const tid = setTimeout(() => {
+        audio.play().catch(console.error)
+        const stopTid = setTimeout(() => { audio.pause() }, stopMs)
+        this.pendingTimeouts.push(stopTid)
+      }, Math.max(0, delayMs - 50))
       this.pendingTimeouts.push(tid)
     }
   }
@@ -158,10 +207,12 @@ class AudioEngine {
     track: Track,
     clipGain: GainNode,
     seekPosition: number,
-    effectiveDuration: number
+    effectiveDuration: number,
+    baseGain?: number
   ): void {
     const now = this.ctx.currentTime
     const clipEnd = clip.startTime + effectiveDuration
+    baseGain ??= track.muted ? 0 : track.volume * clip.volume
 
     const fadeIn = Math.max(clip.fadeIn, clip.crossfadeIn ?? 0)
     const fadeOut = Math.max(clip.fadeOut, clip.crossfadeOut ?? 0)
@@ -170,9 +221,28 @@ class AudioEngine {
     if (fadeIn > 0) {
       const fadeInEnd = clip.startTime + fadeIn
       if (seekPosition < fadeInEnd) {
-        const curve = buildFadeCurve(256, false, clip.fadeInCurve ?? 0.5)
         const delay = Math.max(0, clip.startTime - seekPosition)
-        clipGain.gain.setValueCurveAtTime(curve, now + delay, fadeIn)
+        if (seekPosition <= clip.startTime) {
+          // Full fade from silence: pin gain to 0 right before the curve so
+          // there's no gap regardless of scheduling jitter.
+          const curve = buildFadeCurve(256, false, clip.fadeInCurve ?? 0.5)
+          clipGain.gain.setValueAtTime(0, now + delay)
+          clipGain.gain.setValueCurveAtTime(curve, now + delay, fadeIn)
+        } else {
+          // Seeking into the middle of the fade-in: compute the gain at seekPosition
+          // and fade the remaining portion from that value up to full.
+          const tInFade = (seekPosition - clip.startTime) / fadeIn
+          const exponent = Math.pow(4, -(clip.fadeInCurve ?? 0.5))
+          const startGainValue = Math.pow(tInFade, exponent) * baseGain
+          const remainingFade = fadeInEnd - seekPosition
+          const startIdx = Math.round(tInFade * 255)
+          const fullCurve = buildFadeCurve(256, false, clip.fadeInCurve ?? 0.5)
+          const partialCurve = new Float32Array(fullCurve.buffer, startIdx * 4)
+          clipGain.gain.setValueAtTime(startGainValue, now)
+          if (partialCurve.length > 1 && remainingFade > 0.01) {
+            clipGain.gain.setValueCurveAtTime(partialCurve, now, remainingFade)
+          }
+        }
       }
     }
 
@@ -223,6 +293,39 @@ class AudioEngine {
     }
   }
 
+  // Schedule only clips whose start time falls within [seekPos, seekPos + window].
+  // Clips already in activeElements are skipped (already scheduled).
+  private scheduleWindowFrom(seekPos: number): void {
+    const windowEnd = seekPos + this.scheduleWindowSec
+    const trackMap = new Map(this.lastTracks.map((t) => [t.id, t]))
+    const hasSolo = this.lastTracks.some((t) => t.solo && !t.muted)
+    for (const clip of this.lastClips) {
+      if (this.activeElements.has(clip.id)) continue
+      const clipEnd = clip.startTime + clip.duration - clip.trimStart - clip.trimEnd
+      if (seekPos >= clipEnd) continue           // already past
+      if (clip.startTime > windowEnd) continue  // too far ahead
+      const track = trackMap.get(clip.trackId)
+      if (!track || track.muted) continue
+      if (hasSolo && !track.solo) continue
+      this.scheduleClip(clip, track, seekPos)
+    }
+  }
+
+  private clearSchedulerInterval(): void {
+    if (this.schedulerInterval !== null) {
+      clearInterval(this.schedulerInterval)
+      this.schedulerInterval = null
+    }
+  }
+
+  private startSchedulerInterval(): void {
+    this.clearSchedulerInterval()
+    this.schedulerInterval = setInterval(() => {
+      if (!useTransportStore.getState().playing) return
+      this.scheduleWindowFrom(this.getCurrentPosition())
+    }, 10_000)
+  }
+
   async play(clips: Clip[], tracks: Track[]): Promise<void> {
     await this.ctx.resume()
     if (this.audioServerPort === 0) {
@@ -236,14 +339,8 @@ class AudioEngine {
     this.playStartPosition = seekPos
     this.playStartAudioTime = this.ctx.currentTime
 
-    const trackMap = new Map(tracks.map((t) => [t.id, t]))
-    const hasSolo = tracks.some((t) => t.solo && !t.muted)
-    for (const clip of clips) {
-      const track = trackMap.get(clip.trackId)
-      if (!track || track.muted) continue
-      if (hasSolo && !track.solo) continue
-      this.scheduleClip(clip, track, seekPos)
-    }
+    this.scheduleWindowFrom(seekPos)
+    this.startSchedulerInterval()
 
     useTransportStore.getState().setPlaying(true)
     this.startRaf()
@@ -259,17 +356,12 @@ class AudioEngine {
       this.reloadTimer = null
       if (!useTransportStore.getState().playing) return
       const currentPos = this.getCurrentPosition()
+      this.clearSchedulerInterval()
       this.clearActive()
       this.playStartPosition = currentPos
       this.playStartAudioTime = this.ctx.currentTime
-      const trackMap = new Map(tracks.map((t) => [t.id, t]))
-      const hasSolo = tracks.some((t) => t.solo && !t.muted)
-      for (const clip of clips) {
-        const track = trackMap.get(clip.trackId)
-        if (!track || track.muted) continue
-        if (hasSolo && !track.solo) continue
-        this.scheduleClip(clip, track, currentPos)
-      }
+      this.scheduleWindowFrom(currentPos)
+      this.startSchedulerInterval()
       useTransportStore.getState().setPlaying(true)
       this.startRaf()
     }, 250)
@@ -295,6 +387,7 @@ class AudioEngine {
   }
 
   stop(): void {
+    this.clearSchedulerInterval()
     this.clearActive()
     this.stopRaf()
     useTransportStore.getState().setPlaying(false)
@@ -305,6 +398,7 @@ class AudioEngine {
 
   pause(): void {
     const pos = this.getCurrentPosition()
+    this.clearSchedulerInterval()
     this.clearActive()
     this.stopRaf()
     useTransportStore.getState().setPlaying(false)
@@ -314,6 +408,7 @@ class AudioEngine {
   seek(seconds: number): void {
     const wasPlaying = useTransportStore.getState().playing
     const pos = Math.max(0, seconds)
+    this.clearSchedulerInterval()
     this.clearActive()
     this.stopRaf()
     this.playStartPosition = pos
@@ -321,14 +416,8 @@ class AudioEngine {
     useTransportStore.getState().setPlayhead(pos)
 
     if (wasPlaying) {
-      const trackMap = new Map(this.lastTracks.map((t) => [t.id, t]))
-      const hasSolo = this.lastTracks.some((t) => t.solo && !t.muted)
-      for (const clip of this.lastClips) {
-        const track = trackMap.get(clip.trackId)
-        if (!track || track.muted) continue
-        if (hasSolo && !track.solo) continue
-        this.scheduleClip(clip, track, pos)
-      }
+      this.scheduleWindowFrom(pos)
+      this.startSchedulerInterval()
       useTransportStore.getState().setPlaying(true)
       this.startRaf()
     }
@@ -373,6 +462,49 @@ class AudioEngine {
       cancelAnimationFrame(this.rafId)
       this.rafId = null
     }
+  }
+
+  // ── Background warmup ────────────────────────────────────────────────────
+  // Buffers each audio file one at a time so the OS page cache is primed
+  // before the user presses play.  Sequential (not concurrent) to avoid
+  // hammering the disk with simultaneous HTTP reads.
+
+  async warmup(
+    filePaths: string[],
+    onProgress: (done: number, total: number) => void
+  ): Promise<void> {
+    this.cancelWarmup()
+    this.warmupCancelled = false
+    if (filePaths.length === 0) { onProgress(0, 0); return }
+
+    if (this.audioServerPort === 0) {
+      this.audioServerPort = await window.electronAPI.getAudioServerPort()
+    }
+
+    let done = 0
+    const total = filePaths.length
+    onProgress(0, total)
+
+    for (const filePath of filePaths) {
+      if (this.warmupCancelled) break
+
+      const audio = document.createElement('audio')
+      audio.preload = 'auto'
+      audio.src = this.localUrl(filePath)
+      this.warmupPool.push(audio)
+
+      await new Promise<void>((resolve) => {
+        const onDone = (): void => { onProgress(++done, total); resolve() }
+        audio.addEventListener('canplay', onDone, { once: true })
+        audio.addEventListener('error', onDone, { once: true })
+      })
+    }
+  }
+
+  cancelWarmup(): void {
+    this.warmupCancelled = true
+    for (const audio of this.warmupPool) { audio.src = '' }
+    this.warmupPool = []
   }
 }
 

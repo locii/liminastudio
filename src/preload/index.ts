@@ -38,6 +38,10 @@ const api: ElectronAPI = {
 
   showInFolder: (filePath) => ipcRenderer.invoke('shell:showInFolder', filePath),
 
+  importFile: () => ipcRenderer.invoke('file:importFile'),
+  pickFolder: () => ipcRenderer.invoke('file:pickFolder'),
+  copyFiles: (srcPaths, destFolder) => ipcRenderer.invoke('file:copyFiles', srcPaths, destFolder),
+
   // Window
   setWindowTitle: (title) => ipcRenderer.send('window:setTitle', title),
 

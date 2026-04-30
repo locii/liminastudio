@@ -7,9 +7,10 @@ interface Props {
   onOpen: () => void
   onOpenRecent: (filePath: string) => void
   onNewSession: () => void
+  onImport: () => void  // opens import dialog
 }
 
-export function WelcomeScreen({ onOpen, onOpenRecent, onNewSession }: Props): JSX.Element {
+export function WelcomeScreen({ onOpen, onOpenRecent, onNewSession, onImport }: Props): JSX.Element {
   const [recents, setRecents] = useState<string[]>([])
 
   useEffect(() => {
@@ -29,18 +30,26 @@ export function WelcomeScreen({ onOpen, onOpenRecent, onNewSession }: Props): JS
 
 
       {/* Actions */}
-      <div className="flex gap-3">
+      <div className="flex flex-col items-center gap-3">
+        <div className="flex gap-3">
+          <button
+            onClick={onOpen}
+            className="px-4 py-2 text-sm font-medium text-white rounded transition-colors bg-accent hover:bg-accent/80"
+          >
+            Open Session…
+          </button>
+          <button
+            onClick={onNewSession}
+            className="px-4 py-2 text-sm text-gray-300 rounded border transition-colors bg-surface-panel border-surface-border hover:bg-surface-hover"
+          >
+            New Session
+          </button>
+        </div>
         <button
-          onClick={onOpen}
-          className="px-4 py-2 text-sm font-medium text-white rounded transition-colors bg-accent hover:bg-accent/80"
+          onClick={onImport}
+          className="text-xs text-gray-500 underline underline-offset-2 transition-colors hover:text-gray-300"
         >
-          Open Session…
-        </button>
-        <button
-          onClick={onNewSession}
-          className="px-4 py-2 text-sm text-gray-300 rounded border transition-colors bg-surface-panel border-surface-border hover:bg-surface-hover"
-        >
-          New Session
+          Import session from another app…
         </button>
       </div>
 

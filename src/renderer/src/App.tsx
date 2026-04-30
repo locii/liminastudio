@@ -5,6 +5,7 @@ import { MasterChannel } from './components/MasterChannel'
 import { BottomTransport } from './components/BottomTransport'
 import { PropertiesPanel } from './components/PropertiesPanel'
 import { ExportDialog } from './components/ExportDialog'
+import { ImportDialog } from './components/ImportDialog'
 import { TracklistPDFDialog } from './components/TracklistPDFDialog'
 import { ToastContainer } from './components/Toast'
 import { WelcomeScreen } from './components/WelcomeScreen'
@@ -16,13 +17,17 @@ import { useToastStore } from './store/toastStore'
 import { audioEngine } from './audio/audioEngine'
 import { useAutoSave } from './hooks/useAutoSave'
 import type { Track, Clip } from './types'
+import { parseSesxSession } from './utils/importers/sesxImporter'
+import { parseAudacitySession } from './utils/importers/audacityImporter'
 
 export default function App(): JSX.Element {
   const [exportOpen, setExportOpen] = useState(false)
   const [exportFormat, setExportFormat] = useState<'wav' | 'mp3'>('wav')
   const [pdfOpen, setPdfOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [tourOpen, setTourOpen] = useState(false)
   const [autosave, setAutosave] = useState<{ json: string; savedAt: string } | null>(null)
+  const [warmup, setWarmup] = useState<{ done: number; total: number } | null>(null)
   const tracks = useSessionStore((s) => s.tracks)
   const fitToWindowRef = useRef<(() => void) | null>(null)
 
@@ -44,6 +49,7 @@ export default function App(): JSX.Element {
   const addEmptyTrack = useSessionStore((s) => s.addEmptyTrack)
   const newSession = useSessionStore((s) => s.newSession)
   const setCurrentFile = useSessionStore((s) => s.setCurrentFile)
+  const setSessionLabel = useSessionStore((s) => s.setSessionLabel)
   const markClean = useSessionStore((s) => s.markClean)
   const toast = useToastStore((s) => s.add)
 
@@ -84,8 +90,8 @@ export default function App(): JSX.Element {
   // ── Session helpers ──────────────────────────────────────────────────────
 
   const saveSession = useCallback(async () => {
-    const { tracks, clips, markers } = useSessionStore.getState()
-    const json = JSON.stringify({ tracks, clips, markers }, null, 2)
+    const { tracks, clips, markers, sessionLabel } = useSessionStore.getState()
+    const json = JSON.stringify({ tracks, clips, markers, sessionLabel }, null, 2)
     let filePath = currentFilePath
     if (!filePath) {
       filePath = await window.electronAPI.saveSession(json)
@@ -100,8 +106,8 @@ export default function App(): JSX.Element {
   }, [currentFilePath, setCurrentFile, markClean, toast])
 
   const saveSessionAs = useCallback(async () => {
-    const { tracks, clips, markers } = useSessionStore.getState()
-    const json = JSON.stringify({ tracks, clips, markers }, null, 2)
+    const { tracks, clips, markers, sessionLabel } = useSessionStore.getState()
+    const json = JSON.stringify({ tracks, clips, markers, sessionLabel }, null, 2)
     const filePath = await window.electronAPI.saveSession(json)
     if (!filePath) return
     setCurrentFile(filePath)
@@ -110,8 +116,26 @@ export default function App(): JSX.Element {
     toast('Session saved', 'success')
   }, [setCurrentFile, markClean, toast])
 
+  // Auto-dismiss the warmup bar 2 seconds after it completes
+  useEffect(() => {
+    if (warmup && warmup.done >= warmup.total && warmup.total > 0) {
+      const t = setTimeout(() => setWarmup(null), 2000)
+      return () => clearTimeout(t)
+    }
+    return undefined
+  }, [warmup])
+
+  const triggerWarmup = useCallback(() => {
+    const paths = [...new Set(useSessionStore.getState().clips.map((c) => c.filePath))]
+    if (paths.length === 0) return
+    setWarmup({ done: 0, total: paths.length })
+    audioEngine.warmup(paths, (done, total) => {
+      setWarmup({ done, total })
+    })
+  }, [])
+
   const applySession = useCallback(async (result: { json: string; filePath: string }) => {
-    const data = JSON.parse(result.json) as { tracks: Track[]; clips: Clip[]; markers?: import('./types').Marker[] }
+    const data = JSON.parse(result.json) as { tracks: Track[]; clips: Clip[]; markers?: import('./types').Marker[]; sessionLabel?: string }
     loadSnapshot(data)
     setCurrentFile(result.filePath)
     for (const track of data.tracks) {
@@ -125,7 +149,8 @@ export default function App(): JSX.Element {
     }
     window.electronAPI.clearAutosave(result.filePath)
     toast('Session loaded', 'success')
-  }, [loadSnapshot, setCurrentFile, setWaveform, toast])
+    triggerWarmup()
+  }, [loadSnapshot, setCurrentFile, setWaveform, toast, triggerWarmup])
 
   const openSession = useCallback(async () => {
     const result = await window.electronAPI.loadSession()
@@ -176,6 +201,8 @@ export default function App(): JSX.Element {
   }, [])
 
   const handleNewSession = useCallback(() => {
+    audioEngine.cancelWarmup()
+    setWarmup(null)
     newSession()
   }, [newSession])
 
@@ -226,13 +253,76 @@ export default function App(): JSX.Element {
     }
   }, [addTrackWithClip, setWaveform])
 
+  const handleImport = useCallback(
+    async (
+      file: { content: string; filePath: string; ext: string },
+      collectFolder: string | null,
+      onProgress: (pct: number) => void
+    ): Promise<void> => {
+      onProgress(5)
+
+      let parsed: ReturnType<typeof parseSesxSession>
+      if (file.ext === 'sesx') {
+        parsed = parseSesxSession(file.content)
+      } else if (file.ext === 'aup') {
+        parsed = parseAudacitySession(file.content)
+      } else {
+        throw new Error(`Unsupported file type: .${file.ext}`)
+      }
+
+      let { tracks, clips } = parsed
+      const { warnings } = parsed
+
+      if (tracks.length === 0) throw new Error('No tracks found in session file')
+      onProgress(15)
+
+      // Optionally copy audio files and remap paths
+      if (collectFolder) {
+        const srcPaths = [...new Set(clips.map((c) => c.filePath))]
+        const mapping = await window.electronAPI.copyFiles(srcPaths, collectFolder)
+        clips = clips.map((c) => ({
+          ...c,
+          filePath: mapping[c.filePath] ?? c.filePath,
+        }))
+      }
+      onProgress(45)
+
+      loadSnapshot({ tracks, clips, markers: [] })
+      onProgress(50)
+
+      // Load waveforms in parallel, tracking per-completion for progress
+      const uniquePaths = [...new Set(clips.map((c) => c.filePath))]
+      let done = 0
+      await Promise.all(
+        uniquePaths.map(async (filePath) => {
+          const peaks = await window.electronAPI
+            .getWaveformPeaks(filePath, 1200)
+            .catch(() => [] as number[])
+          setWaveform(filePath, { peaks, loading: false })
+          done++
+          onProgress(50 + Math.round((done / uniquePaths.length) * 48))
+        })
+      )
+      onProgress(100)
+
+      warnings.forEach((w) => toast(w, 'error'))
+      toast(
+        `Imported ${tracks.length} track${tracks.length !== 1 ? 's' : ''}, ${clips.length} clip${clips.length !== 1 ? 's' : ''}`,
+        'success'
+      )
+      triggerWarmup()
+    },
+    [loadSnapshot, setWaveform, toast, triggerWarmup]
+  )
+
   // ── Keyboard shortcuts ───────────────────────────────────────────────────
 
   useEffect(() => {
     const handler = async (e: KeyboardEvent): Promise<void> => {
       const mod = e.metaKey || e.ctrlKey
-      const tag = (document.activeElement as HTMLElement)?.tagName
-      const inInput = tag === 'INPUT' || tag === 'TEXTAREA'
+      const activeEl = document.activeElement as HTMLElement | null
+      const tag = activeEl?.tagName
+      const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || (activeEl?.isContentEditable ?? false)
 
       if (mod && !e.shiftKey && e.key === 's') { e.preventDefault(); await saveSession(); return }
       if (mod && e.shiftKey && e.key === 's') { e.preventDefault(); await saveSessionAs(); return }
@@ -271,6 +361,7 @@ export default function App(): JSX.Element {
     const unsubs = [
       window.electronAPI.onMenu('menu:save', () => saveSession()),
       window.electronAPI.onMenu('menu:open', () => openSession()),
+      window.electronAPI.onMenu('menu:import', () => setImportOpen(true)),
       window.electronAPI.onMenu('menu:export', () => { setExportFormat('wav'); setExportOpen(true) }),
       window.electronAPI.onMenu('menu:collect', () => handleCollect()),
       window.electronAPI.onMenu('menu:exportZip', () => handleExportZip()),
@@ -298,6 +389,7 @@ export default function App(): JSX.Element {
         onExportPDF={() => setPdfOpen(true)}
         onNewSession={handleNewSession}
         onOpen={openSession}
+        onImport={() => setImportOpen(true)}
         onSave={saveSession}
         onSaveAs={saveSessionAs}
         onCollect={handleCollect}
@@ -306,6 +398,23 @@ export default function App(): JSX.Element {
         onStartTour={() => setTourOpen(true)}
       />
 
+      {/* Warmup progress bar — full width strip below transport bar */}
+      {warmup && warmup.total > 0 && (
+        <div className="shrink-0 relative h-5 bg-surface-panel border-b border-surface-border flex items-center px-3 gap-3">
+          <div className="flex-1 h-1 rounded-full bg-surface-hover overflow-hidden">
+            <div
+              className="h-full rounded-full bg-accent transition-all duration-300"
+              style={{ width: `${Math.round((warmup.done / warmup.total) * 100)}%` }}
+            />
+          </div>
+          <span className="text-[10px] text-gray-500 tabular-nums shrink-0">
+            {warmup.done < warmup.total
+              ? `Buffering ${warmup.done} / ${warmup.total} files`
+              : 'Ready'}
+          </span>
+        </div>
+      )}
+
       {/* Timeline + master channel side-by-side, or welcome screen */}
       <div className="flex flex-1 overflow-hidden min-h-0">
         {tracks.length === 0 ? (
@@ -313,6 +422,7 @@ export default function App(): JSX.Element {
             onOpen={openSession}
             onOpenRecent={openRecentSession}
             onNewSession={handleNewSession}
+            onImport={() => setImportOpen(true)}
           />
         ) : (
           <>
@@ -322,10 +432,11 @@ export default function App(): JSX.Element {
         )}
       </div>
 
-      <BottomTransport />
-      <PropertiesPanel />
+      {tracks.length > 0 && <BottomTransport />}
+      {tracks.length > 0 && <PropertiesPanel />}
 
       <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} defaultFormat={exportFormat} />
+      <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} onImport={handleImport} />
       <TracklistPDFDialog open={pdfOpen} onClose={() => setPdfOpen(false)} />
 
       {autosave && (

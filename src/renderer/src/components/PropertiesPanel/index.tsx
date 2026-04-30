@@ -2,10 +2,12 @@ import type React from 'react'
 import { useSessionStore } from '../../store/sessionStore'
 
 function formatDuration(s: number): string {
-  const m = Math.floor(s / 60)
-  const sec = String(Math.floor(s % 60)).padStart(2, '0')
-  const ms = String(Math.round((s % 1) * 10))
-  return `${m}:${sec}.${ms}`
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = Math.floor(s % 60)
+  const ms = Math.round((s % 1) * 10)
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}.${ms}`
+  return `${m}:${String(sec).padStart(2, '0')}.${ms}`
 }
 
 export function PropertiesPanel(): JSX.Element {

@@ -84,6 +84,7 @@ function createAppMenu(): void {
         { type: 'separator' },
         { label: 'Save Session', accelerator: 'CmdOrCtrl+S', click: () => send('menu:save') },
         { label: 'Open Session…', accelerator: 'CmdOrCtrl+O', click: () => send('menu:open') },
+        { label: 'Import Session from Other App…', click: () => send('menu:import') },
         { type: 'separator' },
         { label: 'Export Mix…', accelerator: 'CmdOrCtrl+E', click: () => send('menu:export') },
         { type: 'separator' },

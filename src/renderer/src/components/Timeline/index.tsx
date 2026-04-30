@@ -48,6 +48,7 @@ export function Timeline({ fitToWindowRef }: Props = {}): JSX.Element {
 
   const timelineRef = useRef<HTMLDivElement>(null)
   const headerRef = useRef<HTMLDivElement>(null)
+  const rulerContentRef = useRef<HTMLDivElement>(null)
   const zoomRef = useRef(zoom)
   useEffect(() => { zoomRef.current = zoom }, [zoom])
 
@@ -62,6 +63,9 @@ export function Timeline({ fitToWindowRef }: Props = {}): JSX.Element {
     const targetScroll = playhead * zoomRef.current - el.clientWidth / 2
     el.scrollLeft = Math.max(0, targetScroll)
   }, [playhead])
+
+  // Track the center time continuously so resize can restore it.
+  const centerTimeRef = useRef(0)
 
   // Pinch-to-zoom — must be non-passive to call preventDefault
   useEffect(() => {
@@ -86,12 +90,33 @@ export function Timeline({ fitToWindowRef }: Props = {}): JSX.Element {
     return () => el.removeEventListener('wheel', handler)
   }, [setZoom])
 
-  // Sync vertical scroll between left headers and right timeline
+  // Sync vertical scroll between headers and timeline; translate the ruler strip
+  // horizontally so it always shows the correct time range without being inside
+  // the vertically-scrollable container.
   const onTimelineScroll = useCallback(() => {
-    if (!timelineRef.current || !headerRef.current) return
-    headerRef.current.scrollTop = timelineRef.current.scrollTop
-    setScrollX(timelineRef.current.scrollLeft)
+    const el = timelineRef.current
+    if (!el) return
+    if (headerRef.current) headerRef.current.scrollTop = el.scrollTop
+    if (rulerContentRef.current) {
+      rulerContentRef.current.style.transform = `translateX(-${el.scrollLeft}px)`
+    }
+    setScrollX(el.scrollLeft)
+    centerTimeRef.current = (el.scrollLeft + el.clientWidth / 2) / zoomRef.current
   }, [setScrollX])
+
+  // On window resize: keep the playhead centred in the viewport.
+  useEffect(() => {
+    const handler = (): void => {
+      requestAnimationFrame(() => {
+        const el = timelineRef.current
+        if (!el) return
+        const pos = useTransportStore.getState().playhead
+        el.scrollLeft = Math.max(0, pos * zoomRef.current - el.clientWidth / 2)
+      })
+    }
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [])
 
   const onHeaderScroll = useCallback(() => {
     if (!timelineRef.current || !headerRef.current) return
@@ -136,10 +161,12 @@ export function Timeline({ fitToWindowRef }: Props = {}): JSX.Element {
   const handleRulerMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (e.button !== 0) return
-      const container = timelineRef.current
-      if (!container) return
-      const containerRect = container.getBoundingClientRect()
-      const x = e.clientX - containerRect.left + container.scrollLeft
+      // Ruler content is translated; use its parent (the clip strip) for the rect.
+      const strip = rulerContentRef.current?.parentElement
+      const scrollEl = timelineRef.current
+      if (!strip || !scrollEl) return
+      const rect = strip.getBoundingClientRect()
+      const x = e.clientX - rect.left + scrollEl.scrollLeft
       const time = Math.max(0, x / zoom)
       audioEngine.seek(time)
     },
@@ -148,10 +175,11 @@ export function Timeline({ fitToWindowRef }: Props = {}): JSX.Element {
 
   const handleRulerDoubleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
-      const container = timelineRef.current
-      if (!container) return
-      const containerRect = container.getBoundingClientRect()
-      const x = e.clientX - containerRect.left + container.scrollLeft
+      const strip = rulerContentRef.current?.parentElement
+      const scrollEl = timelineRef.current
+      if (!strip || !scrollEl) return
+      const rect = strip.getBoundingClientRect()
+      const x = e.clientX - rect.left + scrollEl.scrollLeft
       const time = Math.round(Math.max(0, x / zoom) * 100) / 100
       addMarker(time)
     },
@@ -199,67 +227,83 @@ export function Timeline({ fitToWindowRef }: Props = {}): JSX.Element {
         <MasterVolumeFooter />
       </div>
 
-      {/* Right: scrollable timeline */}
-      <div
-        ref={timelineRef}
-        data-tour="timeline"
-        className="flex-1 overflow-auto relative"
-        onScroll={onTimelineScroll}
-      >
-        <div style={{ width: `${totalWidth}px`, minWidth: '100%', position: 'relative' }}>
-          {/* Ruler */}
+      {/* Right: ruler strip + scrollable tracks */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Ruler — sits outside the scroll container so it never scrolls vertically.
+            Horizontal position is kept in sync via CSS transform in onTimelineScroll. */}
+        <div
+          className="shrink-0 overflow-hidden relative border-b border-surface-border"
+          style={{ height: RULER_HEIGHT }}
+        >
           <div
+            ref={rulerContentRef}
             data-tour="ruler"
             onMouseDown={handleRulerMouseDown}
             onDoubleClick={handleRulerDoubleClick}
-            className="cursor-crosshair"
+            className="absolute top-0 left-0 cursor-crosshair will-change-transform"
+            style={{ width: `${totalWidth}px`, minWidth: '100%' }}
           >
             <TimeRuler zoom={zoom} duration={totalDuration} height={RULER_HEIGHT} />
-          </div>
-
-          {/* Track rows */}
-          {sortedTracks.map((track) => (
-            <TimelineTrack
-              key={track.id}
-              track={track}
-              tracks={sortedTracks}
-              clips={clipsByTrack.get(track.id) ?? []}
-              zoom={zoom}
-              height={getHeight(track.id)}
-              onHeightChange={(h) => handleHeightChange(track.id, h)}
-              laneHeight={getLaneHeight(track.id)}
-              onLaneHeightChange={(h) => handleLaneHeightChange(track.id, h)}
-            />
-          ))}
-
-          {/* Playhead */}
-          <div
-            className="absolute top-0 bottom-0 pointer-events-none z-50"
-            style={{ left: `${playheadPx}px` }}
-          >
+            {/* Playhead triangle lives here so it translates with the ruler */}
             <div
-              className="absolute top-0 -translate-x-1/2"
-              style={{
-                width: 0, height: 0,
-                borderLeft: '5px solid transparent',
-                borderRight: '5px solid transparent',
-                borderTop: `${RULER_HEIGHT}px solid #ef4444`,
-              }}
-            />
-            <div className="absolute top-0 bottom-0 left-0 w-px bg-red-500" />
+              className="absolute top-0 pointer-events-none z-50 -translate-x-1/2"
+              style={{ left: `${playheadPx}px` }}
+            >
+              <div
+                style={{
+                  width: 0, height: 0,
+                  borderLeft: '5px solid transparent',
+                  borderRight: '5px solid transparent',
+                  borderTop: `${RULER_HEIGHT}px solid #ef4444`,
+                }}
+              />
+            </div>
           </div>
+        </div>
 
-          {/* Section markers */}
-          {markers.map((marker) => (
-            <MarkerFlag
-              key={marker.id}
-              marker={marker}
-              zoom={zoom}
-              rulerHeight={RULER_HEIGHT}
-              onUpdate={(patch) => updateMarker(marker.id, patch)}
-              onDelete={() => removeMarker(marker.id)}
-            />
-          ))}
+        {/* Scrollable track area */}
+        <div
+          ref={timelineRef}
+          data-tour="timeline"
+          className="flex-1 overflow-auto relative"
+          onScroll={onTimelineScroll}
+        >
+          <div style={{ width: `${totalWidth}px`, minWidth: '100%', position: 'relative' }}>
+            {/* Track rows */}
+            {sortedTracks.map((track) => (
+              <TimelineTrack
+                key={track.id}
+                track={track}
+                tracks={sortedTracks}
+                clips={clipsByTrack.get(track.id) ?? []}
+                zoom={zoom}
+                height={getHeight(track.id)}
+                onHeightChange={(h) => handleHeightChange(track.id, h)}
+                laneHeight={getLaneHeight(track.id)}
+                onLaneHeightChange={(h) => handleLaneHeightChange(track.id, h)}
+              />
+            ))}
+
+            {/* Playhead vertical line in the track area */}
+            <div
+              className="absolute top-0 bottom-0 pointer-events-none z-50"
+              style={{ left: `${playheadPx}px` }}
+            >
+              <div className="absolute top-0 bottom-0 left-0 w-px bg-red-500" />
+            </div>
+
+            {/* Section markers */}
+            {markers.map((marker) => (
+              <MarkerFlag
+                key={marker.id}
+                marker={marker}
+                zoom={zoom}
+                rulerHeight={RULER_HEIGHT}
+                onUpdate={(patch) => updateMarker(marker.id, patch)}
+                onDelete={() => removeMarker(marker.id)}
+              />
+            ))}
+          </div>
         </div>
       </div>
     </div>

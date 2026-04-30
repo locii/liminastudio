@@ -42,6 +42,61 @@ export function registerFileHandlers(): void {
   )
 
   ipcMain.handle('shell:showInFolder', (_e, filePath: string) => shell.showItemInFolder(filePath))
+
+  ipcMain.handle(
+    'file:importFile',
+    async (): Promise<{ content: string; filePath: string; ext: string } | null> => {
+      const result = await dialog.showOpenDialog({
+        title: 'Import Session',
+        properties: ['openFile'],
+        filters: [
+          { name: 'DAW Sessions', extensions: ['sesx', 'aup'] },
+          { name: 'Adobe Audition Session', extensions: ['sesx'] },
+          { name: 'Audacity Project (legacy)', extensions: ['aup'] },
+        ],
+      })
+      if (result.canceled || result.filePaths.length === 0) return null
+      const filePath = result.filePaths[0]
+      const ext = filePath.split('.').pop()?.toLowerCase() ?? ''
+      const content = await fs.readFile(filePath, 'utf-8')
+      return { content, filePath, ext }
+    }
+  )
+
+  ipcMain.handle(
+    'file:pickFolder',
+    async (): Promise<string | null> => {
+      const result = await dialog.showOpenDialog({
+        title: 'Choose folder to copy audio files into',
+        properties: ['openDirectory', 'createDirectory'],
+      })
+      if (result.canceled || result.filePaths.length === 0) return null
+      return result.filePaths[0]
+    }
+  )
+
+  ipcMain.handle(
+    'file:copyFiles',
+    async (
+      _,
+      srcPaths: string[],
+      destFolder: string
+    ): Promise<Record<string, string>> => {
+      const { join: pathJoin } = await import('path')
+      const mapping: Record<string, string> = {}
+      for (const src of srcPaths) {
+        const name = basename(src)
+        const dest = pathJoin(destFolder, name)
+        try {
+          await fs.copyFile(src, dest)
+          mapping[src] = dest
+        } catch (err) {
+          console.error('[copyFiles] failed to copy', src, err)
+        }
+      }
+      return mapping
+    }
+  )
 }
 
 async function parseMeta(filePath: string): Promise<AudioFileMeta | null> {

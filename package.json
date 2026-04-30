@@ -1,7 +1,8 @@
 {
   "name": "limina",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Limina Studio — multitrack audio editor for breathwork facilitators",
+  "author": "Anthony Olsen",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",

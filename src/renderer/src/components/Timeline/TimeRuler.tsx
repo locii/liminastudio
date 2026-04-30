@@ -27,8 +27,8 @@ export function TimeRuler({ zoom, duration, height }: Props): JSX.Element {
 
   return (
     <div
-      className="sticky top-0 z-40 bg-surface-panel border-b border-surface-border select-none"
-      style={{ height, position: 'sticky' }}
+      className="bg-surface-panel select-none"
+      style={{ height }}
     >
       {ticks.map(({ time, isMajor }) => (
         <div

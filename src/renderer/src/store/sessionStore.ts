@@ -51,6 +51,7 @@ interface SessionState {
   selectedTrackId: string | null
   copiedClip: Clip | null
   currentFilePath: string | null
+  sessionLabel: string
   isDirty: boolean
 
   // History
@@ -84,9 +85,10 @@ interface SessionState {
   setWaveform: (filePath: string, data: Partial<WaveformData>) => void
   selectClip: (clipId: string | null) => void
   selectTrack: (trackId: string | null) => void
-  loadSnapshot: (snapshot: { tracks: Track[]; clips: Clip[]; markers?: Marker[] }) => void
+  loadSnapshot: (snapshot: { tracks: Track[]; clips: Clip[]; markers?: Marker[]; sessionLabel?: string }) => void
   newSession: () => void
   setCurrentFile: (filePath: string | null) => void
+  setSessionLabel: (label: string) => void
   markClean: () => void
 }
 
@@ -114,6 +116,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
     selectedTrackId: null,
     copiedClip: null,
     currentFilePath: null,
+    sessionLabel: '',
     isDirty: false,
     past: [],
     future: [],
@@ -345,8 +348,8 @@ export const useSessionStore = create<SessionState>((set, get) => {
       set((s) => ({ markers: s.markers.filter((m) => m.id !== id), isDirty: true }))
     },
 
-    loadSnapshot: ({ tracks, clips, markers }) => {
-      set({ tracks, clips, markers: markers ?? [], past: [], future: [], isDirty: false, selectedClipId: null })
+    loadSnapshot: ({ tracks, clips, markers, sessionLabel }) => {
+      set({ tracks, clips, markers: markers ?? [], sessionLabel: sessionLabel ?? '', past: [], future: [], isDirty: false, selectedClipId: null })
     },
 
     newSession: () => {
@@ -356,6 +359,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
         tracks: [t1, t2],
         clips: [],
         markers: [],
+        sessionLabel: '',
         waveforms: {
           [t1.id]: { trackId: t1.id, peaks: [], loading: false },
           [t2.id]: { trackId: t2.id, peaks: [], loading: false },
@@ -370,6 +374,8 @@ export const useSessionStore = create<SessionState>((set, get) => {
     },
 
     setCurrentFile: (filePath) => set({ currentFilePath: filePath }),
+
+    setSessionLabel: (label) => set({ sessionLabel: label, isDirty: true }),
 
     markClean: () => set({ isDirty: false }),
   }

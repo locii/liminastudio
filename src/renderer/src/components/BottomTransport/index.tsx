@@ -61,9 +61,11 @@ export function BottomTransport(): JSX.Element {
 
   return (
     <div data-tour="bottom-transport" className="shrink-0 flex items-center justify-center gap-1 px-4 py-2 bg-surface-panel border-t border-surface-border">
-      {/* Time display */}
-      <span className="font-mono text-sm text-gray-400 tabular-nums w-20 text-right mr-4">
+      {/* Time display — current / total */}
+      <span className="font-mono text-sm text-gray-400 tabular-nums mr-4 shrink-0">
         {formatTime(playhead)}
+        <span className="text-gray-600 mx-1">/</span>
+        <span className="text-gray-500">{formatTime(getEndTime(clips))}</span>
       </span>
 
       {/* Start */}

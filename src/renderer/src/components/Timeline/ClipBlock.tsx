@@ -301,33 +301,37 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
         </div>
       )}
 
-      {/* Fade-in drag handle */}
-      <div
-        className={`absolute top-1.5 w-3 h-3 rounded-full border-2 border-white/80 cursor-ew-resize transition-opacity ${
-          isSelected ? 'opacity-100' : 'opacity-0 hover:opacity-80'
-        }`}
-        style={{
-          left: `${Math.max(0, Math.min(clip.fadeIn * zoom, width / 2) - 6)}px`,
-          background: track.color,
-          boxShadow: '0 0 0 1px rgba(0,0,0,0.4)',
-          zIndex: 30,
-        }}
-        onMouseDown={(e) => onFadeHandleMouseDown(e, 'in')}
-      />
+      {/* Fade-in drag handle — only when clip is wide enough to show it */}
+      {width >= 20 && (
+        <div
+          className={`absolute top-1.5 w-3 h-3 rounded-full border-2 border-white/80 cursor-ew-resize transition-opacity ${
+            isSelected ? 'opacity-100' : 'opacity-0 hover:opacity-80'
+          }`}
+          style={{
+            left: `${Math.max(0, Math.min(Math.min(clip.fadeIn * zoom, width / 2) - 6, width - 12))}px`,
+            background: track.color,
+            boxShadow: '0 0 0 1px rgba(0,0,0,0.4)',
+            zIndex: 30,
+          }}
+          onMouseDown={(e) => onFadeHandleMouseDown(e, 'in')}
+        />
+      )}
 
-      {/* Fade-out drag handle */}
-      <div
-        className={`absolute top-1.5 w-3 h-3 rounded-full border-2 border-white/80 cursor-ew-resize transition-opacity ${
-          isSelected ? 'opacity-100' : 'opacity-0 hover:opacity-80'
-        }`}
-        style={{
-          left: `${Math.min(width - Math.min(clip.fadeOut * zoom, width / 2) - 6, width - 6)}px`,
-          background: track.color,
-          boxShadow: '0 0 0 1px rgba(0,0,0,0.4)',
-          zIndex: 30,
-        }}
-        onMouseDown={(e) => onFadeHandleMouseDown(e, 'out')}
-      />
+      {/* Fade-out drag handle — only when clip is wide enough to show it */}
+      {width >= 20 && (
+        <div
+          className={`absolute top-1.5 w-3 h-3 rounded-full border-2 border-white/80 cursor-ew-resize transition-opacity ${
+            isSelected ? 'opacity-100' : 'opacity-0 hover:opacity-80'
+          }`}
+          style={{
+            left: `${Math.max(0, Math.min(width - Math.min(clip.fadeOut * zoom, width / 2) - 6, width - 12))}px`,
+            background: track.color,
+            boxShadow: '0 0 0 1px rgba(0,0,0,0.4)',
+            zIndex: 30,
+          }}
+          onMouseDown={(e) => onFadeHandleMouseDown(e, 'out')}
+        />
+      )}
 
       {/* Left trim handle */}
       <div
