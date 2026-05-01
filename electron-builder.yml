@@ -17,6 +17,8 @@ asarUnpack:
   - node_modules/ffmpeg-static/**
   - node_modules/music-metadata/**
 
+afterSign: afterSign.js
+
 mac:
   category: public.app-category.music
   icon: resources/icon.icns
@@ -30,7 +32,6 @@ mac:
         - arm64
         - x64
   darkModeSupport: true
-  afterSign: afterSign.js
 
 win:
   icon: resources/icon.png
