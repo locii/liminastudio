@@ -24,14 +24,13 @@ mac:
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
-  notarize:
-    teamId: XV8CNQKXWJ
   target:
     - target: dmg
       arch:
         - arm64
         - x64
   darkModeSupport: true
+  afterSign: afterSign.js
 
 win:
   icon: resources/icon.png
