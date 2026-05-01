@@ -28,7 +28,6 @@ mac:
     - target: dmg
       arch:
         - arm64
-        - x64
   darkModeSupport: true
   notarize:
     teamId: XV8CNQKXWJ
