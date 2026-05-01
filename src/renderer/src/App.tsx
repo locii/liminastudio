@@ -63,6 +63,31 @@ export default function App(): JSX.Element {
     })
   }, [])
 
+  // Check for updates
+  const checkForUpdates = useCallback(async (silent = true) => {
+    try {
+      const res = await fetch('https://api.github.com/repos/locii/liminastudio/releases', {
+        headers: { Accept: 'application/vnd.github.v3+json' },
+      })
+      if (!res.ok) { if (!silent) toast('Could not reach update server', 'error'); return }
+      const releases = (await res.json()) as Array<{ tag_name: string; published_at: string }>
+      if (!releases.length) return
+      const latestVersion = releases[0].tag_name.replace(/^v/, '')
+      if (latestVersion !== __APP_VERSION__) {
+        toast(`Update available: v${latestVersion} — visit github.com/locii/liminastudio`, 'info', 10000)
+      } else if (!silent) {
+        toast('You\'re on the latest version', 'success')
+      }
+    } catch {
+      if (!silent) toast('Update check failed — check your connection', 'error')
+    }
+  }, [toast])
+
+  useEffect(() => {
+    const t = setTimeout(() => checkForUpdates(true), 4000)
+    return () => clearTimeout(t)
+  }, [checkForUpdates])
+
   // Sync window title
   useEffect(() => {
     const base = 'Limina Studio'
@@ -93,8 +118,8 @@ export default function App(): JSX.Element {
   // ── Session helpers ──────────────────────────────────────────────────────
 
   const saveSession = useCallback(async () => {
-    const { tracks, clips, markers, sessionLabel } = useSessionStore.getState()
-    const json = JSON.stringify({ tracks, clips, markers, sessionLabel }, null, 2)
+    const { tracks, clips, markers, sessionLabel, trackHeights, laneHeights } = useSessionStore.getState()
+    const json = JSON.stringify({ tracks, clips, markers, sessionLabel, trackHeights, laneHeights }, null, 2)
     let filePath = currentFilePath
     if (!filePath) {
       filePath = await window.electronAPI.saveSession(json)
@@ -109,8 +134,8 @@ export default function App(): JSX.Element {
   }, [currentFilePath, setCurrentFile, markClean, toast])
 
   const saveSessionAs = useCallback(async () => {
-    const { tracks, clips, markers, sessionLabel } = useSessionStore.getState()
-    const json = JSON.stringify({ tracks, clips, markers, sessionLabel }, null, 2)
+    const { tracks, clips, markers, sessionLabel, trackHeights, laneHeights } = useSessionStore.getState()
+    const json = JSON.stringify({ tracks, clips, markers, sessionLabel, trackHeights, laneHeights }, null, 2)
     const filePath = await window.electronAPI.saveSession(json)
     if (!filePath) return
     setCurrentFile(filePath)
@@ -138,7 +163,7 @@ export default function App(): JSX.Element {
   }, [])
 
   const applySession = useCallback(async (result: { json: string; filePath: string }) => {
-    const data = JSON.parse(result.json) as { tracks: Track[]; clips: Clip[]; markers?: import('./types').Marker[]; sessionLabel?: string }
+    const data = JSON.parse(result.json) as { tracks: Track[]; clips: Clip[]; markers?: import('./types').Marker[]; sessionLabel?: string; trackHeights?: Record<string, number>; laneHeights?: Record<string, number> }
     loadSnapshot(data)
     setCurrentFile(result.filePath)
     for (const track of data.tracks) {
@@ -373,9 +398,10 @@ export default function App(): JSX.Element {
       window.electronAPI.onMenu('menu:redo', () => redo()),
       window.electronAPI.onMenu('menu:addTrack', () => handleAddTrack()),
       window.electronAPI.onMenu('menu:deleteClip', () => { if (selectedClipId) removeClip(selectedClipId) }),
+      window.electronAPI.onMenu('menu:checkForUpdates', () => checkForUpdates(false)),
     ]
     return () => unsubs.forEach((u) => u())
-  }, [saveSession, openSession, openRecentSession, handleCollect, handleExportZip, undo, redo, handleAddTrack, selectedClipId, removeClip])
+  }, [saveSession, openSession, openRecentSession, handleCollect, handleExportZip, undo, redo, handleAddTrack, selectedClipId, removeClip, checkForUpdates])
 
   return (
     <div className="flex flex-col h-full text-gray-200 bg-surface-base">
@@ -456,6 +482,7 @@ export default function App(): JSX.Element {
       {tourOpen && <GuidedTour onClose={() => setTourOpen(false)} />}
 
       <ToastContainer />
+
     </div>
   )
 }

@@ -1,7 +1,7 @@
 import { app, shell, BrowserWindow, Menu, ipcMain } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
 import { join, extname } from 'path'
-import { promises as fs, createReadStream } from 'fs'
+import { promises as fs, createReadStream, readFileSync } from 'fs'
 import { createServer } from 'http'
 import type { AddressInfo } from 'net'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -108,11 +108,18 @@ function createAppMenu(): void {
       label: 'Help',
       submenu: [
         {
+          label: 'Check for Updates…',
+          click: () => mainWindow?.webContents.send('menu:checkForUpdates'),
+        },
+        { type: 'separator' },
+        {
           label: 'About Limina Studio',
           click: () => {
+            const version = app.getVersion()
+            const year = new Date().getFullYear()
             const about = new BrowserWindow({
-              width: 360,
-              height: 220,
+              width: 400,
+              height: 280,
               resizable: false,
               minimizable: false,
               parent: mainWindow ?? undefined,
@@ -121,9 +128,64 @@ function createAppMenu(): void {
               backgroundColor: '#1a1a1a',
               webPreferences: { sandbox: true },
             })
-            about.loadURL(
-              `data:text/html,<body style="font-family:system-ui;background:#1a1a1a;color:#e5e7eb;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;gap:8px;margin:0"><h2 style="margin:0;font-size:20px">Limina Studio</h2><p style="color:#9ca3af;margin:0;font-size:13px">v0.1.0</p><p style="color:#6b7280;margin:0;font-size:12px">Breathwork set editor</p></body>`
-            )
+            const logoPath = is.dev
+              ? join(app.getAppPath(), 'resources/creamLogo.png')
+              : join(process.resourcesPath, 'creamLogo.png')
+            let logoSrc = ''
+            try {
+              logoSrc = `data:image/png;base64,${readFileSync(logoPath).toString('base64')}`
+            } catch (e) {
+              console.error('[about] logo not found at', logoPath, e)
+            }
+            const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #1a1a1a;
+    color: #e5e7eb;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    gap: 8px;
+    padding: 28px;
+    text-align: center;
+    -webkit-app-region: drag;
+  }
+  img { width: 72px; height: 72px; object-fit: contain; margin-bottom: 4px; }
+  h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.3px; }
+  .version { font-size: 12px; color: #6366f1; font-weight: 500; }
+  .desc { font-size: 12px; color: #9ca3af; line-height: 1.5; max-width: 280px; }
+  .divider { width: 40px; height: 1px; background: #2a2a2a; margin: 2px 0; }
+  .meta { font-size: 11px; color: #4b5563; }
+  button {
+    margin-top: 12px;
+    padding: 6px 20px;
+    background: #27272a;
+    color: #9ca3af;
+    border: 1px solid #3f3f46;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    -webkit-app-region: no-drag;
+  }
+  button:hover { background: #3f3f46; color: #e5e7eb; }
+</style>
+</head><body>
+  ${logoSrc ? `<img src="${logoSrc}" alt="Limina Studio logo" />` : ''}
+  <h1>Limina Studio</h1>
+  <div class="version">v${version}</div>
+  <div class="divider"></div>
+  <p class="desc">A multitrack audio editor for Holotropic Breathwork facilitators.</p>
+  <div class="divider"></div>
+  <div class="meta">&copy; ${year} Anthony Olsen &nbsp;&middot;&nbsp; Built with Electron &amp; Tone.js</div>
+  <button onclick="window.close()">Close</button>
+<script>document.addEventListener('keydown', e => { if (e.key === 'Escape') window.close() })</script>
+</body></html>`
+            about.loadURL(`data:text/html;base64,${Buffer.from(html).toString('base64')}`)
           },
         },
       ],

@@ -21,20 +21,27 @@ export function PropertiesPanel(): JSX.Element {
 
   const effectiveDuration = clip ? clip.duration - clip.trimStart - clip.trimEnd : 0
 
+  const versionBadge = (
+    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-700 select-none tabular-nums bg-surface-panel pl-2">
+      v{__APP_VERSION__}
+    </span>
+  )
+
   if (!clip || !track) {
     return (
-      <div className="h-14 shrink-0 border-t border-surface-border bg-surface-panel flex items-center justify-center">
+      <div className="relative h-14 shrink-0 border-t border-surface-border bg-surface-panel flex items-center justify-center">
         <span className="text-xs text-gray-600">Select a clip to view properties</span>
+        {versionBadge}
       </div>
     )
   }
 
   return (
-    <div data-tour="properties-panel" className="h-14 shrink-0 border-t border-surface-border bg-surface-panel flex items-stretch">
+    <div data-tour="properties-panel" className="relative h-14 shrink-0 border-t border-surface-border bg-surface-panel flex items-stretch">
       {/* Colour strip */}
       <div className="w-1 shrink-0" style={{ background: track.color }} />
 
-      <div className="flex items-center gap-5 px-4 overflow-x-auto">
+      <div className="flex items-center gap-5 px-4 overflow-x-auto flex-1 min-w-0">
         {/* File name */}
         <div className="flex flex-col gap-0.5 min-w-0">
           <label className="text-[10px] text-gray-500 uppercase tracking-wider">File</label>
@@ -74,6 +81,7 @@ export function PropertiesPanel(): JSX.Element {
         </Field>
 
       </div>
+      {versionBadge}
     </div>
   )
 }

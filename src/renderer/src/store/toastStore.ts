@@ -11,19 +11,19 @@ export interface Toast {
 
 interface ToastStore {
   toasts: Toast[]
-  add: (message: string, type?: ToastType) => void
+  add: (message: string, type?: ToastType, duration?: number) => void
   remove: (id: string) => void
 }
 
 export const useToastStore = create<ToastStore>((set) => ({
   toasts: [],
 
-  add: (message, type = 'info') => {
+  add: (message, type = 'info', duration = 3500) => {
     const id = nanoid()
     set((s) => ({ toasts: [...s.toasts, { id, message, type }] }))
     setTimeout(() => {
       set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }))
-    }, 3500)
+    }, duration)
   },
 
   remove: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),

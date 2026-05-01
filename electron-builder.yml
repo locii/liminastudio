@@ -13,6 +13,10 @@ files:
   - '!node_modules/**/*.md'
   - '!node_modules/**/*.map'
 
+extraResources:
+  - from: resources/creamLogo.png
+    to: creamLogo.png
+
 asarUnpack:
   - node_modules/ffmpeg-static/**
   - node_modules/music-metadata/**

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type React from 'react'
 import { useSessionStore } from '../../store/sessionStore'
 import { useTransportStore } from '../../store/transportStore'
@@ -11,7 +11,7 @@ import { DragProvider } from './DragContext'
 import type { Clip } from '../../types'
 
 const RULER_HEIGHT = 28
-const TRACK_HEIGHT = 84
+const TRACK_HEIGHT = 100
 const MIN_TRACK_HEIGHT = 48
 const MAX_TRACK_HEIGHT = 240
 const LANE_HEIGHT = 48
@@ -30,22 +30,24 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef }: Props = {}): J
   const addMarker = useSessionStore((s) => s.addMarker)
   const updateMarker = useSessionStore((s) => s.updateMarker)
   const removeMarker = useSessionStore((s) => s.removeMarker)
+  const trackHeights = useSessionStore((s) => s.trackHeights)
+  const laneHeights = useSessionStore((s) => s.laneHeights)
+  const setTrackHeight = useSessionStore((s) => s.setTrackHeight)
+  const setLaneHeight = useSessionStore((s) => s.setLaneHeight)
   const zoom = useTransportStore((s) => s.zoom)
   const setZoom = useTransportStore((s) => s.setZoom)
   const playhead = useTransportStore((s) => s.playhead)
   const setScrollX = useTransportStore((s) => s.setScrollX)
 
-  const [trackHeights, setTrackHeights] = useState<Record<string, number>>({})
   const getHeight = useCallback((id: string) => trackHeights[id] ?? TRACK_HEIGHT, [trackHeights])
   const handleHeightChange = useCallback((id: string, h: number) => {
-    setTrackHeights((prev) => ({ ...prev, [id]: Math.max(MIN_TRACK_HEIGHT, Math.min(MAX_TRACK_HEIGHT, h)) }))
-  }, [])
+    setTrackHeight(id, Math.max(MIN_TRACK_HEIGHT, Math.min(MAX_TRACK_HEIGHT, h)))
+  }, [setTrackHeight])
 
-  const [laneHeights, setLaneHeights] = useState<Record<string, number>>({})
   const getLaneHeight = useCallback((id: string) => laneHeights[id] ?? LANE_HEIGHT, [laneHeights])
   const handleLaneHeightChange = useCallback((id: string, h: number) => {
-    setLaneHeights((prev) => ({ ...prev, [id]: Math.max(MIN_LANE_HEIGHT, Math.min(MAX_LANE_HEIGHT, h)) }))
-  }, [])
+    setLaneHeight(id, Math.max(MIN_LANE_HEIGHT, Math.min(MAX_LANE_HEIGHT, h)))
+  }, [setLaneHeight])
 
   const timelineRef = useRef<HTMLDivElement>(null)
   const rightPanelRef = useRef<HTMLDivElement>(null)
@@ -54,7 +56,9 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef }: Props = {}): J
   const zoomRef = useRef(zoom)
   useEffect(() => { zoomRef.current = zoom }, [zoom])
 
-  // Scroll to playhead on large jumps (prev/next/seek) — ignore continuous playback ticks
+  // Scroll to centre on playhead only when it lands outside the visible area.
+  // This way ruler clicks keep the view still; prev/next jumps to off-screen
+  // clips still bring them into view.
   const prevPlayheadRef = useRef(playhead)
   useEffect(() => {
     const prev = prevPlayheadRef.current
@@ -62,8 +66,10 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef }: Props = {}): J
     if (Math.abs(playhead - prev) < 1) return
     const el = timelineRef.current
     if (!el) return
-    const targetScroll = playhead * zoomRef.current - el.clientWidth / 2
-    el.scrollLeft = Math.max(0, targetScroll)
+    const playheadPx = playhead * zoomRef.current
+    const { scrollLeft, clientWidth } = el
+    if (playheadPx >= scrollLeft && playheadPx <= scrollLeft + clientWidth) return
+    el.scrollLeft = Math.max(0, playheadPx - clientWidth / 2)
   }, [playhead])
 
   // Track the center time continuously so resize can restore it.

@@ -46,6 +46,8 @@ interface SessionState {
   tracks: Track[]
   clips: Clip[]
   markers: Marker[]
+  trackHeights: Record<string, number>
+  laneHeights: Record<string, number>
   waveforms: Record<string, WaveformData>
   selectedClipId: string | null
   selectedClipIds: string[]
@@ -89,7 +91,9 @@ interface SessionState {
   setWaveform: (filePath: string, data: Partial<WaveformData>) => void
   selectClip: (clipId: string | null, addToSelection?: boolean) => void
   selectTrack: (trackId: string | null) => void
-  loadSnapshot: (snapshot: { tracks: Track[]; clips: Clip[]; markers?: Marker[]; sessionLabel?: string }) => void
+  setTrackHeight: (trackId: string, height: number) => void
+  setLaneHeight: (trackId: string, height: number) => void
+  loadSnapshot: (snapshot: { tracks: Track[]; clips: Clip[]; markers?: Marker[]; sessionLabel?: string; trackHeights?: Record<string, number>; laneHeights?: Record<string, number> }) => void
   newSession: () => void
   setCurrentFile: (filePath: string | null) => void
   setSessionLabel: (label: string) => void
@@ -115,6 +119,8 @@ export const useSessionStore = create<SessionState>((set, get) => {
     tracks: [],
     clips: [],
     markers: [],
+    trackHeights: {},
+    laneHeights: {},
     waveforms: {},
     selectedClipId: null,
     selectedClipIds: [],
@@ -380,6 +386,16 @@ export const useSessionStore = create<SessionState>((set, get) => {
     },
     selectTrack: (trackId) => set({ selectedTrackId: trackId }),
 
+    setTrackHeight: (trackId, height) => set((s) => ({
+      trackHeights: { ...s.trackHeights, [trackId]: height },
+      isDirty: true,
+    })),
+
+    setLaneHeight: (trackId, height) => set((s) => ({
+      laneHeights: { ...s.laneHeights, [trackId]: height },
+      isDirty: true,
+    })),
+
     addMarker: (time) => {
       const count = get().markers.length + 1
       const color = MARKER_COLORS[(count - 1) % MARKER_COLORS.length]
@@ -400,8 +416,8 @@ export const useSessionStore = create<SessionState>((set, get) => {
       set((s) => ({ markers: s.markers.filter((m) => m.id !== id), isDirty: true }))
     },
 
-    loadSnapshot: ({ tracks, clips, markers, sessionLabel }) => {
-      set({ tracks, clips, markers: markers ?? [], sessionLabel: sessionLabel ?? '', past: [], future: [], isDirty: false, selectedClipId: null, selectedClipIds: [] })
+    loadSnapshot: ({ tracks, clips, markers, sessionLabel, trackHeights, laneHeights }) => {
+      set({ tracks, clips, markers: markers ?? [], sessionLabel: sessionLabel ?? '', trackHeights: trackHeights ?? {}, laneHeights: laneHeights ?? {}, past: [], future: [], isDirty: false, selectedClipId: null, selectedClipIds: [] })
     },
 
     newSession: () => {
@@ -411,6 +427,8 @@ export const useSessionStore = create<SessionState>((set, get) => {
         tracks: [t1, t2],
         clips: [],
         markers: [],
+        trackHeights: {},
+        laneHeights: {},
         sessionLabel: '',
         waveforms: {
           [t1.id]: { trackId: t1.id, peaks: [], loading: false },

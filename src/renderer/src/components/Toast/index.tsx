@@ -18,8 +18,6 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }): J
   const bg =
     toast.type === 'error'
       ? 'bg-red-900/90 border-red-700'
-      : toast.type === 'success'
-      ? 'bg-green-900/90 border-green-700'
       : 'bg-surface-panel border-surface-border'
 
   return (
