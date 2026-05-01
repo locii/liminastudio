@@ -163,6 +163,8 @@ export default function App(): JSX.Element {
   }, [])
 
   const applySession = useCallback(async (result: { json: string; filePath: string }) => {
+    audioEngine.cancelWarmup()
+    setWarmup(null)
     const data = JSON.parse(result.json) as { tracks: Track[]; clips: Clip[]; markers?: import('./types').Marker[]; sessionLabel?: string; trackHeights?: Record<string, number>; laneHeights?: Record<string, number> }
     loadSnapshot(data)
     setCurrentFile(result.filePath)
