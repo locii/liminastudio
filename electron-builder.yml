@@ -29,8 +29,6 @@ mac:
       arch:
         - arm64
   darkModeSupport: true
-  notarize:
-    teamId: XV8CNQKXWJ
 
 win:
   icon: resources/icon.png
