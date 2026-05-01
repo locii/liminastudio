@@ -27,6 +27,8 @@ const MAX_HEIGHT = 160
 
 export function AutomationLane({ clips, zoom, color, height, onHeightChange, trackHeight, onTrackHeightChange }: Props): JSX.Element {
   const updateClip = useSessionStore((s) => s.updateClip)
+  const updateClipSilent = useSessionStore((s) => s.updateClipSilent)
+  const pushHistorySnapshot = useSessionStore((s) => s.pushHistorySnapshot)
   const dragRef = useRef<{
     clipId: string; nodeId: string
     startX: number; startY: number
@@ -34,6 +36,7 @@ export function AutomationLane({ clips, zoom, color, height, onHeightChange, tra
     effectiveDuration: number
   } | null>(null)
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null)
+  const [activeNode, setActiveNode] = useState<{ clipId: string; nodeId: string } | null>(null)
 
   // Close context menu on outside click
   useEffect(() => {
@@ -91,6 +94,12 @@ export function AutomationLane({ clips, zoom, color, height, onHeightChange, tra
     })
 
     if (hit) {
+      setActiveNode({ clipId: clip.id, nodeId: hit.id })
+      // Capture state before drag so we push a single undo entry on mouseup
+      const preDragSnap = {
+        tracks: useSessionStore.getState().tracks,
+        clips: useSessionStore.getState().clips,
+      }
       dragRef.current = {
         clipId: clip.id, nodeId: hit.id,
         startX: e.clientX, startY: e.clientY,
@@ -104,7 +113,7 @@ export function AutomationLane({ clips, zoom, color, height, onHeightChange, tra
         if (!current) return
         const newTime = Math.max(0, Math.min(startTime + (me.clientX - startX) / zoom, effectiveDuration))
         const newValue = Math.max(0, Math.min(startValue - (me.clientY - startY) * 2 / height, 2))
-        updateClip(clipId, {
+        updateClipSilent(clipId, {
           automation: (current.automation ?? []).map((pt) =>
             pt.id === nodeId
               ? { ...pt, time: Math.round(newTime * 100) / 100, value: Math.round(newValue * 100) / 100 }
@@ -116,15 +125,18 @@ export function AutomationLane({ clips, zoom, color, height, onHeightChange, tra
         dragRef.current = null
         window.removeEventListener('mousemove', onMove)
         window.removeEventListener('mouseup', onUp)
+        pushHistorySnapshot(preDragSnap)
         const { clips: c, tracks: t } = useSessionStore.getState()
         audioEngine.softReload(c, t)
       }
       window.addEventListener('mousemove', onMove)
       window.addEventListener('mouseup', onUp)
     } else {
+      const newId = nanoid()
       const time = Math.round(Math.max(0, Math.min((mx / zoom) - clip.startTime, eff)) * 100) / 100
       const value = Math.round(Math.max(0, Math.min(2 * (1 - (my - 1) / (height - 2)), 2)) * 100) / 100
-      updateClip(clip.id, { automation: [...automation, { id: nanoid(), time, value }] })
+      updateClip(clip.id, { automation: [...automation, { id: newId, time, value }] })
+      setActiveNode({ clipId: clip.id, nodeId: newId })
       const { clips: c, tracks: t } = useSessionStore.getState()
       audioEngine.softReload(c, t)
     }
@@ -184,19 +196,37 @@ export function AutomationLane({ clips, zoom, color, height, onHeightChange, tra
           />
         ))}
         {clips.flatMap((clip) =>
-          (clip.automation ?? []).map((pt) => (
-            <circle
-              key={pt.id}
-              cx={xOf(clip, pt.time)}
-              cy={yOf(pt.value)}
-              r={4}
-              fill={color}
-              stroke="rgba(255,255,255,0.8)"
-              strokeWidth={1.5}
-              style={{ cursor: 'grab' }}
-              onContextMenu={(e) => onNodeContextMenu(e, clip.id, pt.id)}
-            />
-          ))
+          (clip.automation ?? []).map((pt) => {
+            const isActive = activeNode?.clipId === clip.id && activeNode?.nodeId === pt.id
+            const cx = xOf(clip, pt.time)
+            const cy = yOf(pt.value)
+            return (
+              <g key={pt.id}>
+                <circle
+                  cx={cx}
+                  cy={cy}
+                  r={isActive ? 5 : 4}
+                  fill={color}
+                  stroke={isActive ? '#fff' : 'rgba(255,255,255,0.8)'}
+                  strokeWidth={isActive ? 2 : 1.5}
+                  style={{ cursor: 'grab' }}
+                  onContextMenu={(e) => onNodeContextMenu(e, clip.id, pt.id)}
+                />
+                {isActive && (() => {
+                  const labelY = cy > 20 ? cy - 10 : cy + 20
+                  const label = `${Math.round(pt.value * 100)}%`
+                  return (
+                    <g pointerEvents="none">
+                      <rect x={cx - 14} y={labelY - 8} width={28} height={14} rx={3} fill="#1a1a1a" stroke="#3f3f46" strokeWidth={1} />
+                      <text x={cx} y={labelY} textAnchor="middle" dominantBaseline="middle" fill="#e5e7eb" fontSize={9} fontFamily="monospace">
+                        {label}
+                      </text>
+                    </g>
+                  )
+                })()}
+              </g>
+            )
+          })
         )}
       </svg>
 

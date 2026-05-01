@@ -1,12 +1,14 @@
 import { useTransportStore } from '../store/transportStore'
 import type { Clip, Track } from '../types'
 
-function buildFadeCurve(length: number, fadeOut: boolean, curveParam: number): Float32Array {
+// scale lets callers produce curves in [0, scale] rather than [0, 1] so that
+// setValueCurveAtTime never jumps above the clip's intended baseGain.
+function buildFadeCurve(length: number, fadeOut: boolean, curveParam: number, scale = 1): Float32Array {
   const exponent = Math.pow(4, -curveParam)
   const arr = new Float32Array(length)
   for (let i = 0; i < length; i++) {
     const t = i / (length - 1)
-    arr[i] = fadeOut ? Math.pow(1 - t, exponent) : Math.pow(t, exponent)
+    arr[i] = scale * (fadeOut ? Math.pow(1 - t, exponent) : Math.pow(t, exponent))
   }
   return arr
 }
@@ -121,13 +123,29 @@ class AudioEngine {
     const isFuture = delayMs > 50  // clip starts more than 50 ms from now
 
     const fadeIn = Math.max(clip.fadeIn, clip.crossfadeIn ?? 0)
+    const fadeOut = Math.max(clip.fadeOut, clip.crossfadeOut ?? 0)
     const hasFadeInFromStart = fadeIn > 0 && seekPosition <= clip.startTime
     const baseGain = track.muted ? 0 : track.volume * clip.volume
+
+    // Compute the correct gain at seekPosition so there is no jump when
+    // the GainNode automation takes over a few ms later.
+    let initialGain: number
+    if (hasFadeInFromStart || isFuture) {
+      initialGain = 0
+    } else if (fadeIn > 0 && seekPosition < clip.startTime + fadeIn) {
+      const tInFade = (seekPosition - clip.startTime) / fadeIn
+      initialGain = Math.pow(tInFade, Math.pow(4, -(clip.fadeInCurve ?? 0.5))) * baseGain
+    } else if (fadeOut > 0 && seekPosition > clipEnd - fadeOut) {
+      const tInFade = (seekPosition - (clipEnd - fadeOut)) / fadeOut
+      initialGain = Math.pow(1 - tInFade, Math.pow(4, -(clip.fadeOutCurve ?? 0.5))) * baseGain
+    } else {
+      initialGain = baseGain
+    }
 
     // Future clips start at gain=0 so the 50 ms early audio.play() produces no
     // audible bleed before the clip's visual start position.
     const clipGain = this.ctx.createGain()
-    clipGain.gain.value = (hasFadeInFromStart || isFuture) ? 0 : baseGain
+    clipGain.gain.value = initialGain
     clipGain.connect(this.getMasterGain())
     clipGain.connect(this.getOrCreateTrackAnalyser(track.id))
     this.activeGains.set(clip.id, clipGain)
@@ -217,57 +235,77 @@ class AudioEngine {
     const fadeIn = Math.max(clip.fadeIn, clip.crossfadeIn ?? 0)
     const fadeOut = Math.max(clip.fadeOut, clip.crossfadeOut ?? 0)
 
-    // Fade in — only if we're starting before the fade ends
+    // Small lookahead: scheduling events at exactly ctx.currentTime can cause
+    // them to be skipped in some Chromium versions.  All "immediate" events are
+    // offset by 5 ms so they land safely in the future audio-processing block.
+    const EPSILON = 0.005
+
+    // ── Fade in ────────────────────────────────────────────────────────────
     if (fadeIn > 0) {
       const fadeInEnd = clip.startTime + fadeIn
       if (seekPosition < fadeInEnd) {
+        // Curves are scaled to [0, baseGain] so setValueCurveAtTime never
+        // drives the gain above the clip's intended level.
+        const curve = buildFadeCurve(256, false, clip.fadeInCurve ?? 0.5, baseGain)
         const delay = Math.max(0, clip.startTime - seekPosition)
+
         if (seekPosition <= clip.startTime) {
-          // Full fade from silence: pin gain to 0 right before the curve so
-          // there's no gap regardless of scheduling jitter.
-          const curve = buildFadeCurve(256, false, clip.fadeInCurve ?? 0.5)
+          // Full fade from silence. Offset the curve by EPSILON so the
+          // setValueAtTime and setValueCurveAtTime don't share a timestamp.
           clipGain.gain.setValueAtTime(0, now + delay)
-          clipGain.gain.setValueCurveAtTime(curve, now + delay, fadeIn)
+          clipGain.gain.setValueCurveAtTime(curve, now + delay + EPSILON, fadeIn - EPSILON)
         } else {
-          // Seeking into the middle of the fade-in: compute the gain at seekPosition
-          // and fade the remaining portion from that value up to full.
-          const tInFade = (seekPosition - clip.startTime) / fadeIn
-          const exponent = Math.pow(4, -(clip.fadeInCurve ?? 0.5))
-          const startGainValue = Math.pow(tInFade, exponent) * baseGain
-          const remainingFade = fadeInEnd - seekPosition
+          // Mid-fade-in: slice the scaled curve from the current position so
+          // the shape and duration are both correct.
+          const tInFade = Math.min(1, (seekPosition - clip.startTime) / fadeIn)
           const startIdx = Math.round(tInFade * 255)
-          const fullCurve = buildFadeCurve(256, false, clip.fadeInCurve ?? 0.5)
-          const partialCurve = new Float32Array(fullCurve.buffer, startIdx * 4)
-          clipGain.gain.setValueAtTime(startGainValue, now)
-          if (partialCurve.length > 1 && remainingFade > 0.01) {
-            clipGain.gain.setValueCurveAtTime(partialCurve, now, remainingFade)
+          const partialCurve = curve.slice(startIdx)
+          const remainingFade = fadeInEnd - seekPosition
+          if (partialCurve.length > 1 && remainingFade > EPSILON * 2) {
+            // setValueAtTime + setValueCurveAtTime must not share the same
+            // timestamp — that is undefined behaviour per the Web Audio spec.
+            clipGain.gain.setValueAtTime(curve[startIdx], now)
+            clipGain.gain.setValueCurveAtTime(partialCurve, now + EPSILON, remainingFade - EPSILON)
           }
         }
       }
     }
 
-    // Fade out — only if the fade hasn't fully elapsed yet
+    // ── Fade out ───────────────────────────────────────────────────────────
     if (fadeOut > 0) {
       const fadeOutStart = clipEnd - fadeOut
       const delayToFadeOut = fadeOutStart - seekPosition
       if (delayToFadeOut > -fadeOut) {
-        const curve = buildFadeCurve(256, true, clip.fadeOutCurve ?? 0.5)
-        const audioTime = now + Math.max(0, delayToFadeOut)
-        const remaining = fadeOut + Math.min(0, delayToFadeOut)
-        if (remaining > 0.01) {
-          clipGain.gain.setValueCurveAtTime(curve, audioTime, remaining)
+        const curve = buildFadeCurve(256, true, clip.fadeOutCurve ?? 0.5, baseGain)
+
+        if (delayToFadeOut >= 0) {
+          // curve[0] === baseGain (scaled curve), so no separate setValueAtTime
+          // pin is needed — sharing the same timestamp with setValueCurveAtTime
+          // is undefined behaviour and causes the audible level jump.
+          const audioTime = now + delayToFadeOut
+          clipGain.gain.setValueCurveAtTime(curve, audioTime, fadeOut)
+        } else {
+          // Mid-fade-out: slice from the current position (same approach as
+          // mid-fade-in) so neither level nor speed are wrong.
+          const tInFade = Math.min(1, -delayToFadeOut / fadeOut)
+          const startIdx = Math.round(tInFade * 255)
+          const partialCurve = curve.slice(startIdx)
+          const remaining = fadeOut + delayToFadeOut  // = fadeOut - elapsed
+          if (partialCurve.length > 1 && remaining > EPSILON * 2) {
+            clipGain.gain.setValueAtTime(curve[startIdx], now)
+            clipGain.gain.setValueCurveAtTime(partialCurve, now + EPSILON, remaining - EPSILON)
+          } else {
+            clipGain.gain.setValueAtTime(0, now)
+          }
         }
       }
     }
 
-    // Volume automation
+    // ── Volume automation ──────────────────────────────────────────────────
     if (clip.automation && clip.automation.length > 0) {
       const sorted = [...clip.automation].sort((a, b) => a.time - b.time)
-      const baseGain = track.muted ? 0 : track.volume * clip.volume
       const tInClip = Math.max(0, seekPosition - clip.startTime)
 
-      // Interpolate the automation value at the seek position so playback
-      // starts at the correct level rather than jumping to the first node
       let initialValue = sorted[0].value
       if (tInClip >= sorted[sorted.length - 1].time) {
         initialValue = sorted[sorted.length - 1].value
