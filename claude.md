@@ -216,6 +216,15 @@ See: PHASE2_PROMPT.md
 
 See: PHASE3_PROMPT.md
 
+## Release Checklist
+
+When bumping the version and tagging a release, always:
+
+1. Update `package.json` version
+2. Update the changelog at `../getliminastudio/app/changelog/page.tsx` — add the new version at the top of the `releases` array with user-friendly descriptions of every change
+3. Commit the changelog to the `getliminastudio` repo and push
+4. Commit the version bump, tag (e.g. `git tag v0.x.y`), and push both the commit and the tag
+
 ## Known Issues & Decisions Log
 
 (Claude Code: append to this section when you make an architectural
