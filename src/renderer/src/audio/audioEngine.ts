@@ -26,7 +26,8 @@ class AudioEngine {
   // Per-clip state
   private activeElements = new Map<string, HTMLAudioElement>()
   private activeSources = new Map<string, MediaElementAudioSourceNode>()
-  private activeGains = new Map<string, GainNode>()
+  private activeGains = new Map<string, GainNode>()     // baseGain × automation
+  private activeFadeGains = new Map<string, GainNode>() // fade curves (0–1)
   private pendingTimeouts: ReturnType<typeof setTimeout>[] = []
   private reloadTimer: ReturnType<typeof setTimeout> | null = null
   private rafId: number | null = null
@@ -141,28 +142,39 @@ class AudioEngine {
     const hasFadeInFromStart = fadeIn > 0 && seekPosition <= clip.startTime
     const baseGain = track.muted ? 0 : track.volume * clip.volume
 
-    // Compute the correct gain at seekPosition so there is no jump when
-    // the GainNode automation takes over a few ms later.
-    let initialGain: number
+    // Two GainNodes per clip so fade curves and automation never share an
+    // AudioParam — mixing setValueCurveAtTime and linearRampToValueAtTime on
+    // the same param throws NotSupportedError in Chrome and corrupts the queue.
+    //
+    //   source → clipAutoGain (baseGain × automation)
+    //          → clipFadeGain (fade curve, 0–1)
+    //          → masterGain / trackAnalyser
+
+    // Initial fade component (0–1): 0 while waiting for clip start or fade-in.
+    let initialFade: number
     if (hasFadeInFromStart || isFuture) {
-      initialGain = 0
+      initialFade = 0
     } else if (fadeIn > 0 && seekPosition < clip.startTime + fadeIn) {
       const tInFade = (seekPosition - clip.startTime) / fadeIn
-      initialGain = Math.pow(tInFade, Math.pow(4, -(clip.fadeInCurve ?? 0.5))) * baseGain
+      initialFade = Math.pow(tInFade, Math.pow(4, -(clip.fadeInCurve ?? 0.5)))
     } else if (fadeOut > 0 && seekPosition > clipEnd - fadeOut) {
       const tInFade = (seekPosition - (clipEnd - fadeOut)) / fadeOut
-      initialGain = Math.pow(1 - tInFade, Math.pow(4, -(clip.fadeOutCurve ?? 0.5))) * baseGain
+      initialFade = Math.pow(1 - tInFade, Math.pow(4, -(clip.fadeOutCurve ?? 0.5)))
     } else {
-      initialGain = baseGain
+      initialFade = 1
     }
 
-    // Future clips start at gain=0 so the 50 ms early audio.play() produces no
-    // audible bleed before the clip's visual start position.
-    const clipGain = this.ctx.createGain()
-    clipGain.gain.value = initialGain
-    clipGain.connect(this.getMasterGain())
-    clipGain.connect(this.getOrCreateTrackAnalyser(track.id))
-    this.activeGains.set(clip.id, clipGain)
+    const clipAutoGain = this.ctx.createGain()
+    clipAutoGain.gain.value = baseGain
+
+    const clipFadeGain = this.ctx.createGain()
+    clipFadeGain.gain.value = initialFade
+
+    clipAutoGain.connect(clipFadeGain)
+    clipFadeGain.connect(this.getMasterGain())
+    clipFadeGain.connect(this.getOrCreateTrackAnalyser(track.id))
+    this.activeGains.set(clip.id, clipAutoGain)
+    this.activeFadeGains.set(clip.id, clipFadeGain)
 
     // crossOrigin must be set BEFORE src — renderer (localhost) and local:// are different
     // origins, and a tainted element cannot be used with createMediaElementSource.
@@ -181,18 +193,18 @@ class AudioEngine {
       console.error('[audioEngine] createMediaElementSource failed:', err)
       return
     }
-    source.connect(clipGain)
+    source.connect(clipAutoGain)
     this.activeSources.set(clip.id, source)
 
     // GainNode automation is AudioContext-clock based so scheduling it now is
     // correct regardless of when audio.play() is actually called.
-    this.scheduleFadesAndAutomation(clip, track, clipGain, seekPosition, effectiveDuration, baseGain)
+    this.scheduleFadesAndAutomation(clip, track, clipFadeGain, clipAutoGain, seekPosition, effectiveDuration, baseGain)
 
-    // For future clips without a fade-in: snap the gain to baseGain at exactly
-    // the clip's start time.  Combined with gain=0 above this eliminates the
-    // 50 ms audio bleed that the early play() would otherwise produce.
+    // For future clips without a fade-in: snap fadeGain to 1 at exactly the
+    // clip's start time. Combined with initialFade=0 this eliminates the 50 ms
+    // audio bleed that the early play() would otherwise produce.
     if (isFuture && !hasFadeInFromStart) {
-      clipGain.gain.setValueAtTime(baseGain, this.ctx.currentTime + delayMs / 1000)
+      clipFadeGain.gain.setValueAtTime(1, this.ctx.currentTime + delayMs / 1000)
     }
 
     // Seek early so the browser buffers the target region during any delay.
@@ -237,7 +249,8 @@ class AudioEngine {
   private scheduleFadesAndAutomation(
     clip: Clip,
     track: Track,
-    clipGain: GainNode,
+    clipFadeGain: GainNode,
+    clipAutoGain: GainNode,
     seekPosition: number,
     effectiveDuration: number,
     baseGain?: number
@@ -254,68 +267,55 @@ class AudioEngine {
     // offset by 5 ms so they land safely in the future audio-processing block.
     const EPSILON = 0.005
 
-    // ── Fade in ────────────────────────────────────────────────────────────
+    // ── Fade in (on clipFadeGain, 0–1 scale) ──────────────────────────────
     if (fadeIn > 0) {
       const fadeInEnd = clip.startTime + fadeIn
       if (seekPosition < fadeInEnd) {
-        // Curves are scaled to [0, baseGain] so setValueCurveAtTime never
-        // drives the gain above the clip's intended level.
-        const curve = buildFadeCurve(256, false, clip.fadeInCurve ?? 0.5, baseGain)
+        const curve = buildFadeCurve(256, false, clip.fadeInCurve ?? 0.5)
         const delay = Math.max(0, clip.startTime - seekPosition)
 
         if (seekPosition <= clip.startTime) {
-          // Full fade from silence. Offset the curve by EPSILON so the
-          // setValueAtTime and setValueCurveAtTime don't share a timestamp.
-          clipGain.gain.setValueAtTime(0, now + delay)
-          clipGain.gain.setValueCurveAtTime(curve, now + delay + EPSILON, fadeIn - EPSILON)
+          clipFadeGain.gain.setValueAtTime(0, now + delay)
+          clipFadeGain.gain.setValueCurveAtTime(curve, now + delay + EPSILON, fadeIn - EPSILON)
         } else {
-          // Mid-fade-in: slice the scaled curve from the current position so
-          // the shape and duration are both correct.
           const tInFade = Math.min(1, (seekPosition - clip.startTime) / fadeIn)
           const startIdx = Math.round(tInFade * 255)
           const partialCurve = curve.slice(startIdx)
           const remainingFade = fadeInEnd - seekPosition
           if (partialCurve.length > 1 && remainingFade > EPSILON * 2) {
-            // setValueAtTime + setValueCurveAtTime must not share the same
-            // timestamp — that is undefined behaviour per the Web Audio spec.
-            clipGain.gain.setValueAtTime(curve[startIdx], now)
-            clipGain.gain.setValueCurveAtTime(partialCurve, now + EPSILON, remainingFade - EPSILON)
+            clipFadeGain.gain.setValueAtTime(curve[startIdx], now)
+            clipFadeGain.gain.setValueCurveAtTime(partialCurve, now + EPSILON, remainingFade - EPSILON)
           }
         }
       }
     }
 
-    // ── Fade out ───────────────────────────────────────────────────────────
+    // ── Fade out (on clipFadeGain, 0–1 scale) ─────────────────────────────
     if (fadeOut > 0) {
       const fadeOutStart = clipEnd - fadeOut
       const delayToFadeOut = fadeOutStart - seekPosition
       if (delayToFadeOut > -fadeOut) {
-        const curve = buildFadeCurve(256, true, clip.fadeOutCurve ?? 0.5, baseGain)
+        const curve = buildFadeCurve(256, true, clip.fadeOutCurve ?? 0.5)
 
         if (delayToFadeOut >= 0) {
-          // curve[0] === baseGain (scaled curve), so no separate setValueAtTime
-          // pin is needed — sharing the same timestamp with setValueCurveAtTime
-          // is undefined behaviour and causes the audible level jump.
           const audioTime = now + delayToFadeOut
-          clipGain.gain.setValueCurveAtTime(curve, audioTime, fadeOut)
+          clipFadeGain.gain.setValueCurveAtTime(curve, audioTime, fadeOut)
         } else {
-          // Mid-fade-out: slice from the current position (same approach as
-          // mid-fade-in) so neither level nor speed are wrong.
           const tInFade = Math.min(1, -delayToFadeOut / fadeOut)
           const startIdx = Math.round(tInFade * 255)
           const partialCurve = curve.slice(startIdx)
-          const remaining = fadeOut + delayToFadeOut  // = fadeOut - elapsed
+          const remaining = fadeOut + delayToFadeOut
           if (partialCurve.length > 1 && remaining > EPSILON * 2) {
-            clipGain.gain.setValueAtTime(curve[startIdx], now)
-            clipGain.gain.setValueCurveAtTime(partialCurve, now + EPSILON, remaining - EPSILON)
+            clipFadeGain.gain.setValueAtTime(curve[startIdx], now)
+            clipFadeGain.gain.setValueCurveAtTime(partialCurve, now + EPSILON, remaining - EPSILON)
           } else {
-            clipGain.gain.setValueAtTime(0, now)
+            clipFadeGain.gain.setValueAtTime(0, now)
           }
         }
       }
     }
 
-    // ── Volume automation ──────────────────────────────────────────────────
+    // ── Volume automation (on clipAutoGain, independent of fade curves) ────
     if (clip.automation && clip.automation.length > 0) {
       const sorted = [...clip.automation].sort((a, b) => a.time - b.time)
       const tInClip = Math.max(0, seekPosition - clip.startTime)
@@ -335,11 +335,11 @@ class AudioEngine {
         }
       }
 
-      clipGain.gain.setValueAtTime(baseGain * initialValue, now)
+      clipAutoGain.gain.setValueAtTime(baseGain * initialValue, now)
       for (const pt of sorted) {
         const ptAudioTime = now + (clip.startTime + pt.time - seekPosition)
         if (ptAudioTime > now) {
-          clipGain.gain.linearRampToValueAtTime(baseGain * pt.value, ptAudioTime)
+          clipAutoGain.gain.linearRampToValueAtTime(baseGain * pt.value, ptAudioTime)
         }
       }
     }
@@ -495,9 +495,13 @@ class AudioEngine {
     for (const gain of this.activeGains.values()) {
       try { gain.disconnect() } catch { /* already disconnected */ }
     }
+    for (const gain of this.activeFadeGains.values()) {
+      try { gain.disconnect() } catch { /* already disconnected */ }
+    }
     this.activeElements.clear()
     this.activeSources.clear()
     this.activeGains.clear()
+    this.activeFadeGains.clear()
   }
 
   private startRaf(): void {
