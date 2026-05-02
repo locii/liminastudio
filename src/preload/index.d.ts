@@ -67,6 +67,7 @@ export interface ElectronAPI {
   getAudioServerPort: () => Promise<number>
 
   showInFolder: (filePath: string) => Promise<void>
+  openExternal: (url: string) => Promise<void>
   importFile: () => Promise<{ content: string; filePath: string; ext: string } | null>
   pickFolder: () => Promise<string | null>
   copyFiles: (srcPaths: string[], destFolder: string) => Promise<Record<string, string>>

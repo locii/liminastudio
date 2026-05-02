@@ -38,6 +38,7 @@ const api: ElectronAPI = {
   getAudioServerPort: () => ipcRenderer.invoke('audio:getServerPort'),
 
   showInFolder: (filePath) => ipcRenderer.invoke('shell:showInFolder', filePath),
+  openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
 
   importFile: () => ipcRenderer.invoke('file:importFile'),
   pickFolder: () => ipcRenderer.invoke('file:pickFolder'),

@@ -24,7 +24,17 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }): J
     <div
       className={`pointer-events-auto flex items-center gap-3 px-4 py-2.5 rounded-lg border shadow-xl text-sm text-gray-200 animate-fade-in ${bg}`}
     >
-      <span className="flex-1">{toast.message}</span>
+      <span className="flex-1">
+        {toast.message}
+        {toast.url && (
+          <button
+            onClick={() => window.electronAPI.openExternal(toast.url!)}
+            className="ml-2 underline underline-offset-2 text-accent hover:text-accent/80 transition-colors"
+          >
+            Download
+          </button>
+        )}
+      </span>
       <button onClick={onClose} className="text-gray-500 hover:text-gray-300 leading-none text-xs">
         ✕
       </button>

@@ -42,6 +42,7 @@ export function registerFileHandlers(): void {
   )
 
   ipcMain.handle('shell:showInFolder', (_e, filePath: string) => shell.showItemInFolder(filePath))
+  ipcMain.handle('shell:openExternal', (_e, url: string) => shell.openExternal(url))
 
   ipcMain.handle(
     'file:importFile',

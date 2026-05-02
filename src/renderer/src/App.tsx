@@ -74,7 +74,7 @@ export default function App(): JSX.Element {
       if (!releases.length) return
       const latestVersion = releases[0].tag_name.replace(/^v/, '')
       if (latestVersion !== __APP_VERSION__) {
-        toast(`Update available: v${latestVersion} — visit github.com/locii/liminastudio`, 'info', 10000)
+        toast(`Update available: v${latestVersion}`, 'info', 10000, 'https://www.getliminastudio.com')
       } else if (!silent) {
         toast('You\'re on the latest version', 'success')
       }
