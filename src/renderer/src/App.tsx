@@ -240,15 +240,33 @@ export default function App(): JSX.Element {
     const filePath = useSessionStore.getState().currentFilePath
     if (!filePath) { toast('Save the session first before collecting files', 'error'); return }
     const { tracks, clips } = useSessionStore.getState()
+    const oldPathById = new Map(clips.map((c) => [c.id, c.filePath]))
     try {
       const updatedJson = await window.electronAPI.collectProject(
         JSON.stringify({ tracks, clips }, null, 2), filePath
       )
-      loadSnapshot(JSON.parse(updatedJson))
+      const updated = JSON.parse(updatedJson) as { tracks: Track[]; clips: Clip[] }
+      loadSnapshot(updated)
       markClean()
-      toast('Audio files collected into files/ folder', 'success')
+
+      // Re-fetch peaks for any clips whose filePath changed after collection
+      const movedPaths = new Set<string>()
+      for (const newClip of updated.clips) {
+        const oldPath = oldPathById.get(newClip.id)
+        if (oldPath && oldPath !== newClip.filePath) {
+          movedPaths.add(newClip.filePath)
+          setWaveform(newClip.filePath, { trackId: newClip.trackId, peaks: [], loading: true })
+          window.electronAPI
+            .getWaveformPeaks(newClip.filePath, 4000)
+            .then((peaks) => setWaveform(newClip.filePath, { peaks, loading: false }))
+            .catch(() => setWaveform(newClip.filePath, { peaks: [], loading: false }))
+        }
+      }
+
+      const n = movedPaths.size
+      toast(n > 0 ? `${n} file${n === 1 ? '' : 's'} moved to files/ folder` : 'All files already collected', 'success')
     } catch (e) { toast(`Collect failed: ${e}`, 'error') }
-  }, [loadSnapshot, markClean, toast])
+  }, [loadSnapshot, markClean, toast, setWaveform])
 
   const handleExportZip = useCallback(async () => {
     const filePath = useSessionStore.getState().currentFilePath

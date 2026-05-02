@@ -405,6 +405,19 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
         >
           Show in Folder
         </button>
+        <button
+          className="w-full text-left px-3 py-1.5 hover:bg-surface-hover text-gray-300 transition-colors"
+          onClick={() => {
+            setWaveform(clip.filePath, { peaks: [], loading: true })
+            window.electronAPI
+              .getWaveformPeaks(clip.filePath, 4000)
+              .then((peaks) => setWaveform(clip.filePath, { peaks, loading: false }))
+              .catch(() => setWaveform(clip.filePath, { peaks: [], loading: false }))
+            setCtxMenu(null)
+          }}
+        >
+          Rebuild Waveform
+        </button>
         <div className="my-1 h-px bg-surface-border" />
         <button
           className="w-full text-left px-3 py-1.5 hover:bg-surface-hover text-red-400 transition-colors"
