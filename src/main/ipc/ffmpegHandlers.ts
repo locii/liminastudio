@@ -13,6 +13,8 @@ interface ClipExport {
   trimEnd: number
   fadeIn: number
   fadeOut: number
+  fadeInCurve: number
+  fadeOutCurve: number
   crossfadeIn: number
   crossfadeOut: number
   volume: number
@@ -78,6 +80,8 @@ export function registerFfmpegHandlers(getMainWindow: () => BrowserWindow | null
 
     const { args } = buildFfmpegArgs(included, trackMap, config, totalDuration)
 
+    console.log('[export] ffmpeg filter_complex:', args[args.indexOf('-filter_complex') + 1])
+
     return new Promise<string>((resolve, reject) => {
       const proc = spawn(bin, args)
       let stderr = ''
@@ -128,23 +132,15 @@ function buildFfmpegArgs(
 
     let chain = `[${i}:a]`
 
-    // Trim to effective region
-    chain += `atrim=start=${clip.trimStart}:end=${clip.duration - clip.trimEnd},`
-    chain += `asetpts=PTS-STARTPTS,`
-    chain += `volume=${vol.toFixed(4)},`
-    chain += `adelay=${delayMs}:all=1`
-
     const fadeIn = Math.max(clip.fadeIn, clip.crossfadeIn ?? 0)
     const fadeOut = Math.max(clip.fadeOut, clip.crossfadeOut ?? 0)
 
-    if (fadeIn > 0) {
-      chain += `,afade=t=in:st=${clip.startTime.toFixed(3)}:d=${fadeIn.toFixed(3)}`
-    }
-    if (fadeOut > 0) {
-      const foStart = clip.startTime + eff - fadeOut
-      chain += `,afade=t=out:st=${foStart.toFixed(3)}:d=${fadeOut.toFixed(3)}`
-    }
-
+    // Trim to effective region, delay to timeline position, then apply
+    // per-clip gain + fade curves using the same power-law formula as playback.
+    chain += `atrim=start=${clip.trimStart}:end=${clip.duration - clip.trimEnd},`
+    chain += `asetpts=PTS-STARTPTS,`
+    chain += `adelay=${delayMs}:all=1,`
+    chain += buildVolumeExpr(vol, clip.startTime, fadeIn, clip.fadeInCurve ?? 0.5, fadeOut, clip.fadeOutCurve ?? 0.5, eff)
     chain += `,apad`
     const label = `a${i}`
     chain += `[${label}]`
@@ -152,11 +148,16 @@ function buildFfmpegArgs(
     labels.push(`[${label}]`)
   })
 
+  const mixLabel = 'mixed'
   const outLabel = 'out'
+  // Apply -3 dB (1/√2) before the limiter: equal-power crossfades of two clips
+  // sum to exactly +3 dB at the midpoint, so this neutralises that headroom hit.
+  // The alimiter then only needs to catch genuinely unusual peaks.
   if (labels.length === 1) {
-    filterParts.push(`${labels[0]}anull[${outLabel}]`)
+    filterParts.push(`${labels[0]}alimiter=limit=0.891:level=0:attack=1:release=50[${outLabel}]`)
   } else {
-    filterParts.push(`${labels.join('')}amix=inputs=${labels.length}:normalize=0[${outLabel}]`)
+    filterParts.push(`${labels.join('')}amix=inputs=${labels.length}:normalize=0[${mixLabel}]`)
+    filterParts.push(`[${mixLabel}]alimiter=limit=0.891:level=0:attack=1:release=50[${outLabel}]`)
   }
 
   const filterComplex = filterParts.join(';')
@@ -180,4 +181,39 @@ function buildFfmpegArgs(
   ]
 
   return { args }
+}
+
+// Builds a ffmpeg volume filter expression that replicates the playback engine's
+// power-law fade curve: gain = t^(4^-curveParam).
+// Single-quoted so ffmpeg parses commas inside the if() calls correctly.
+function buildVolumeExpr(
+  vol: number,
+  clipStart: number,
+  fadeIn: number,
+  fadeInCurve: number,
+  fadeOut: number,
+  fadeOutCurve: number,
+  eff: number
+): string {
+  const v = vol.toFixed(4)
+  const expIn = Math.pow(4, -fadeInCurve).toFixed(4)
+  const expOut = Math.pow(4, -fadeOutCurve).toFixed(4)
+  const cs = clipStart.toFixed(3)
+  const fie = (clipStart + fadeIn).toFixed(3)
+  const fid = fadeIn.toFixed(3)
+  const fos = (clipStart + eff - fadeOut).toFixed(3)
+  const fod = fadeOut.toFixed(3)
+
+  let expr: string
+  if (fadeIn > 0 && fadeOut > 0) {
+    expr = `${v}*if(lt(t,${cs}),0,if(lt(t,${fie}),pow((t-${cs})/${fid},${expIn}),if(gt(t,${fos}),pow(max(0,1-(t-${fos})/${fod}),${expOut}),1)))`
+  } else if (fadeIn > 0) {
+    expr = `${v}*if(lt(t,${cs}),0,if(lt(t,${fie}),pow((t-${cs})/${fid},${expIn}),1))`
+  } else if (fadeOut > 0) {
+    expr = `${v}*if(gt(t,${fos}),pow(max(0,1-(t-${fos})/${fod}),${expOut}),if(lt(t,${cs}),0,1))`
+  } else {
+    return `volume=${v}`
+  }
+
+  return `volume='${expr}':eval=frame`
 }

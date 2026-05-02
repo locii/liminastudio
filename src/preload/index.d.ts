@@ -17,6 +17,8 @@ export interface ExportConfig {
     trimEnd: number
     fadeIn: number
     fadeOut: number
+    fadeInCurve: number
+    fadeOutCurve: number
     crossfadeIn: number
     crossfadeOut: number
     volume: number
@@ -41,6 +43,7 @@ export interface ElectronAPI {
 
   // Waveform
   getWaveformPeaks: (filePath: string, numPeaks?: number) => Promise<number[]>
+  getPeakLevel: (filePath: string) => Promise<number>
 
   // Session
   saveSession: (sessionJson: string) => Promise<string | null>

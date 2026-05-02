@@ -59,6 +59,7 @@ export function ExportDialog({ open, onClose, defaultFormat }: Props): JSX.Eleme
           startTime: c.startTime, duration: c.duration,
           trimStart: c.trimStart, trimEnd: c.trimEnd,
           fadeIn: c.fadeIn, fadeOut: c.fadeOut,
+          fadeInCurve: c.fadeInCurve ?? 0.5, fadeOutCurve: c.fadeOutCurve ?? 0.5,
           crossfadeIn: c.crossfadeIn ?? 0, crossfadeOut: c.crossfadeOut ?? 0,
           volume: c.volume,
         })),
@@ -120,7 +121,7 @@ export function ExportDialog({ open, onClose, defaultFormat }: Props): JSX.Eleme
 
         {/* Output path */}
         <Row label="Output">
-          <div className="flex items-center gap-2 flex-1">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
             <span className="flex-1 text-xs text-gray-400 truncate min-w-0">
               {outputPath || <span className="text-gray-600">No file chosen</span>}
             </span>
@@ -161,7 +162,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }):
   return (
     <div className="flex items-center gap-3">
       <span className="text-xs text-gray-500 w-20 shrink-0">{label}</span>
-      <div className="flex items-center gap-1.5 flex-1">{children}</div>
+      <div className="flex items-center gap-1.5 flex-1 min-w-0">{children}</div>
     </div>
   )
 }

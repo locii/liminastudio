@@ -1,4 +1,5 @@
 import type React from 'react'
+import { useState } from 'react'
 import { useSessionStore } from '../../store/sessionStore'
 
 function formatDuration(s: number): string {
@@ -10,16 +11,34 @@ function formatDuration(s: number): string {
   return `${m}:${String(sec).padStart(2, '0')}.${ms}`
 }
 
+const TARGET_PEAK_DBFS = -0.5 // 0.5 dB of headroom
+const TARGET_PEAK_LINEAR = Math.pow(10, TARGET_PEAK_DBFS / 20)
+
 export function PropertiesPanel(): JSX.Element {
   const selectedClipId = useSessionStore((s) => s.selectedClipId)
   const clips = useSessionStore((s) => s.clips)
   const tracks = useSessionStore((s) => s.tracks)
   const updateClip = useSessionStore((s) => s.updateClip)
+  const [autoGainPending, setAutoGainPending] = useState(false)
 
   const clip = clips.find((c) => c.id === selectedClipId) ?? null
   const track = clip ? tracks.find((t) => t.id === clip.trackId) ?? null : null
 
   const effectiveDuration = clip ? clip.duration - clip.trimStart - clip.trimEnd : 0
+
+  async function handleAutoGain(): Promise<void> {
+    if (!clip || autoGainPending) return
+    setAutoGainPending(true)
+    try {
+      const peak = await window.electronAPI.getPeakLevel(clip.filePath)
+      if (peak > 0) {
+        const suggested = Math.min(2, TARGET_PEAK_LINEAR / peak)
+        updateClip(clip.id, { volume: suggested })
+      }
+    } finally {
+      setAutoGainPending(false)
+    }
+  }
 
   const versionBadge = (
     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-700 select-none tabular-nums bg-surface-panel pl-2">
@@ -77,6 +96,15 @@ export function PropertiesPanel(): JSX.Element {
             <span className="text-[10px] font-mono tabular-nums text-gray-400 w-8">
               {Math.round(clip.volume * 100)}%
             </span>
+            <button
+              onClick={handleAutoGain}
+              disabled={autoGainPending}
+              title="Set gain so peak hits -1 dBFS"
+              className="px-1.5 py-0.5 text-[10px] font-mono uppercase tracking-wider rounded border border-surface-border text-gray-400 hover:text-accent hover:border-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            >
+              {autoGainPending ? '…' : 'AUTO'}
+            </button>
           </div>
         </Field>
         <div className="mr-9 w-px h-8 bg-surface-border shrink-0" />

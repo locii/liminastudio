@@ -10,6 +10,7 @@ const api: ElectronAPI = {
   // Waveform
   getWaveformPeaks: (filePath, numPeaks) =>
     ipcRenderer.invoke('audio:getWaveformPeaks', filePath, numPeaks),
+  getPeakLevel: (filePath) => ipcRenderer.invoke('audio:getPeakLevel', filePath),
 
   // Session
   saveSession: (sessionJson) => ipcRenderer.invoke('session:save', sessionJson),

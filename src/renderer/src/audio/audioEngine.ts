@@ -16,6 +16,7 @@ function buildFadeCurve(length: number, fadeOut: boolean, curveParam: number, sc
 class AudioEngine {
   private _ctx: AudioContext | null = null
   private masterGainNode: GainNode | null = null
+  private masterLimiterNode: DynamicsCompressorNode | null = null
 
   private analyserL: AnalyserNode | null = null
   private analyserR: AnalyserNode | null = null
@@ -60,6 +61,19 @@ class AudioEngine {
     return this._ctx
   }
 
+  private getMasterLimiter(): DynamicsCompressorNode {
+    if (!this.masterLimiterNode) {
+      this.masterLimiterNode = this.ctx.createDynamicsCompressor()
+      this.masterLimiterNode.threshold.value = -0.5  // dBFS ceiling
+      this.masterLimiterNode.knee.value = 0           // hard knee
+      this.masterLimiterNode.ratio.value = 20         // near-infinite = limiter
+      this.masterLimiterNode.attack.value = 0.001     // 1ms
+      this.masterLimiterNode.release.value = 0.05     // 50ms
+      this.masterLimiterNode.connect(this.ctx.destination)
+    }
+    return this.masterLimiterNode
+  }
+
   private getMasterGain(): GainNode {
     if (!this.masterGainNode) {
       this.masterGainNode = this.ctx.createGain()
@@ -67,7 +81,7 @@ class AudioEngine {
       this.masterGainNode.channelCount = 2
       this.masterGainNode.channelCountMode = 'explicit'
       this.masterGainNode.channelInterpretation = 'speakers'
-      this.masterGainNode.connect(this.ctx.destination)
+      this.masterGainNode.connect(this.getMasterLimiter())
     }
     return this.masterGainNode
   }
