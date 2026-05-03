@@ -6,6 +6,8 @@ import { useToastStore } from '../../store/toastStore'
 import { TrackVUMeter } from './TrackVUMeter'
 import type { Track, Clip } from '../../types'
 
+const TARGET_PEAK_LINEAR = Math.pow(10, -0.5 / 20)
+
 function volAtPlayhead(clips: Clip[], playhead: number): number {
   const clip = clips.find((c) => {
     const eff = c.duration - c.trimStart - c.trimEnd
@@ -57,6 +59,7 @@ export function TrackHeader({ track, clips, height, onHeightChange, laneHeight, 
     setTimeout(() => nameInputRef.current?.select(), 0)
   }
   const addClipToTrack = useSessionStore((s) => s.addClipToTrack)
+  const updateClip = useSessionStore((s) => s.updateClip)
   const setWaveform = useSessionStore((s) => s.setWaveform)
   const selectTrack = useSessionStore((s) => s.selectTrack)
   const selectedTrackId = useSessionStore((s) => s.selectedTrackId)
@@ -83,7 +86,7 @@ export function TrackHeader({ track, clips, height, onHeightChange, laneHeight, 
   const handleAddClip = async (): Promise<void> => {
     const files = await window.electronAPI.openAudioFiles()
     for (const file of files) {
-      addClipToTrack({
+      const clip = addClipToTrack({
         trackId: track.id,
         name: file.name.replace(/\.[^.]+$/, ''),
         filePath: file.path,
@@ -93,6 +96,10 @@ export function TrackHeader({ track, clips, height, onHeightChange, laneHeight, 
         .getWaveformPeaks(file.path, 1200)
         .then((peaks) => setWaveform(file.path, { peaks, loading: false }))
         .catch(() => toast('Failed to load waveform', 'error'))
+      window.electronAPI
+        .getPeakLevel(file.path)
+        .then((peak) => { if (peak > 0) updateClip(clip.id, { volume: Math.min(2, TARGET_PEAK_LINEAR / peak) }) })
+        .catch(() => {})
     }
   }
 
@@ -107,8 +114,8 @@ export function TrackHeader({ track, clips, height, onHeightChange, laneHeight, 
         className={`relative flex flex-col justify-between px-2.5 py-2 bg-surface-panel shrink-0 overflow-hidden transition-colors ${isSelected ? 'ring-1 ring-inset ring-accent/60' : ''}`}
         style={{ height }}
       >
-        <div className="absolute right-0 top-0 bottom-0 w-2 flex items-stretch">
-          <TrackVUMeter trackId={track.id} />
+        <div className="absolute right-0 top-0 w-2">
+          <TrackVUMeter trackId={track.id} height={height} />
         </div>
         {/* Name + colour + remove */}
         <div className="flex items-center gap-1">

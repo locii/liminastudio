@@ -25,13 +25,16 @@ interface Props {
   onCollect: () => void
   onExportZip: () => void
   onFitToWindow: () => void
+  onFocusPlayhead: () => void
+  onZoomIn: () => void
+  onZoomOut: () => void
   onStartTour: () => void
 }
 
 export function TransportBar({
   onAddTrack, onAddEmptyTrack, onOpenExportWav, onOpenExportMp3, onExportPDF,
   onNewSession, onOpen, onImport, onSave, onSaveAs, onCollect, onExportZip,
-  onFitToWindow, onStartTour,
+  onFitToWindow, onFocusPlayhead, onZoomIn, onZoomOut, onStartTour,
 }: Props): JSX.Element {
   const playing = useTransportStore((s) => s.playing)
   const looping = useTransportStore((s) => s.looping)
@@ -248,7 +251,7 @@ export function TransportBar({
         {/* Zoom — centred */}
         <div className="flex gap-2 items-center shrink-0" data-tour="zoom">
           <button
-            onClick={() => setZoom(Math.max(0.5, zoom / 1.25))}
+            onClick={onZoomOut}
             className="w-5 h-5 flex items-center justify-center text-[12px] text-gray-400 hover:text-gray-200 bg-surface-hover hover:bg-surface-border border border-surface-border rounded transition-colors leading-none"
             title="Zoom out"
           >−</button>
@@ -257,12 +260,13 @@ export function TransportBar({
             min={0} max={100} step={0.5}
             value={Math.log(zoom / 0.1) / Math.log(2000) * 100}
             onChange={(e) => setZoom(0.1 * Math.pow(2000, Number(e.target.value) / 100))}
+            onMouseUp={(e) => (e.target as HTMLInputElement).blur()}
             className="w-60 h-1 rounded-full appearance-none bg-surface-hover cursor-ew-resize accent-accent"
             title={`Zoom: ${zoom.toFixed(0)}`}
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           />
           <button
-            onClick={() => setZoom(Math.min(2000, zoom * 1.25))}
+            onClick={onZoomIn}
             className="w-5 h-5 flex items-center justify-center text-[12px] text-gray-400 hover:text-gray-200 bg-surface-hover hover:bg-surface-border border border-surface-border rounded transition-colors leading-none"
             title="Zoom in"
           >+</button>
@@ -271,6 +275,11 @@ export function TransportBar({
             className="h-5 flex items-center justify-center text-[12px] text-gray-400 hover:text-gray-200 px-2 bg-surface-hover hover:bg-surface-border border border-surface-border rounded transition-colors leading-none"
             title="Fit project to window"
           >fit</button>
+          <button
+            onClick={onFocusPlayhead}
+            className="h-5 flex items-center justify-center text-[12px] text-gray-400 hover:text-gray-200 px-2 bg-surface-hover hover:bg-surface-border border border-surface-border rounded transition-colors leading-none"
+            title="Focus on playhead"
+          >focus</button>
           <div className="w-px h-4 bg-surface-border" />
           <button
             onClick={() => setShortcutsOpen(true)}

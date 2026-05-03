@@ -21,9 +21,11 @@ const MAX_LANE_HEIGHT = 160
 interface Props {
   fitToWindowRef?: React.MutableRefObject<(() => void) | null>
   scrollToPlayheadRef?: React.MutableRefObject<(() => void) | null>
+  focusPlayheadRef?: React.MutableRefObject<(() => void) | null>
+  zoomByRef?: React.MutableRefObject<((factor: number) => void) | null>
 }
 
-export function Timeline({ fitToWindowRef, scrollToPlayheadRef }: Props = {}): JSX.Element {
+export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef, zoomByRef }: Props = {}): JSX.Element {
   const tracks = useSessionStore((s) => s.tracks)
   const clips = useSessionStore((s) => s.clips)
   const markers = useSessionStore((s) => s.markers)
@@ -166,6 +168,36 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef }: Props = {}): J
     }
   }, [scrollToPlayheadRef])
 
+  // Wire focus-playhead callback — zoom to 30px/s and centre on playhead
+  useEffect(() => {
+    if (!focusPlayheadRef) return
+    focusPlayheadRef.current = () => {
+      const el = timelineRef.current
+      if (!el) return
+      const FOCUS_ZOOM = 30
+      const pos = useTransportStore.getState().playhead
+      setZoom(FOCUS_ZOOM)
+      requestAnimationFrame(() => {
+        el.scrollLeft = Math.max(0, pos * FOCUS_ZOOM - el.clientWidth / 2)
+      })
+    }
+  }, [focusPlayheadRef, setZoom])
+
+  // Wire zoom-by-factor callback — zooms around the playhead
+  useEffect(() => {
+    if (!zoomByRef) return
+    zoomByRef.current = (factor: number) => {
+      const el = timelineRef.current
+      if (!el) return
+      const pos = useTransportStore.getState().playhead
+      const newZoom = Math.min(200, Math.max(0.5, zoomRef.current * factor))
+      setZoom(newZoom)
+      requestAnimationFrame(() => {
+        el.scrollLeft = Math.max(0, pos * newZoom - el.clientWidth / 2)
+      })
+    }
+  }, [zoomByRef, setZoom])
+
   // Group clips by trackId
   const clipsByTrack = useMemo(() => {
     const map = new Map<string, Clip[]>()
@@ -246,8 +278,8 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef }: Props = {}): J
             <TrackHeader key={t.id} track={t} clips={clipsByTrack.get(t.id) ?? []} height={getHeight(t.id)} onHeightChange={(h) => handleHeightChange(t.id, h)} laneHeight={getLaneHeight(t.id)} onLaneHeightChange={(h) => handleLaneHeightChange(t.id, h)} isFirst={i === 0} />
           ))}
         </div>
-        {/* Master volume — bottom of left column */}
-        <MasterVolumeFooter />
+        {/* Track view controls — fit / reset row heights */}
+        <TrackViewButtons headerRef={headerRef} />
       </div>
 
       {/* Right: ruler strip + scrollable tracks */}
@@ -334,31 +366,53 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef }: Props = {}): J
   )
 }
 
-function MasterVolumeFooter(): JSX.Element {
-  const masterVolume = useTransportStore((s) => s.masterVolume)
-  const setMasterVolume = useTransportStore((s) => s.setMasterVolume)
+function TrackViewButtons({ headerRef }: { headerRef: React.RefObject<HTMLDivElement> }): JSX.Element {
+  const tracks = useSessionStore((s) => s.tracks)
+  const laneHeights = useSessionStore((s) => s.laneHeights)
+  const setTrackHeight = useSessionStore((s) => s.setTrackHeight)
+
+  const handleFit = useCallback(() => {
+    if (!headerRef.current || tracks.length === 0) return
+    const totalLaneH = tracks.reduce((sum, t) => sum + (laneHeights[t.id] ?? 0), 0)
+    const availH = headerRef.current.clientHeight - totalLaneH
+    const targetH = Math.max(MIN_TRACK_HEIGHT, Math.min(MAX_TRACK_HEIGHT, Math.floor(availH / tracks.length)))
+    tracks.forEach((t) => setTrackHeight(t.id, targetH))
+  }, [headerRef, tracks, laneHeights, setTrackHeight])
+
+  const handleReset = useCallback(() => {
+    tracks.forEach((t) => setTrackHeight(t.id, TRACK_HEIGHT))
+  }, [tracks, setTrackHeight])
+
   return (
-    <div
-      data-tour="master-volume"
-      className="shrink-0 flex items-center gap-2 px-3 py-2 border-t-2 border-accent/30 bg-surface-panel"
-      style={{ borderLeft: '3px solid #6366f1' }}
-    >
-      <span className="text-[9px] font-bold tracking-widest text-accent/80 uppercase shrink-0">Master</span>
-      <input
-        type="range"
-        min={0} max={1} step={0.01}
-        value={masterVolume}
-        onChange={(e) => {
-          const v = parseFloat(e.target.value)
-          setMasterVolume(v)
-          audioEngine.setMasterVolume(v)
-        }}
-        className="min-w-0 flex-1 h-1 appearance-none bg-surface-hover rounded-full cursor-ew-resize accent-accent"
-        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-      />
-      <span className="text-[9px] font-mono tabular-nums text-gray-400 w-7 text-right shrink-0">
-        {Math.round(masterVolume * 100)}
-      </span>
+    <div className="shrink-0 flex border-t border-surface-border bg-surface-panel">
+      <button
+        onClick={handleFit}
+        title="Expand tracks to fill view"
+        className="flex-1 flex items-center justify-center py-2 text-gray-500 hover:text-gray-200 hover:bg-surface-hover transition-colors gap-1.5"
+      >
+        {/* Vertical expand: line with arrows pointing away from centre */}
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <line x1="6" y1="1" x2="6" y2="11" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+          <polyline points="3.5,4 6,1 8.5,4" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+          <polyline points="3.5,8 6,11 8.5,8" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+        <span className="text-[8px] font-bold tracking-wider uppercase">Fit</span>
+      </button>
+      <div className="w-px bg-surface-border" />
+      <button
+        onClick={handleReset}
+        title="Reset all tracks to 100px"
+        className="flex-1 flex items-center justify-center py-2 text-gray-500 hover:text-gray-200 hover:bg-surface-hover transition-colors gap-1.5"
+      >
+        {/* Three equal horizontal bars = default/equal row heights */}
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <line x1="1" y1="3" x2="11" y2="3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+          <line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+          <line x1="1" y1="9" x2="11" y2="9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+        </svg>
+        <span className="text-[8px] font-bold tracking-wider uppercase">Rst</span>
+      </button>
     </div>
   )
 }
+

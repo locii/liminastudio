@@ -32,10 +32,15 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null)
   const { setDragState } = useDragContext()
   const isSelected = selectedClipIds.includes(clip.id)
+  const scrollX = useTransportStore((s) => s.scrollX)
 
   const effectiveDuration = clip.duration - clip.trimStart - clip.trimEnd
   const width = Math.max(4, effectiveDuration * zoom)
   const left = clip.startTime * zoom
+
+  // Sticky label: shift right when the clip's left edge is off-screen
+  const labelLeft = Math.max(10, scrollX - left + 10)
+  const labelMaxWidth = Math.max(0, width - labelLeft - 10)
 
   const dragState = useRef({
     active: false, startX: 0, startTime: 0,
@@ -300,10 +305,10 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
         />
       )}
 
-      {/* Filename */}
+      {/* Filename — sticky: stays visible when clip's left edge scrolls off-screen */}
       <div
-        className="absolute top-1 left-2.5 text-[10px] text-white/60 truncate z-10 pointer-events-none"
-        style={{ maxWidth: `${width - 20}px` }}
+        className="absolute top-1 text-[10px] text-white/60 truncate z-10 pointer-events-none"
+        style={{ left: `${labelLeft}px`, maxWidth: `${labelMaxWidth}px` }}
       >
         {clip.fileName}
       </div>

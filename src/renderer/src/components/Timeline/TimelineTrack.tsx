@@ -6,6 +6,8 @@ import { AutomationLane } from './AutomationLane'
 import { useDragContext } from './DragContext'
 import type { Clip, Track } from '../../types'
 
+const TARGET_PEAK_LINEAR = Math.pow(10, -0.5 / 20)
+
 interface Props {
   track: Track
   tracks: Track[]
@@ -19,6 +21,7 @@ interface Props {
 
 export function TimelineTrack({ track, tracks, clips, zoom, height, onHeightChange, laneHeight, onLaneHeightChange }: Props): JSX.Element {
   const addClipToTrack = useSessionStore((s) => s.addClipToTrack)
+  const updateClip = useSessionStore((s) => s.updateClip)
   const setWaveform = useSessionStore((s) => s.setWaveform)
   const selectClip = useSessionStore((s) => s.selectClip)
   const toast = useToastStore((s) => s.add)
@@ -65,7 +68,7 @@ export function TimelineTrack({ track, tracks, clips, zoom, height, onHeightChan
       if (!filePath) continue
       const meta = await window.electronAPI.getAudioMetadata(filePath)
       if (!meta) { toast(`Could not read: ${file.name}`, 'error'); continue }
-      addClipToTrack({
+      const clip = addClipToTrack({
         trackId: track.id,
         name: file.name.replace(/\.[^.]+$/, ''),
         filePath,
@@ -76,10 +79,14 @@ export function TimelineTrack({ track, tracks, clips, zoom, height, onHeightChan
         .getWaveformPeaks(filePath, 1200)
         .then((peaks) => setWaveform(filePath, { peaks, loading: false }))
         .catch(console.error)
+      window.electronAPI
+        .getPeakLevel(filePath)
+        .then((peak) => { if (peak > 0) updateClip(clip.id, { volume: Math.min(2, TARGET_PEAK_LINEAR / peak) }) })
+        .catch(() => {})
       // If multiple files dropped at once, stagger them sequentially
       offsetTime += meta.duration
     }
-  }, [track.id, zoom, addClipToTrack, setWaveform, toast])
+  }, [track.id, zoom, addClipToTrack, updateClip, setWaveform, toast])
 
   return (
     <div

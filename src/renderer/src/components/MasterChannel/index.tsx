@@ -1,23 +1,26 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { audioEngine } from '../../audio/audioEngine'
-
+ 
 const SEGMENTS = 32
-const DB_MIN = -54
-const DB_MAX = 6
+const DB_MIN = -60
+const DB_MAX = 0
+const CLIP_DB = -0.2 // red zone starts here; clip indicator latches at this level
+const CLIP_SEG = Math.round(((CLIP_DB - DB_MIN) / (DB_MAX - DB_MIN)) * SEGMENTS)
 function levelToSegCount(peak: number): number {
-  if (peak < 0.0002) return 0
+  if (peak < 0.004) return 0
   const db = 20 * Math.log10(peak)
   const t = (db - DB_MIN) / (DB_MAX - DB_MIN)
-  return Math.round(Math.max(0, Math.min(1, t)) * SEGMENTS)
+  return Math.floor(Math.max(0, Math.min(1, t)) * SEGMENTS)
 }
 
 function segColors(seg: number): [string, string] {
   const db = DB_MIN + (seg / (SEGMENTS - 1)) * (DB_MAX - DB_MIN)
-  if (db >= 0) return ['#ef4444', '#220000']
-  if (db >= -3) return ['#ec4899', '#220010']
-  if (db >= -9) return ['#f59e0b', '#1e1600']
-  if (db >= -18) return ['#818cf8', '#0c0e28']
-  return ['#6366f1', '#080a1e']
+  if (db >= -0.25)  return ['#ff2233', '#1f0508'] // top — brightest red, at ceiling
+  if (db >= -2)  return ['#e03444', '#1f0508'] // mid — standard red
+  if (db >= -3)  return ['#e03444', '#1f0508'] // clip — red (3 steps)
+  if (db >= -9)  return ['#e8722a', '#1a0e05'] // hot  — burnt orange
+  if (db >= -18) return ['#f0c040', '#1a1505'] // warm — gold
+  return              ['#00d4aa', '#051a15']   // safe — teal-green
 }
 
 function computePeak(buf: Float32Array): number {
@@ -45,7 +48,6 @@ export function MasterChannel(): JSX.Element {
     clipL.current = false
     clipR.current = false
   }, [])
-
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -81,8 +83,8 @@ export function MasterChannel(): JSX.Element {
       else if (now - peakHoldR.current > HOLD_MS) peakR.current = Math.max(0, peakR.current - PEAK_DECAY)
 
       // Latch clip indicators — only when signal rails the top segment
-      if (segCountL >= SEGMENTS) clipL.current = true
-      if (segCountR >= SEGMENTS) clipR.current = true
+      if (segCountL >= CLIP_SEG) clipL.current = true
+      if (segCountR >= CLIP_SEG) clipR.current = true
 
       const dpr = window.devicePixelRatio || 1
       const cw = canvas.offsetWidth
@@ -101,11 +103,11 @@ export function MasterChannel(): JSX.Element {
       ctx.clearRect(0, 0, cw, ch)
 
       // Clip indicator squares at the very top
-      const COLGAP = 3
+      const COLGAP = 1
       const bw = Math.floor((cw - COLGAP) / 2)
-      ctx.fillStyle = clipL.current ? '#ef4444' : '#220000'
+      ctx.fillStyle = clipL.current ? '#e03444' : '#1f0508'
       ctx.fillRect(0, 0, bw, CLIP_H)
-      ctx.fillStyle = clipR.current ? '#ef4444' : '#220000'
+      ctx.fillStyle = clipR.current ? '#e03444' : '#1f0508'
       ctx.fillRect(bw + COLGAP, 0, bw, CLIP_H)
 
       // Meter bars fill remaining height below clip indicator
@@ -137,7 +139,7 @@ export function MasterChannel(): JSX.Element {
 
       // dB tick marks
       ctx.fillStyle = 'rgba(255,255,255,0.08)'
-      for (const markDb of [0, -9, -18, -36]) {
+      for (const markDb of [0, -3, -6, -12, -18, -24]) {
         const t = (markDb - DB_MIN) / (DB_MAX - DB_MIN)
         const seg = Math.round(t * (SEGMENTS - 1))
         const ii = SEGMENTS - 1 - seg
@@ -151,8 +153,8 @@ export function MasterChannel(): JSX.Element {
   }, [])
 
   return (
-    <div data-tour="master-vu" className="w-16 shrink-0 flex flex-col border-l border-surface-border bg-surface-panel select-none">
-      <div className="shrink-0 flex flex-col items-center pt-2 pb-1 gap-1">
+    <div data-tour="master-vu" className="flex flex-col w-16 border-l select-none shrink-0 border-surface-border bg-surface-panel">
+      <div className="flex flex-col gap-1 items-center pt-2 pb-1 shrink-0">
         <span className="text-[8px] font-bold tracking-widest text-gray-500 uppercase">Out</span>
         <div className="flex w-full px-1 text-[7px] text-gray-700">
           <span className="flex-1 text-center">L</span>
@@ -162,7 +164,7 @@ export function MasterChannel(): JSX.Element {
 
       <canvas
         ref={canvasRef}
-        className="w-full flex-1 min-h-0 cursor-pointer"
+        className="flex-1 w-full min-h-0 cursor-pointer"
         title="Click to reset clip indicators"
         onClick={resetClip}
       />

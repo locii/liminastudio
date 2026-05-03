@@ -28,6 +28,8 @@ export function BottomTransport(): JSX.Element {
   const playhead = useTransportStore((s) => s.playhead)
   const looping = useTransportStore((s) => s.looping)
   const toggleLoop = useTransportStore((s) => s.toggleLoop)
+  const masterVolume = useTransportStore((s) => s.masterVolume)
+  const setMasterVolume = useTransportStore((s) => s.setMasterVolume)
   const tracks = useSessionStore((s) => s.tracks)
   const clips = useSessionStore((s) => s.clips)
 
@@ -61,11 +63,11 @@ export function BottomTransport(): JSX.Element {
   const disabled = tracks.length === 0
 
   return (
-    <div data-tour="bottom-transport" className="shrink-0 flex items-center justify-center gap-1 px-4 py-2 bg-surface-panel border-t border-surface-border">
-      {/* Time display — current / total */}
-      <span className="font-mono text-sm text-gray-400 tabular-nums mr-4 shrink-0">
+    <div data-tour="bottom-transport" className="flex relative gap-1 justify-center items-center px-4 py-2 border-t shrink-0 bg-surface-panel border-surface-border">
+      {/* Time display — absolutely positioned so it doesn't offset the centered buttons */}
+      <span className="absolute left-4 font-mono text-xs tabular-nums text-gray-400 pointer-events-none select-none">
         {formatTime(playhead)}
-        <span className="text-gray-600 mx-1">/</span>
+        <span className="mx-1 text-gray-600">/</span>
         <span className="text-gray-500">{formatTime(getEndTime(clips))}</span>
       </span>
 
@@ -89,12 +91,12 @@ export function BottomTransport(): JSX.Element {
         onClick={handlePlayStop}
         disabled={disabled}
         title={playing ? 'Stop (Space)' : 'Play (Space)'}
-        className={`flex items-center justify-center w-9 h-9 rounded-full transition-colors mx-1 ${
+        className={`flex items-center justify-center w-9 h-9 rounded-md transition-colors mx-1 ${
           disabled
-            ? 'bg-surface-hover text-gray-600 cursor-not-allowed'
+            ? 'text-gray-600 cursor-not-allowed bg-surface-hover'
             : playing
-            ? 'bg-accent text-white hover:bg-accent/80'
-            : 'bg-surface-hover hover:bg-accent text-gray-300 hover:text-white'
+            ? 'text-white bg-accent hover:bg-accent/80'
+            : 'text-gray-300 bg-surface-hover hover:bg-accent hover:text-white'
         }`}
       >
         {playing ? (
@@ -123,16 +125,27 @@ export function BottomTransport(): JSX.Element {
         </svg>
       </TransportBtn>
 
-      {/* Loop toggle */}
-      <button
-        onClick={toggleLoop}
-        className={`ml-4 transition-colors ${looping ? 'text-accent' : 'text-gray-600 hover:text-gray-300'}`}
-        title="Loop (L)"
-      >
-        <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M2.5 5.5A4 4 0 016.5 2h1M11.5 8.5A4 4 0 017.5 12h-1M10 1l2 2-2 2M4 9l-2 2 2 2" />
-        </svg>
-      </button>
+      {/* Master volume — absolutely positioned so it doesn't offset the centered buttons */}
+      <div className="absolute right-4 flex items-center gap-2">
+        <span className="text-[9px] font-bold tracking-widest uppercase shrink-0 text-accent/70">Master</span>
+        <input
+          type="range"
+          min={0} max={1} step={0.01}
+          value={masterVolume}
+          onChange={(e) => {
+            const v = parseFloat(e.target.value)
+            setMasterVolume(v)
+            audioEngine.setMasterVolume(v)
+          }}
+          onMouseUp={(e) => (e.target as HTMLInputElement).blur()}
+          className="w-24 h-1 appearance-none rounded-full cursor-ew-resize bg-surface-hover accent-accent"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          title={`Master volume: ${Math.round(masterVolume * 100)}%`}
+        />
+        <span className="text-[9px] font-mono tabular-nums text-gray-400 w-7 text-right shrink-0">
+          {Math.round(masterVolume * 100)}
+        </span>
+      </div>
     </div>
   )
 }

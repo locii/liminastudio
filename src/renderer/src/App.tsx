@@ -20,6 +20,8 @@ import type { Track, Clip } from './types'
 import { parseSesxSession } from './utils/importers/sesxImporter'
 import { parseAudacitySession } from './utils/importers/audacityImporter'
 
+const TARGET_PEAK_LINEAR = Math.pow(10, -0.5 / 20) // -0.5 dBFS
+
 export default function App(): JSX.Element {
   const [exportOpen, setExportOpen] = useState(false)
   const [exportFormat, setExportFormat] = useState<'wav' | 'mp3'>('wav')
@@ -31,6 +33,8 @@ export default function App(): JSX.Element {
   const tracks = useSessionStore((s) => s.tracks)
   const fitToWindowRef = useRef<(() => void) | null>(null)
   const scrollToPlayheadRef = useRef<(() => void) | null>(null)
+  const focusPlayheadRef = useRef<(() => void) | null>(null)
+  const zoomByRef = useRef<((factor: number) => void) | null>(null)
 
   useAutoSave()
 
@@ -48,6 +52,7 @@ export default function App(): JSX.Element {
   const currentFilePath = useSessionStore((s) => s.currentFilePath)
   const loadSnapshot = useSessionStore((s) => s.loadSnapshot)
   const setWaveform = useSessionStore((s) => s.setWaveform)
+  const updateClip = useSessionStore((s) => s.updateClip)
   const addTrackWithClip = useSessionStore((s) => s.addTrackWithClip)
   const addEmptyTrack = useSessionStore((s) => s.addEmptyTrack)
   const newSession = useSessionStore((s) => s.newSession)
@@ -55,6 +60,16 @@ export default function App(): JSX.Element {
   const setSessionLabel = useSessionStore((s) => s.setSessionLabel)
   const markClean = useSessionStore((s) => s.markClean)
   const toast = useToastStore((s) => s.add)
+
+  // Prevent buttons from stealing keyboard focus on mouse click so Space/shortcuts
+  // always reach the document-level handler rather than activating the last clicked button.
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (e.target instanceof HTMLButtonElement) e.preventDefault()
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   // Check for a crash-recovery autosave on first mount
   useEffect(() => {
@@ -239,14 +254,14 @@ export default function App(): JSX.Element {
   const handleCollect = useCallback(async () => {
     const filePath = useSessionStore.getState().currentFilePath
     if (!filePath) { toast('Save the session first before collecting files', 'error'); return }
-    const { tracks, clips } = useSessionStore.getState()
+    const { tracks, clips, trackHeights, laneHeights } = useSessionStore.getState()
     const oldPathById = new Map(clips.map((c) => [c.id, c.filePath]))
     try {
       const updatedJson = await window.electronAPI.collectProject(
         JSON.stringify({ tracks, clips }, null, 2), filePath
       )
       const updated = JSON.parse(updatedJson) as { tracks: Track[]; clips: Clip[] }
-      loadSnapshot(updated)
+      loadSnapshot({ ...updated, trackHeights, laneHeights })
       markClean()
 
       // Re-fetch peaks for any clips whose filePath changed after collection
@@ -271,13 +286,13 @@ export default function App(): JSX.Element {
   const handleExportZip = useCallback(async () => {
     const filePath = useSessionStore.getState().currentFilePath
     if (!filePath) { toast('Save the session first before exporting', 'error'); return }
-    const { tracks, clips } = useSessionStore.getState()
+    const { tracks, clips, trackHeights, laneHeights } = useSessionStore.getState()
     try {
       const result = await window.electronAPI.exportProjectZip(
         JSON.stringify({ tracks, clips }, null, 2), filePath
       )
       if (!result) return
-      loadSnapshot(JSON.parse(result.updatedJson))
+      loadSnapshot({ ...JSON.parse(result.updatedJson), trackHeights, laneHeights })
       markClean()
       toast(`Exported to ${result.zipPath.split('/').pop()}`, 'success')
     } catch (e) { toast(`Export failed: ${e}`, 'error') }
@@ -286,7 +301,7 @@ export default function App(): JSX.Element {
   const handleAddTrack = useCallback(async () => {
     const files = await window.electronAPI.openAudioFiles()
     for (const file of files) {
-      const { track } = addTrackWithClip({
+      const { clip } = addTrackWithClip({
         name: file.name.replace(/\.[^.]+$/, ''),
         filePath: file.path,
         duration: file.duration,
@@ -298,8 +313,12 @@ export default function App(): JSX.Element {
           console.error('[waveform] extraction failed for', file.path, err)
           setWaveform(file.path, { peaks: [], loading: false })
         })
+      window.electronAPI
+        .getPeakLevel(file.path)
+        .then((peak) => { if (peak > 0) updateClip(clip.id, { volume: Math.min(2, TARGET_PEAK_LINEAR / peak) }) })
+        .catch(() => {})
     }
-  }, [addTrackWithClip, setWaveform])
+  }, [addTrackWithClip, setWaveform, updateClip])
 
   const handleImport = useCallback(
     async (
@@ -338,15 +357,20 @@ export default function App(): JSX.Element {
       loadSnapshot({ tracks, clips, markers: [] })
       onProgress(50)
 
-      // Load waveforms in parallel, tracking per-completion for progress
+      // Load waveforms + auto gain in parallel per unique file
       const uniquePaths = [...new Set(clips.map((c) => c.filePath))]
       let done = 0
       await Promise.all(
         uniquePaths.map(async (filePath) => {
-          const peaks = await window.electronAPI
-            .getWaveformPeaks(filePath, 4000)
-            .catch(() => [] as number[])
+          const [peaks, peak] = await Promise.all([
+            window.electronAPI.getWaveformPeaks(filePath, 4000).catch(() => [] as number[]),
+            window.electronAPI.getPeakLevel(filePath).catch(() => 0),
+          ])
           setWaveform(filePath, { peaks, loading: false })
+          if (peak > 0) {
+            const vol = Math.min(2, TARGET_PEAK_LINEAR / peak)
+            clips.filter((c) => c.filePath === filePath).forEach((c) => updateClip(c.id, { volume: vol }))
+          }
           done++
           onProgress(50 + Math.round((done / uniquePaths.length) * 48))
         })
@@ -360,7 +384,7 @@ export default function App(): JSX.Element {
       )
       triggerWarmup()
     },
-    [loadSnapshot, setWaveform, toast, triggerWarmup]
+    [loadSnapshot, setWaveform, updateClip, toast, triggerWarmup]
   )
 
   // ── Keyboard shortcuts ───────────────────────────────────────────────────
@@ -445,6 +469,9 @@ export default function App(): JSX.Element {
         onCollect={handleCollect}
         onExportZip={handleExportZip}
         onFitToWindow={() => fitToWindowRef.current?.()}
+        onFocusPlayhead={() => focusPlayheadRef.current?.()}
+        onZoomIn={() => zoomByRef.current?.(1.25)}
+        onZoomOut={() => zoomByRef.current?.(1 / 1.25)}
         onStartTour={() => setTourOpen(true)}
       />
 
@@ -478,7 +505,7 @@ export default function App(): JSX.Element {
           />
         ) : (
           <>
-            <Timeline fitToWindowRef={fitToWindowRef} scrollToPlayheadRef={scrollToPlayheadRef} />
+            <Timeline fitToWindowRef={fitToWindowRef} scrollToPlayheadRef={scrollToPlayheadRef} focusPlayheadRef={focusPlayheadRef} zoomByRef={zoomByRef} />
             <MasterChannel />
           </>
         )}
