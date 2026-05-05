@@ -2,6 +2,11 @@ appId: com.limina.app
 productName: Limina Studio
 copyright: Copyright © 2025 Limina Studio
 
+publish:
+  provider: github
+  owner: locii
+  repo: liminastudio
+
 directories:
   buildResources: resources
   output: dist
@@ -20,6 +25,12 @@ extraResources:
 asarUnpack:
   - node_modules/ffmpeg-static/**
   - node_modules/music-metadata/**
+
+fileAssociations:
+  - ext: limina
+    name: Limina Session
+    description: Limina Studio Session
+    role: Editor
 
 mac:
   category: public.app-category.music

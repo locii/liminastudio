@@ -5,6 +5,14 @@ import { promises as fs, createReadStream, readFileSync } from 'fs'
 import { createServer } from 'http'
 import type { AddressInfo } from 'net'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { autoUpdater } from 'electron-updater'
+
+function initAutoUpdater(): void {
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
+  setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 10_000)
+  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 4 * 60 * 60 * 1_000)
+}
 
 function audioMime(filePath: string): string {
   const ext = extname(filePath).toLowerCase()
@@ -66,6 +74,17 @@ import { registerSessionHandlers } from './ipc/sessionHandlers'
 import { registerPdfHandlers } from './ipc/pdfHandlers'
 
 let mainWindow: BrowserWindow | null = null
+let pendingOpenFile: string | null = null
+
+// macOS: file opened before the window is ready
+app.on('open-file', (event, filePath) => {
+  event.preventDefault()
+  if (mainWindow?.webContents) {
+    mainWindow.webContents.send('session:fileOpened', filePath)
+  } else {
+    pendingOpenFile = filePath
+  }
+})
 
 function getMainWindow(): BrowserWindow | null {
   return mainWindow
@@ -212,9 +231,11 @@ function createWindow(): void {
   mainWindow.on('ready-to-show', () => {
     mainWindow!.show()
     mainWindow!.setTitle('Limina Studio')
-    // Prevent Electron from intercepting pinch-to-zoom for page zoom —
-    // we handle it ourselves in the renderer with wheel+ctrlKey.
     mainWindow!.webContents.setVisualZoomLevelLimits(1, 1)
+    if (pendingOpenFile) {
+      mainWindow!.webContents.send('session:fileOpened', pendingOpenFile)
+      pendingOpenFile = null
+    }
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -231,6 +252,8 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.limina')
+
+  if (!is.dev) initAutoUpdater()
 
   startAudioServer()
   ipcMain.handle('audio:getServerPort', () => audioServerPort)

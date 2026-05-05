@@ -10,11 +10,13 @@
     "preview": "electron-vite preview",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
-    "package": "npm run build && electron-builder --config electron-builder.yml"
+    "package": "npm run build && electron-builder --config electron-builder.yml",
+    "publish": "npm run build && electron-builder --config electron-builder.yml --publish always"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.0",
     "@electron-toolkit/utils": "^3.0.0",
+    "electron-updater": "^6.8.3",
     "ffmpeg-static": "^5.2.0",
     "music-metadata": "^7.14.0",
     "react": "^18.3.1",
