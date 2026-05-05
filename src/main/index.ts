@@ -127,11 +127,6 @@ function createAppMenu(): void {
       label: 'Help',
       submenu: [
         {
-          label: 'Check for Updates…',
-          click: () => mainWindow?.webContents.send('menu:checkForUpdates'),
-        },
-        { type: 'separator' },
-        {
           label: 'About Limina Studio',
           click: () => {
             const version = app.getVersion()

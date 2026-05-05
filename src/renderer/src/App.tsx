@@ -46,6 +46,7 @@ export default function App(): JSX.Element {
   const splitClip = useSessionStore((s) => s.splitClip)
   const copyClip = useSessionStore((s) => s.copyClip)
   const pasteClip = useSessionStore((s) => s.pasteClip)
+  const addClipToTrack = useSessionStore((s) => s.addClipToTrack)
   const undo = useSessionStore((s) => s.undo)
   const redo = useSessionStore((s) => s.redo)
   const isDirty = useSessionStore((s) => s.isDirty)
@@ -78,30 +79,6 @@ export default function App(): JSX.Element {
     })
   }, [])
 
-  // Check for updates
-  const checkForUpdates = useCallback(async (silent = true) => {
-    try {
-      const res = await fetch('https://api.github.com/repos/locii/liminastudio/releases', {
-        headers: { Accept: 'application/vnd.github.v3+json' },
-      })
-      if (!res.ok) { if (!silent) toast('Could not reach update server', 'error'); return }
-      const releases = (await res.json()) as Array<{ tag_name: string; published_at: string }>
-      if (!releases.length) return
-      const latestVersion = releases[0].tag_name.replace(/^v/, '')
-      if (latestVersion !== __APP_VERSION__) {
-        toast(`Update available: v${latestVersion}`, 'info', 10000, 'https://www.getliminastudio.com')
-      } else if (!silent) {
-        toast('You\'re on the latest version', 'success')
-      }
-    } catch {
-      if (!silent) toast('Update check failed — check your connection', 'error')
-    }
-  }, [toast])
-
-  useEffect(() => {
-    const t = setTimeout(() => checkForUpdates(true), 4000)
-    return () => clearTimeout(t)
-  }, [checkForUpdates])
 
   // Sync window title
   useEffect(() => {
@@ -407,7 +384,33 @@ export default function App(): JSX.Element {
       if (mod && e.key === 'x' && selectedClipId) { e.preventDefault(); copyClip(selectedClipId); removeClip(selectedClipId); return }
       if (mod && e.key === 'v') {
         e.preventDefault()
-        pasteClip(useTransportStore.getState().playhead, useSessionStore.getState().selectedTrackId ?? undefined)
+        if (useSessionStore.getState().copiedClip) {
+          pasteClip(useTransportStore.getState().playhead, useSessionStore.getState().selectedTrackId ?? undefined)
+        } else {
+          const filePath = await window.electronAPI.readClipboardPath()
+          if (filePath) {
+            const tracks = useSessionStore.getState().tracks
+            const targetTrackId = useSessionStore.getState().selectedTrackId ?? tracks[0]?.id
+            if (targetTrackId) {
+              const meta = await window.electronAPI.getAudioMetadata(filePath)
+              if (meta) {
+                const clip = addClipToTrack({
+                  trackId: targetTrackId,
+                  name: filePath.split('/').pop()?.replace(/\.[^.]+$/, '') ?? 'clip',
+                  filePath,
+                  duration: meta.duration,
+                  startTime: useTransportStore.getState().playhead,
+                })
+                window.electronAPI.getWaveformPeaks(filePath, 1200)
+                  .then((peaks) => setWaveform(filePath, { peaks, loading: false }))
+                  .catch(console.error)
+                window.electronAPI.getPeakLevel(filePath)
+                  .then((peak) => { if (peak > 0) updateClip(clip.id, { volume: Math.min(2, 1 / peak) }) })
+                  .catch(() => {})
+              }
+            }
+          }
+        }
         return
       }
 
@@ -426,7 +429,15 @@ export default function App(): JSX.Element {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [saveSession, openSession, handleAddTrack, undo, redo, selectClip, removeClip, removeClips, splitClip, copyClip, pasteClip, selectedClipId, selectedClipIds])
+  }, [saveSession, openSession, handleAddTrack, undo, redo, selectClip, removeClip, removeClips, splitClip, copyClip, pasteClip, addClipToTrack, updateClip, setWaveform, selectedClipId, selectedClipIds])
+
+  // ── File opened from OS (Limina Library or double-click) ────────────────
+
+  useEffect(() => {
+    return window.electronAPI.onFileOpened((filePath) => {
+      openRecentSession(filePath)
+    })
+  }, [openRecentSession])
 
   // ── App menu → renderer relay ────────────────────────────────────────────
 
@@ -442,10 +453,9 @@ export default function App(): JSX.Element {
       window.electronAPI.onMenu('menu:redo', () => redo()),
       window.electronAPI.onMenu('menu:addTrack', () => handleAddTrack()),
       window.electronAPI.onMenu('menu:deleteClip', () => { if (selectedClipId) removeClip(selectedClipId) }),
-      window.electronAPI.onMenu('menu:checkForUpdates', () => checkForUpdates(false)),
     ]
     return () => unsubs.forEach((u) => u())
-  }, [saveSession, openSession, openRecentSession, handleCollect, handleExportZip, undo, redo, handleAddTrack, selectedClipId, removeClip, checkForUpdates])
+  }, [saveSession, openSession, openRecentSession, handleCollect, handleExportZip, undo, redo, handleAddTrack, selectedClipId, removeClip])
 
   return (
     <div className="flex flex-col h-full text-gray-200 bg-surface-base">
