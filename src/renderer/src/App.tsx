@@ -439,6 +439,12 @@ export default function App(): JSX.Element {
     })
   }, [openRecentSession])
 
+  useEffect(() => {
+    return window.electronAPI.onUpdateDownloaded((version) => {
+      toast(`Update v${version} downloaded — will install on next launch`, 'info', 8000)
+    })
+  }, [toast])
+
   // ── App menu → renderer relay ────────────────────────────────────────────
 
   useEffect(() => {

@@ -79,6 +79,9 @@ export interface ElectronAPI {
   // Menu events (main → renderer)
   onMenu: (channel: string, callback: () => void) => () => void
 
+  // Auto-updater
+  onUpdateDownloaded: (callback: (version: string) => void) => () => void
+
   // File opened from OS (double-click or shell.openPath from Limina Library)
   onFileOpened: (callback: (filePath: string) => void) => () => void
 }

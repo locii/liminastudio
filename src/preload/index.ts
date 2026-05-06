@@ -55,6 +55,13 @@ const api: ElectronAPI = {
     return () => ipcRenderer.removeListener(channel, handler)
   },
 
+  // Auto-updater
+  onUpdateDownloaded: (callback) => {
+    const handler = (_: unknown, version: string): void => callback(version)
+    ipcRenderer.on('updater:downloaded', handler)
+    return () => ipcRenderer.removeListener('updater:downloaded', handler)
+  },
+
   // File opened from OS (double-click / shell.openPath)
   onFileOpened: (callback) => {
     const handler = (_: unknown, filePath: string): void => callback(filePath)
