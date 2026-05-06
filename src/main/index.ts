@@ -10,6 +10,9 @@ import { autoUpdater } from 'electron-updater'
 function initAutoUpdater(): void {
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
+  autoUpdater.on('update-available', () => {
+    mainWindow?.webContents.send('updater:downloading')
+  })
   autoUpdater.on('update-downloaded', (info) => {
     mainWindow?.webContents.send('updater:downloaded', info.version)
   })

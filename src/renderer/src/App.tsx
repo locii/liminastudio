@@ -14,6 +14,7 @@ import { GuidedTour } from './components/GuidedTour'
 import { useSessionStore } from './store/sessionStore'
 import { useTransportStore } from './store/transportStore'
 import { useToastStore } from './store/toastStore'
+import { useUpdaterStore } from './store/updaterStore'
 import { audioEngine } from './audio/audioEngine'
 import { useAutoSave } from './hooks/useAutoSave'
 import type { Track, Clip } from './types'
@@ -61,6 +62,7 @@ export default function App(): JSX.Element {
   const setSessionLabel = useSessionStore((s) => s.setSessionLabel)
   const markClean = useSessionStore((s) => s.markClean)
   const toast = useToastStore((s) => s.add)
+  const { setDownloading, setReady } = useUpdaterStore()
 
   // Prevent buttons from stealing keyboard focus on mouse click so Space/shortcuts
   // always reach the document-level handler rather than activating the last clicked button.
@@ -440,10 +442,17 @@ export default function App(): JSX.Element {
   }, [openRecentSession])
 
   useEffect(() => {
+    return window.electronAPI.onUpdateDownloading(() => {
+      setDownloading()
+    })
+  }, [setDownloading])
+
+  useEffect(() => {
     return window.electronAPI.onUpdateDownloaded((version) => {
+      setReady(version)
       toast(`Update v${version} downloaded — will install on next launch`, 'info', 8000)
     })
-  }, [toast])
+  }, [toast, setReady])
 
   // ── App menu → renderer relay ────────────────────────────────────────────
 

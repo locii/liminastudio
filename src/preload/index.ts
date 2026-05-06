@@ -56,6 +56,11 @@ const api: ElectronAPI = {
   },
 
   // Auto-updater
+  onUpdateDownloading: (callback) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('updater:downloading', handler)
+    return () => ipcRenderer.removeListener('updater:downloading', handler)
+  },
   onUpdateDownloaded: (callback) => {
     const handler = (_: unknown, version: string): void => callback(version)
     ipcRenderer.on('updater:downloaded', handler)

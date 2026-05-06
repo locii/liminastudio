@@ -1,6 +1,7 @@
 import type React from 'react'
 import { useState } from 'react'
 import { useSessionStore } from '../../store/sessionStore'
+import { useUpdaterStore } from '../../store/updaterStore'
 
 function formatDuration(s: number): string {
   const h = Math.floor(s / 3600)
@@ -40,9 +41,23 @@ export function PropertiesPanel(): JSX.Element {
     }
   }
 
+  const { downloading, readyVersion } = useUpdaterStore()
+
   const versionBadge = (
-    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-700 select-none tabular-nums bg-surface-panel pl-2">
-      v{__APP_VERSION__}
+    <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-[10px] text-gray-700 select-none tabular-nums bg-surface-panel pl-2">
+      {downloading && (
+        <svg className="animate-spin h-2.5 w-2.5 text-indigo-500" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+        </svg>
+      )}
+      {readyVersion ? (
+        <span title={`v${readyVersion} ready — will install on next launch`} className="text-indigo-500">
+          v{__APP_VERSION__} ↑
+        </span>
+      ) : (
+        <span title={downloading ? 'Downloading update…' : undefined}>v{__APP_VERSION__}</span>
+      )}
     </span>
   )
 
