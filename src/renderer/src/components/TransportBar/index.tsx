@@ -134,7 +134,7 @@ export function TransportBar({
         className="text-[11px] font-semibold text-gray-300 tracking-widest uppercase shrink-0 select-none transition-colors hover:text-white"
         title="Go to welcome screen"
       >
-        Limina Studio
+        Limina Mix
       </button>
 
       <div className="w-px h-4 bg-surface-border shrink-0" />

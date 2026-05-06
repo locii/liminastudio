@@ -1,6 +1,6 @@
 appId: com.limina.app
-productName: Limina Studio
-copyright: Copyright © 2025 Limina Studio
+productName: Limina Mix
+copyright: Copyright © 2025 Limina Mix
 
 publish:
   provider: github
@@ -29,7 +29,7 @@ asarUnpack:
 fileAssociations:
   - ext: limina
     name: Limina Session
-    description: Limina Studio Session
+    description: Limina Mix Session
     role: Editor
 
 mac:
@@ -53,7 +53,7 @@ win:
         - x64
 
 dmg:
-  title: Limina Studio
+  title: Limina Mix
   background: null
   contents:
     - x: 130

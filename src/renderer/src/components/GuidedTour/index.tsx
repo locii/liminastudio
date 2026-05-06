@@ -13,7 +13,7 @@ interface TourStep {
 const STEPS: TourStep[] = [
   {
     id: 'welcome',
-    title: 'Welcome to Limina Studio',
+    title: 'Welcome to Limina Mix',
     body: 'This quick tour will show you the key features of the app. Click Next to step through, or Skip to jump straight in.',
     placement: 'center',
   },

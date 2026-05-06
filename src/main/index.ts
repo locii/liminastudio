@@ -127,7 +127,7 @@ function createAppMenu(): void {
       label: 'Help',
       submenu: [
         {
-          label: 'About Limina Studio',
+          label: 'About Limina Mix',
           click: () => {
             const version = app.getVersion()
             const year = new Date().getFullYear()
@@ -189,8 +189,8 @@ function createAppMenu(): void {
   button:hover { background: #3f3f46; color: #e5e7eb; }
 </style>
 </head><body>
-  ${logoSrc ? `<img src="${logoSrc}" alt="Limina Studio logo" />` : ''}
-  <h1>Limina Studio</h1>
+  ${logoSrc ? `<img src="${logoSrc}" alt="Limina Mix logo" />` : ''}
+  <h1>Limina Mix</h1>
   <div class="version">v${version}</div>
   <div class="divider"></div>
   <p class="desc">A multitrack audio editor for Holotropic Breathwork facilitators.</p>
@@ -225,7 +225,7 @@ function createWindow(): void {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow!.show()
-    mainWindow!.setTitle('Limina Studio')
+    mainWindow!.setTitle('Limina Mix')
     mainWindow!.webContents.setVisualZoomLevelLimits(1, 1)
     if (pendingOpenFile) {
       mainWindow!.webContents.send('session:fileOpened', pendingOpenFile)

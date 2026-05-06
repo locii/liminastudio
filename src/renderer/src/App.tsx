@@ -82,7 +82,7 @@ export default function App(): JSX.Element {
 
   // Sync window title
   useEffect(() => {
-    const base = 'Limina Studio'
+    const base = 'Limina Mix'
     const name = currentFilePath
       ? currentFilePath.split('/').pop()?.replace(/\.limina$/, '') ?? base
       : base
