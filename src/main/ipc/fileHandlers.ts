@@ -1,4 +1,4 @@
-import { ipcMain, dialog, shell } from 'electron'
+import { ipcMain, dialog, shell, clipboard } from 'electron'
 import { promises as fs } from 'fs'
 import { basename } from 'path'
 import * as mm from 'music-metadata'
@@ -43,6 +43,15 @@ export function registerFileHandlers(): void {
 
   ipcMain.handle('shell:showInFolder', (_e, filePath: string) => shell.showItemInFolder(filePath))
   ipcMain.handle('shell:openExternal', (_e, url: string) => shell.openExternal(url))
+
+  const AUDIO_EXTS = new Set(['.mp3', '.wav', '.flac', '.aiff', '.aif', '.m4a', '.ogg'])
+  ipcMain.handle('shell:readClipboardPath', async (): Promise<string | null> => {
+    const text = clipboard.readText().trim()
+    if (!text) return null
+    const ext = require('path').extname(text).toLowerCase()
+    if (!AUDIO_EXTS.has(ext)) return null
+    try { await fs.access(text); return text } catch { return null }
+  })
 
   ipcMain.handle(
     'file:importFile',

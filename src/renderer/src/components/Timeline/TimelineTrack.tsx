@@ -37,12 +37,45 @@ export function TimelineTrack({ track, tracks, clips, zoom, height, onHeightChan
     dragState.targetTrackId === track.id &&
     !clips.some((c) => c.id === dragState.clipId)
 
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; atTime: number } | null>(null)
+
+  useEffect(() => {
+    if (!ctxMenu) return
+    const close = (): void => setCtxMenu(null)
+    window.addEventListener('mousedown', close)
+    window.addEventListener('keydown', close)
+    return () => { window.removeEventListener('mousedown', close); window.removeEventListener('keydown', close) }
+  }, [ctxMenu])
+
+  const handlePasteFromClipboard = useCallback(async (atTime: number) => {
+    setCtxMenu(null)
+    const filePath = await window.electronAPI.readClipboardPath()
+    if (!filePath) { toast('No valid audio file on clipboard', 'error'); return }
+    const meta = await window.electronAPI.getAudioMetadata(filePath)
+    if (!meta) { toast(`Could not read: ${filePath.split('/').pop()}`, 'error'); return }
+    const clip = addClipToTrack({
+      trackId: track.id,
+      name: filePath.split('/').pop()?.replace(/\.[^.]+$/, '') ?? 'clip',
+      filePath,
+      duration: meta.duration,
+      startTime: atTime,
+    })
+    window.electronAPI.getWaveformPeaks(filePath, 1200)
+      .then((peaks) => setWaveform(filePath, { peaks, loading: false }))
+      .catch(console.error)
+    window.electronAPI.getPeakLevel(filePath)
+      .then((peak) => { if (peak > 0) updateClip(clip.id, { volume: Math.min(2, TARGET_PEAK_LINEAR / peak) }) })
+      .catch(() => {})
+  }, [track.id, addClipToTrack, updateClip, setWaveform, toast])
+
   const handleBgClick = useCallback((e: React.MouseEvent) => {
     if (e.target === e.currentTarget) selectClip(null)
   }, [selectClip])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
-    if (e.dataTransfer.types.includes('Files')) {
+    const hasFiles = e.dataTransfer.types.includes('Files')
+    const hasLibraryPath = e.dataTransfer.types.includes('application/x-limina-filepath') || e.dataTransfer.types.includes('text/plain')
+    if (hasFiles || hasLibraryPath) {
       e.preventDefault()
       e.dataTransfer.dropEffect = 'copy'
     }
@@ -51,26 +84,46 @@ export function TimelineTrack({ track, tracks, clips, zoom, height, onHeightChan
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault()
     const audioExts = new Set(['mp3', 'wav', 'flac', 'aiff', 'aif', 'm4a', 'ogg'])
-    const files = Array.from(e.dataTransfer.files).filter((f) => {
-      const ext = f.name.split('.').pop()?.toLowerCase() ?? ''
-      return audioExts.has(ext)
-    })
-    if (files.length === 0) return
 
-    // Compute the timeline position from the drop x coordinate
     const rect = e.currentTarget.getBoundingClientRect()
     const scrollLeft = e.currentTarget.closest('.overflow-auto')?.scrollLeft ?? 0
     const dropTime = Math.max(0, Math.round(((e.clientX - rect.left + scrollLeft) / zoom) * 100) / 100)
 
+    // Native file drop (from Finder)
+    const nativeFiles = Array.from(e.dataTransfer.files).filter((f) => {
+      const ext = f.name.split('.').pop()?.toLowerCase() ?? ''
+      return audioExts.has(ext)
+    })
+
+    // Cross-app drag from Limina Library (path in dataTransfer text)
+    const libraryPath =
+      e.dataTransfer.getData('application/x-limina-filepath') ||
+      e.dataTransfer.getData('text/plain')
+
+    const sources: Array<{ filePath: string; fileName: string }> = []
+
+    if (nativeFiles.length > 0) {
+      for (const f of nativeFiles) {
+        const fp = (f as File & { path?: string }).path
+        if (fp) sources.push({ filePath: fp, fileName: f.name })
+      }
+    } else if (libraryPath) {
+      const ext = libraryPath.split('.').pop()?.toLowerCase() ?? ''
+      if (audioExts.has(ext)) {
+        const fileName = libraryPath.split('/').pop() ?? libraryPath
+        sources.push({ filePath: libraryPath, fileName })
+      }
+    }
+
+    if (sources.length === 0) return
+
     let offsetTime = dropTime
-    for (const file of files) {
-      const filePath = (file as File & { path?: string }).path
-      if (!filePath) continue
+    for (const { filePath, fileName } of sources) {
       const meta = await window.electronAPI.getAudioMetadata(filePath)
-      if (!meta) { toast(`Could not read: ${file.name}`, 'error'); continue }
+      if (!meta) { toast(`Could not read: ${fileName}`, 'error'); continue }
       const clip = addClipToTrack({
         trackId: track.id,
-        name: file.name.replace(/\.[^.]+$/, ''),
+        name: fileName.replace(/\.[^.]+$/, ''),
         filePath,
         duration: meta.duration,
         startTime: offsetTime,
@@ -83,7 +136,6 @@ export function TimelineTrack({ track, tracks, clips, zoom, height, onHeightChan
         .getPeakLevel(filePath)
         .then((peak) => { if (peak > 0) updateClip(clip.id, { volume: Math.min(2, TARGET_PEAK_LINEAR / peak) }) })
         .catch(() => {})
-      // If multiple files dropped at once, stagger them sequentially
       offsetTime += meta.duration
     }
   }, [track.id, zoom, addClipToTrack, updateClip, setWaveform, toast])
@@ -94,6 +146,14 @@ export function TimelineTrack({ track, tracks, clips, zoom, height, onHeightChan
       onClick={handleBgClick}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
+      onContextMenu={(e) => {
+        if ((e.target as HTMLElement).closest('[data-clip]')) return
+        e.preventDefault()
+        const rect = e.currentTarget.getBoundingClientRect()
+        const scrollLeft = e.currentTarget.closest('.overflow-auto')?.scrollLeft ?? 0
+        const atTime = Math.max(0, Math.round(((e.clientX - rect.left + scrollLeft) / zoom) * 100) / 100)
+        setCtxMenu({ x: e.clientX, y: e.clientY, atTime })
+      }}
     >
       <div className="relative" style={{ height }}>
         {/* Subtle grid lines every 30 s */}
@@ -117,6 +177,23 @@ export function TimelineTrack({ track, tracks, clips, zoom, height, onHeightChan
         ))}
       </div>
       <AutomationLane clips={clips} zoom={zoom} color={track.color} height={laneHeight} onHeightChange={onLaneHeightChange} trackHeight={height} onTrackHeightChange={onHeightChange} />
+
+      {ctxMenu && (
+        <div
+          className="fixed z-50 min-w-[180px] rounded border border-surface-border bg-surface-panel shadow-lg py-1 text-[11px]"
+          style={{ left: ctxMenu.x, top: ctxMenu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="w-full text-left px-3 py-1.5 text-gray-300 hover:bg-surface-hover transition-colors"
+            onClick={() => handlePasteFromClipboard(ctxMenu.atTime)}
+          >
+            Paste from Clipboard
+            <span className="float-right text-gray-600 ml-4">⌘V</span>
+          </button>
+        </div>
+      )}
     </div>
   )
 }

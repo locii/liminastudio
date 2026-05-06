@@ -68,6 +68,7 @@ export interface ElectronAPI {
 
   showInFolder: (filePath: string) => Promise<void>
   openExternal: (url: string) => Promise<void>
+  readClipboardPath: () => Promise<string | null>
   importFile: () => Promise<{ content: string; filePath: string; ext: string } | null>
   pickFolder: () => Promise<string | null>
   copyFiles: (srcPaths: string[], destFolder: string) => Promise<Record<string, string>>
@@ -77,6 +78,9 @@ export interface ElectronAPI {
 
   // Menu events (main → renderer)
   onMenu: (channel: string, callback: () => void) => () => void
+
+  // File opened from OS (double-click or shell.openPath from Limina Library)
+  onFileOpened: (callback: (filePath: string) => void) => () => void
 }
 
 declare global {

@@ -39,6 +39,7 @@ const api: ElectronAPI = {
 
   showInFolder: (filePath) => ipcRenderer.invoke('shell:showInFolder', filePath),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+  readClipboardPath: () => ipcRenderer.invoke('shell:readClipboardPath'),
 
   importFile: () => ipcRenderer.invoke('file:importFile'),
   pickFolder: () => ipcRenderer.invoke('file:pickFolder'),
@@ -52,6 +53,13 @@ const api: ElectronAPI = {
     const handler = (): void => callback()
     ipcRenderer.on(channel, handler)
     return () => ipcRenderer.removeListener(channel, handler)
+  },
+
+  // File opened from OS (double-click / shell.openPath)
+  onFileOpened: (callback) => {
+    const handler = (_: unknown, filePath: string): void => callback(filePath)
+    ipcRenderer.on('session:fileOpened', handler)
+    return () => ipcRenderer.removeListener('session:fileOpened', handler)
   },
 }
 

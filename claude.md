@@ -221,9 +221,9 @@ See: PHASE3_PROMPT.md
 When bumping the version and tagging a release, always:
 
 1. Update `package.json` version
-2. Update the changelog at `../getliminastudio/app/changelog/page.tsx` — add the new version at the top of the `releases` array with user-friendly descriptions of every change
-3. Commit the changelog to the `getliminastudio` repo and push
-4. Commit the version bump, tag (e.g. `git tag v0.x.y`), and push both the commit and the tag
+2. Write a clear GitHub Release body with bullet-point descriptions of every change — the changelog at `../getliminastudio/app/mix/changelog/page.tsx` auto-fetches from the GitHub releases API (no manual changelog edit needed)
+3. Commit the version bump, tag (e.g. `git tag v0.x.y`), and push both the commit and the tag
+4. Create the GitHub Release (or let the CI workflow create it) with the release body — `getliminastudio` will pick it up automatically within 1 hour
 
 ## Known Issues & Decisions Log
 

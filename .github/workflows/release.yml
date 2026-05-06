@@ -18,7 +18,7 @@ jobs:
         id: create_release
         uses: softprops/action-gh-release@v2
         with:
-          name: Limina Studio ${{ github.ref_name }}
+          name: Limina Mix ${{ github.ref_name }}
           draft: false
           prerelease: false
         env:
