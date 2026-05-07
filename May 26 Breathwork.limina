@@ -1,0 +1,294 @@
+{
+  "tracks": [
+    {
+      "id": "aa708d92-08c0-43ab-945b-b695163a6f0e",
+      "name": "Track 1",
+      "color": "#6366f1",
+      "volume": 1,
+      "muted": false,
+      "solo": false,
+      "order": 0
+    },
+    {
+      "id": "4b7758a1-02b3-447c-8f0f-8a87e5a28a76",
+      "name": "Track 2",
+      "color": "#ec4899",
+      "volume": 1,
+      "muted": false,
+      "solo": false,
+      "order": 1
+    }
+  ],
+  "clips": [
+    {
+      "id": "03767d7c-d0e7-42e0-a391-4e4dc63fb3dc",
+      "trackId": "aa708d92-08c0-43ab-945b-b695163a6f0e",
+      "filePath": "/Users/anthonyolsen/Dropbox/Breathwork Music/September 2024/September 2024 Breathwork/Conformed Files/09 Solringen 48000 1.wav",
+      "fileName": "09 Solringen 48000 1",
+      "startTime": 0,
+      "duration": 390.4567083333333,
+      "trimStart": 5.8,
+      "trimEnd": 0,
+      "fadeIn": 11,
+      "fadeOut": 0,
+      "fadeInCurve": -0.62,
+      "fadeOutCurve": 0.5,
+      "crossfadeIn": 0,
+      "crossfadeOut": 0,
+      "volume": 0.9440608762859234,
+      "automation": []
+    },
+    {
+      "id": "3db49e9a-647e-43f8-8122-5956c01fd084",
+      "trackId": "4b7758a1-02b3-447c-8f0f-8a87e5a28a76",
+      "filePath": "/Users/anthonyolsen/Music/Music/Media.localized/Music/Byron Metcalf/Not Without Risk/02 Fields of Intention 1.m4a",
+      "fileName": "02 Fields of Intention 1",
+      "startTime": 335.21,
+      "duration": 486.0168707482993,
+      "trimStart": 0,
+      "trimEnd": 0,
+      "fadeIn": 41.78,
+      "fadeOut": 26.98,
+      "fadeInCurve": -1,
+      "fadeOutCurve": -0.33,
+      "crossfadeIn": 0,
+      "crossfadeOut": 0,
+      "volume": 0.9440608762859234,
+      "automation": [
+        {
+          "id": "b97866cc-4271-4e6e-8a09-57673bff10f7",
+          "time": 137.01,
+          "value": 1
+        }
+      ]
+    },
+    {
+      "id": "e1ebea24-10b8-425f-ae90-ac11024585ad",
+      "trackId": "4b7758a1-02b3-447c-8f0f-8a87e5a28a76",
+      "filePath": "/Users/anthonyolsen/Dropbox/Breathwork Music Downloads 2/The Field - It's Up There.wav",
+      "fileName": "The Field - It's Up There",
+      "startTime": 1581.35,
+      "duration": 558.6507482993197,
+      "trimStart": 30,
+      "trimEnd": 18.87767969735183,
+      "fadeIn": 36.67,
+      "fadeOut": 11.39,
+      "fadeInCurve": -0.76,
+      "fadeOutCurve": -0.66,
+      "crossfadeIn": 0,
+      "crossfadeOut": 0,
+      "volume": 0.9885530946569387,
+      "automation": [
+        {
+          "id": "2efd310b-fab6-490a-a566-ba4b56c39374",
+          "time": 336.13,
+          "value": 1
+        },
+        {
+          "id": "bc492882-2acd-4bd2-970c-fc908820c6ab",
+          "time": 338.95,
+          "value": 1.64
+        },
+        {
+          "id": "122fe4bf-afa8-4384-8c8f-e2384766cb0d",
+          "time": 381.75,
+          "value": 1.01
+        },
+        {
+          "id": "0f273af7-0088-4ad9-89d8-63f8246ae844",
+          "time": 378.28,
+          "value": 1.66
+        },
+        {
+          "id": "019f0c0a-635c-493b-8acc-e8451915db77",
+          "time": 349.29,
+          "value": 1.08
+        },
+        {
+          "id": "8ff4645c-892e-4bce-abd2-c73230ae5279",
+          "time": 344.07,
+          "value": 1.65
+        },
+        {
+          "id": "cd96e202-21a9-49d3-a61c-5adedec1cccb",
+          "time": 351.13,
+          "value": 1.56
+        },
+        {
+          "id": "10d64019-2996-4058-911f-b7cdd69218e2",
+          "time": 347.39,
+          "value": 1.36
+        }
+      ]
+    },
+    {
+      "id": "24c159b3-a1f2-47fc-86a6-162f364b005e",
+      "trackId": "aa708d92-08c0-43ab-945b-b695163a6f0e",
+      "filePath": "/Users/anthonyolsen/Dropbox/Projects/breathwork Mixes/Breathwork 35 - Two Breathwork 10 May 2022/Imported Files/1-06 Tapatam 48000 1.wav",
+      "fileName": "1-06 Tapatam 48000 1",
+      "startTime": 2073.686557377049,
+      "duration": 358.0576875,
+      "trimStart": 13.606557377049182,
+      "trimEnd": 0,
+      "fadeIn": 9.7,
+      "fadeOut": 0.76,
+      "fadeInCurve": -1,
+      "fadeOutCurve": -0.49,
+      "crossfadeIn": 0,
+      "crossfadeOut": 0,
+      "volume": 0.9440608762859234,
+      "automation": []
+    },
+    {
+      "id": "a3dd31f8-0915-4004-ba49-0f26d96dc086",
+      "trackId": "4b7758a1-02b3-447c-8f0f-8a87e5a28a76",
+      "filePath": "/Users/anthonyolsen/Dropbox/Breathwork Music/Sets/Imported Files/Susumu Yokota_The Boy and The Tree_11_Future Tiger.wav",
+      "fileName": "Susumu Yokota_The Boy and The Tree_11_Future Tiger",
+      "startTime": 2389.2316106442577,
+      "duration": 326.3738775510204,
+      "trimStart": 5.901610644257698,
+      "trimEnd": 0,
+      "fadeIn": 24.18,
+      "fadeOut": 0,
+      "fadeInCurve": -0.94,
+      "fadeOutCurve": 0.5,
+      "crossfadeIn": 0,
+      "crossfadeOut": 0,
+      "volume": 0.9660508789898133,
+      "automation": []
+    },
+    {
+      "id": "2f611c10-828e-41a2-a1c4-8ada1081d948",
+      "trackId": "aa708d92-08c0-43ab-945b-b695163a6f0e",
+      "filePath": "/Users/anthonyolsen/Dropbox/Breathwork Music Downloads 2/TETOUZE - Cierus (feat JesusInZen).wav",
+      "fileName": "TETOUZE - Cierus (feat JesusInZen)",
+      "startTime": 2665.8199999999997,
+      "duration": 579.6642176870748,
+      "trimStart": 0,
+      "trimEnd": 0,
+      "fadeIn": 23.85,
+      "fadeOut": 70.32,
+      "fadeInCurve": 0.04,
+      "fadeOutCurve": -0.65,
+      "crossfadeIn": 0,
+      "crossfadeOut": 0,
+      "volume": 0.9440608762859234,
+      "automation": []
+    },
+    {
+      "id": "9e1b7ebc-47ec-48de-a564-5f5e1a5c1bfc",
+      "trackId": "4b7758a1-02b3-447c-8f0f-8a87e5a28a76",
+      "filePath": "/Users/anthonyolsen/Dropbox/Breathwork Music Downloads 2/01 Suspended (Reimagined by Anne Müller).m4a",
+      "fileName": "01 Suspended (Reimagined by Anne Müller)",
+      "startTime": 3176.1153846153843,
+      "duration": 223.515283446712,
+      "trimStart": 0,
+      "trimEnd": 0,
+      "fadeIn": 10.77,
+      "fadeOut": 0,
+      "fadeInCurve": 0,
+      "fadeOutCurve": 0.5,
+      "crossfadeIn": 0,
+      "crossfadeOut": 0,
+      "volume": 0.9440608762859234,
+      "automation": [
+        {
+          "id": "30d4f81e-69ff-41e9-af07-69a126eda674",
+          "time": 43.72,
+          "value": 1.39
+        },
+        {
+          "id": "4c684f6e-ba6c-411c-88dd-5bcb153eb95e",
+          "time": 67.92,
+          "value": 1.38
+        },
+        {
+          "id": "c28986f1-d6fb-448a-9473-936b4399f527",
+          "time": 73.88,
+          "value": 1
+        },
+        {
+          "id": "6a2ae8e7-5fa4-4751-9b0f-3ff4b983c9b3",
+          "time": 142.76,
+          "value": 1.01
+        },
+        {
+          "id": "663a6a75-7dac-4bc4-bece-4f69330ebc0b",
+          "time": 148.23,
+          "value": 1.56
+        },
+        {
+          "id": "ee9cda1e-8fc2-4ad1-8d62-b04bd440de26",
+          "time": 167.76,
+          "value": 0.96
+        },
+        {
+          "id": "7036db31-eb1a-4fe1-9783-97ee773def19",
+          "time": 198.89,
+          "value": 0.95
+        },
+        {
+          "id": "752d2d65-7464-41e3-8ba0-c3e376ac4bee",
+          "time": 206.06,
+          "value": 1.5
+        }
+      ]
+    },
+    {
+      "id": "62d2090d-fac2-4b72-8b9b-c8e27045b9d7",
+      "trackId": "aa708d92-08c0-43ab-945b-b695163a6f0e",
+      "filePath": "/Users/anthonyolsen/Dropbox/Breathwork Music Downloads 2/Anne Müller - Solo- Repeat!.wav",
+      "fileName": "Anne Müller - Solo- Repeat!",
+      "startTime": 3387.5555555555557,
+      "duration": 380.69975,
+      "trimStart": 107.33333333333334,
+      "trimEnd": 0,
+      "fadeIn": 2.44,
+      "fadeOut": 0,
+      "fadeInCurve": 0.54,
+      "fadeOutCurve": 0.5,
+      "crossfadeIn": 0,
+      "crossfadeOut": 0,
+      "volume": 1.258925411794167,
+      "automation": []
+    },
+    {
+      "id": "18813240-c816-46d6-a76c-2b03851ee863",
+      "trackId": "aa708d92-08c0-43ab-945b-b695163a6f0e",
+      "filePath": "/Users/anthonyolsen/Music/Music/Media.localized/Music/Byron Metcalf/A Warning from the Elders/04 Fire Passage.m4a",
+      "fileName": "04 Fire Passage",
+      "startTime": 777.3499999999999,
+      "duration": 979.2087074829932,
+      "trimStart": 0,
+      "trimEnd": 0,
+      "fadeIn": 17.1,
+      "fadeOut": 150,
+      "fadeInCurve": -0.17,
+      "fadeOutCurve": -1,
+      "crossfadeIn": 0,
+      "crossfadeOut": 0,
+      "volume": 0.9440608762859234,
+      "automation": [
+        {
+          "id": "a9c1f3fb-b5f0-4225-828b-41963829a064",
+          "time": 806.36,
+          "value": 0.98
+        },
+        {
+          "id": "68b66021-abd8-4eb1-9541-e144f0a7f249",
+          "time": 841.85,
+          "value": 1.67
+        }
+      ]
+    }
+  ],
+  "markers": [],
+  "sessionLabel": "",
+  "trackHeights": {
+    "aa708d92-08c0-43ab-945b-b695163a6f0e": 240,
+    "4b7758a1-02b3-447c-8f0f-8a87e5a28a76": 240
+  },
+  "laneHeights": {
+    "aa708d92-08c0-43ab-945b-b695163a6f0e": 43
+  }
+}

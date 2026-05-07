@@ -81,7 +81,8 @@ export interface ElectronAPI {
 
   // Auto-updater
   quitAndInstall: () => void
-  onUpdateDownloading: (callback: () => void) => () => void
+  simulateUpdate: () => void
+  onUpdateDownloading: (callback: (percent: number) => void) => () => void
   onUpdateDownloaded: (callback: (version: string) => void) => () => void
 
   // File opened from OS (double-click or shell.openPath from Limina Library)

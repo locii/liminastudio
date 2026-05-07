@@ -18,8 +18,9 @@ function initAutoUpdater(): void {
     mainWindow?.webContents.send('updater:downloading')
   })
   autoUpdater.on('download-progress', (p) => {
-    console.log('[updater] progress', Math.round(p.percent) + '%')
-    mainWindow?.webContents.send('updater:downloading')
+    const pct = Math.round(p.percent)
+    console.log('[updater] progress', pct + '%')
+    mainWindow?.webContents.send('updater:downloading', pct)
   })
   autoUpdater.on('update-downloaded', (info) => {
     console.log('[updater] downloaded', info.version)
@@ -267,6 +268,22 @@ app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.limina')
 
   if (!is.dev) initAutoUpdater()
+
+  if (is.dev) {
+    // Simulate update flow for UI testing — triggered from renderer console:
+    // window.electronAPI.simulateUpdate()
+    ipcMain.on('updater:simulate', () => {
+      let pct = 0
+      const tick = setInterval(() => {
+        pct = Math.min(100, pct + 10)
+        mainWindow?.webContents.send('updater:downloading', pct)
+        if (pct >= 100) {
+          clearInterval(tick)
+          setTimeout(() => mainWindow?.webContents.send('updater:downloaded', '9.9.9'), 300)
+        }
+      }, 300)
+    })
+  }
 
   startAudioServer()
   ipcMain.handle('audio:getServerPort', () => audioServerPort)

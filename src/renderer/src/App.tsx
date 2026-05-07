@@ -470,8 +470,8 @@ export default function App(): JSX.Element {
   }, [setWaveform])
 
   useEffect(() => {
-    return window.electronAPI.onUpdateDownloading(() => {
-      setDownloading()
+    return window.electronAPI.onUpdateDownloading((percent) => {
+      setDownloading(percent)
     })
   }, [setDownloading])
 

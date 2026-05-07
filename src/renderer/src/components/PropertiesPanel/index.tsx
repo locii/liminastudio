@@ -41,16 +41,16 @@ export function PropertiesPanel(): JSX.Element {
     }
   }
 
-  const { downloading, readyVersion } = useUpdaterStore()
+  const { downloading, downloadPercent, readyVersion } = useUpdaterStore()
 
   const versionBadge = (
     <span className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2 text-[10px] text-gray-700 select-none tabular-nums bg-surface-panel pl-2">
       {readyVersion ? (
         <button
           onClick={() => window.electronAPI.quitAndInstall()}
-          className="text-indigo-400 hover:text-indigo-300 cursor-pointer underline underline-offset-2"
+          className="text-indigo-400 underline cursor-pointer hover:text-indigo-300 underline-offset-2"
         >
-          Update ready — restart to install
+          Restart to install update
         </button>
       ) : downloading ? (
         <>
@@ -58,7 +58,9 @@ export function PropertiesPanel(): JSX.Element {
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
           </svg>
-          <span className="text-indigo-500">Downloading update…</span>
+          <span className="text-indigo-500">
+            Downloading update{downloadPercent > 0 ? ` ${downloadPercent}%` : '…'}
+          </span>
         </>
       ) : null}
       <span>v{__APP_VERSION__}</span>
