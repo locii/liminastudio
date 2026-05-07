@@ -80,6 +80,7 @@ export interface ElectronAPI {
   onMenu: (channel: string, callback: () => void) => () => void
 
   // Auto-updater
+  quitAndInstall: () => void
   onUpdateDownloading: (callback: () => void) => () => void
   onUpdateDownloaded: (callback: (version: string) => void) => () => void
 

@@ -56,6 +56,7 @@ const api: ElectronAPI = {
   },
 
   // Auto-updater
+  quitAndInstall: () => ipcRenderer.send('updater:quitAndInstall'),
   onUpdateDownloading: (callback) => {
     const handler = (): void => callback()
     ipcRenderer.on('updater:downloading', handler)

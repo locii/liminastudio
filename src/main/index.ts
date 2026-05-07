@@ -16,6 +16,9 @@ function initAutoUpdater(): void {
   autoUpdater.on('update-downloaded', (info) => {
     mainWindow?.webContents.send('updater:downloaded', info.version)
   })
+  ipcMain.on('updater:quitAndInstall', () => {
+    autoUpdater.quitAndInstall()
+  })
   setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 10_000)
   setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 4 * 60 * 60 * 1_000)
 }
