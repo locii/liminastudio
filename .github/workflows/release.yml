@@ -98,3 +98,13 @@ jobs:
             dist/checksums-win.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  revalidate-changelog:
+    needs: [build-mac, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Revalidate changelog on getliminastudio
+        run: |
+          curl -s -o /dev/null -w "%{http_code}" \
+            -X POST https://www.getliminastudio.com/api/revalidate \
+            -H "x-revalidate-token: ${{ secrets.REVALIDATE_TOKEN }}"
