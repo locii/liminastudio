@@ -29,6 +29,10 @@ function initAutoUpdater(): void {
   ipcMain.on('updater:quitAndInstall', () => {
     autoUpdater.quitAndInstall()
   })
+  ipcMain.handle('updater:check', async () => {
+    const result = await autoUpdater.checkForUpdates()
+    return { hasUpdate: !!result?.downloadPromise, version: result?.updateInfo.version ?? null }
+  })
   setTimeout(() => autoUpdater.checkForUpdates().catch((e) => console.log('[updater] check failed', e.message)), 10_000)
   setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 4 * 60 * 60 * 1_000)
 }
