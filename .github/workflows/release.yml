@@ -59,14 +59,33 @@ jobs:
           xcrun stapler staple "$DMG"
           echo "Notarization complete"
 
-      - name: Generate checksums (Mac)
-        run: shasum -a 256 dist/*.dmg | tee dist/checksums-mac.txt
+      - name: Generate checksums and latest-mac.yml (post-notarization)
+        run: |
+          DMG=$(ls dist/*.dmg | head -1)
+          FILENAME=$(basename "$DMG")
+          VERSION="${GITHUB_REF_NAME#v}"
+          SHA512=$(openssl dgst -sha512 -binary "$DMG" | base64)
+          SIZE=$(stat -f%z "$DMG")
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+          cat > dist/latest-mac.yml << EOF
+          version: $VERSION
+          files:
+            - url: $FILENAME
+              sha512: $SHA512
+              size: $SIZE
+          path: $FILENAME
+          sha512: $SHA512
+          releaseDate: '$DATE'
+          EOF
+          shasum -a 256 "$DMG" | tee dist/checksums-mac.txt
 
       - name: Upload Mac artifacts
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/*.dmg
+            dist/*.blockmap
+            dist/latest-mac.yml
             dist/checksums-mac.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

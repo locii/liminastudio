@@ -10,16 +10,25 @@ import { autoUpdater } from 'electron-updater'
 function initAutoUpdater(): void {
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
-  autoUpdater.on('update-available', () => {
+  autoUpdater.on('checking-for-update', () => console.log('[updater] checking'))
+  autoUpdater.on('update-not-available', () => console.log('[updater] up to date'))
+  autoUpdater.on('error', (e) => console.log('[updater] error', e.message))
+  autoUpdater.on('update-available', (info) => {
+    console.log('[updater] update available', info.version)
+    mainWindow?.webContents.send('updater:downloading')
+  })
+  autoUpdater.on('download-progress', (p) => {
+    console.log('[updater] progress', Math.round(p.percent) + '%')
     mainWindow?.webContents.send('updater:downloading')
   })
   autoUpdater.on('update-downloaded', (info) => {
+    console.log('[updater] downloaded', info.version)
     mainWindow?.webContents.send('updater:downloaded', info.version)
   })
   ipcMain.on('updater:quitAndInstall', () => {
     autoUpdater.quitAndInstall()
   })
-  setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 10_000)
+  setTimeout(() => autoUpdater.checkForUpdates().catch((e) => console.log('[updater] check failed', e.message)), 10_000)
   setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 4 * 60 * 60 * 1_000)
 }
 
