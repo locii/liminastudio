@@ -23,6 +23,11 @@ import { parseAudacitySession } from './utils/importers/audacityImporter'
 
 const TARGET_PEAK_LINEAR = Math.pow(10, -0.5 / 20) // -0.5 dBFS
 
+// 1 peak per pixel at current zoom → consistent visual density regardless of clip duration
+function peaksForClip(duration: number, zoom: number): number {
+  return Math.min(Math.ceil(duration * zoom), 50_000)
+}
+
 export default function App(): JSX.Element {
   const [exportOpen, setExportOpen] = useState(false)
   const [exportFormat, setExportFormat] = useState<'wav' | 'mp3'>('wav')
@@ -166,7 +171,7 @@ export default function App(): JSX.Element {
       const clipsForTrack = data.clips.filter((c) => c.trackId === track.id)
       for (const clip of clipsForTrack) {
         window.electronAPI
-          .getWaveformPeaks(clip.filePath, 4000)
+          .getWaveformPeaks(clip.filePath, peaksForClip(clip.duration, useTransportStore.getState().zoom))
           .then((peaks) => setWaveform(clip.filePath, { peaks, loading: false }))
           .catch(() => setWaveform(clip.filePath, { peaks: [], loading: false }))
       }
@@ -205,7 +210,7 @@ export default function App(): JSX.Element {
         const clipsForTrack = data.clips.filter((c) => c.trackId === track.id)
         for (const clip of clipsForTrack) {
           window.electronAPI
-            .getWaveformPeaks(clip.filePath, 4000)
+            .getWaveformPeaks(clip.filePath, peaksForClip(clip.duration, useTransportStore.getState().zoom))
             .then((peaks) => setWaveform(clip.filePath, { peaks, loading: false }))
             .catch(() => setWaveform(clip.filePath, { peaks: [], loading: false }))
         }
@@ -251,7 +256,7 @@ export default function App(): JSX.Element {
           movedPaths.add(newClip.filePath)
           setWaveform(newClip.filePath, { trackId: newClip.trackId, peaks: [], loading: true })
           window.electronAPI
-            .getWaveformPeaks(newClip.filePath, 4000)
+            .getWaveformPeaks(newClip.filePath, peaksForClip(newClip.duration, useTransportStore.getState().zoom))
             .then((peaks) => setWaveform(newClip.filePath, { peaks, loading: false }))
             .catch(() => setWaveform(newClip.filePath, { peaks: [], loading: false }))
         }
@@ -286,7 +291,7 @@ export default function App(): JSX.Element {
         duration: file.duration,
       })
       window.electronAPI
-        .getWaveformPeaks(file.path, 4000)
+        .getWaveformPeaks(file.path, peaksForClip(file.duration, useTransportStore.getState().zoom))
         .then((peaks) => setWaveform(file.path, { peaks, loading: false }))
         .catch((err) => {
           console.error('[waveform] extraction failed for', file.path, err)
@@ -342,7 +347,7 @@ export default function App(): JSX.Element {
       await Promise.all(
         uniquePaths.map(async (filePath) => {
           const [peaks, peak] = await Promise.all([
-            window.electronAPI.getWaveformPeaks(filePath, 4000).catch(() => [] as number[]),
+            window.electronAPI.getWaveformPeaks(filePath, peaksForClip(clips.find(c => c.filePath === filePath)?.duration ?? 300, useTransportStore.getState().zoom)).catch(() => [] as number[]),
             window.electronAPI.getPeakLevel(filePath).catch(() => 0),
           ])
           setWaveform(filePath, { peaks, loading: false })
@@ -403,7 +408,7 @@ export default function App(): JSX.Element {
                   duration: meta.duration,
                   startTime: useTransportStore.getState().playhead,
                 })
-                window.electronAPI.getWaveformPeaks(filePath, 1200)
+                window.electronAPI.getWaveformPeaks(filePath, peaksForClip(meta.duration, useTransportStore.getState().zoom))
                   .then((peaks) => setWaveform(filePath, { peaks, loading: false }))
                   .catch(console.error)
                 window.electronAPI.getPeakLevel(filePath)
@@ -440,6 +445,29 @@ export default function App(): JSX.Element {
       openRecentSession(filePath)
     })
   }, [openRecentSession])
+
+  // Re-fetch waveform peaks when zoom changes so density stays 1 peak/pixel for all clips
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>
+    return useTransportStore.subscribe(
+      (s) => s.zoom,
+      (zoom) => {
+        clearTimeout(timer)
+        timer = setTimeout(() => {
+          const { clips } = useSessionStore.getState()
+          const seen = new Set<string>()
+          for (const clip of clips) {
+            if (seen.has(clip.filePath)) continue
+            seen.add(clip.filePath)
+            window.electronAPI
+              .getWaveformPeaks(clip.filePath, peaksForClip(clip.duration, zoom))
+              .then((peaks) => setWaveform(clip.filePath, { peaks, loading: false }))
+              .catch(() => {})
+          }
+        }, 300)
+      }
+    )
+  }, [setWaveform])
 
   useEffect(() => {
     return window.electronAPI.onUpdateDownloading(() => {
