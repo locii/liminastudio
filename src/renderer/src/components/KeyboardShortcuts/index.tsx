@@ -15,7 +15,6 @@ const SHORTCUTS = [
   { key: '+  /  −', desc: 'Zoom in / out' },
   { key: 'P', desc: 'Scroll to playhead' },
   { key: 'Pinch', desc: 'Zoom at cursor (trackpad)' },
-  { key: 'Double-click ruler', desc: 'Add section marker' },
   { group: 'Clips' },
   { key: 'Shift-click', desc: 'Add clip to selection' },
   { key: 'Drag (multi-selected)', desc: 'Move all selected clips' },

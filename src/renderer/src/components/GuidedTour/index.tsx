@@ -59,8 +59,8 @@ const STEPS: TourStep[] = [
   },
   {
     id: 'ruler',
-    title: 'Time Ruler & Markers',
-    body: 'Click anywhere on the ruler to jump the playhead to that position. Double-click to drop a section marker — great for labelling intro, build, peak, and integration sections. Drag markers to move them; right-click to rename or delete.',
+    title: 'Time Ruler',
+    body: 'Click anywhere on the ruler to jump the playhead to that position.',
     target: '[data-tour="ruler"]',
     placement: 'bottom',
     spotlight: true,

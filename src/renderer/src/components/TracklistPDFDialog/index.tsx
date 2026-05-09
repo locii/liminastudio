@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useSessionStore } from '../../store/sessionStore'
 import { useToastStore } from '../../store/toastStore'
+import type { Segment } from '../../types'
 
 interface Props {
   open: boolean
@@ -8,15 +9,31 @@ interface Props {
 }
 
 function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60)
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
   const s = Math.floor(seconds % 60)
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
 function formatDuration(seconds: number): string {
-  const m = Math.floor(seconds / 60)
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
   const s = Math.floor(seconds % 60)
+  if (h > 0) return `${h}h ${m}m`
   return m > 0 ? `${m}m ${s}s` : `${s}s`
+}
+
+interface Cue {
+  num: number
+  name: string
+  startTime: number
+  duration: number
+}
+
+interface Group {
+  segment: Segment | null
+  cues: Cue[]
 }
 
 export function TracklistPDFDialog({ open, onClose }: Props): JSX.Element | null {
@@ -26,7 +43,7 @@ export function TracklistPDFDialog({ open, onClose }: Props): JSX.Element | null
   const [busy, setBusy] = useState(false)
 
   const clips = useSessionStore((s) => s.clips)
-  const tracks = useSessionStore((s) => s.tracks)
+  const segments = useSessionStore((s) => s.segments)
   const currentFilePath = useSessionStore((s) => s.currentFilePath)
   const toast = useToastStore((s) => s.add)
 
@@ -36,37 +53,67 @@ export function TracklistPDFDialog({ open, onClose }: Props): JSX.Element | null
     ? currentFilePath.split(/[\\/]/).pop()?.replace(/\.limina$/, '') ?? 'Untitled Session'
     : 'Untitled Session'
 
-  const trackMap = new Map(tracks.map((t) => [t.id, t]))
+  const sortedSegments = [...segments].sort((a, b) => a.startTime - b.startTime)
+  const sortedClips = [...clips].sort((a, b) => a.startTime - b.startTime)
 
-  // Build sorted cue list from all clips
-  const cues = [...clips]
-    .sort((a, b) => a.startTime - b.startTime)
-    .map((clip, i) => {
-      const track = trackMap.get(clip.trackId)
-      const effectiveDuration = clip.duration - clip.trimStart - clip.trimEnd
-      return {
-        num: i + 1,
-        name: clip.fileName.replace(/\.[^.]+$/, ''),
-        trackName: track?.name ?? '',
-        startTime: clip.startTime,
-        duration: effectiveDuration,
-      }
+  // Assign each clip to the segment whose range contains its startTime
+  function segmentForTime(t: number): Segment | null {
+    return sortedSegments.find((seg) => t >= seg.startTime && t < seg.endTime) ?? null
+  }
+
+  // Build groups — one per segment (in order), plus a catch-all for unassigned clips
+  const segmentGroups = new Map<string | null, Cue[]>()
+  for (const seg of sortedSegments) segmentGroups.set(seg.id, [])
+  segmentGroups.set(null, [])
+
+  let counter = 0
+  for (const clip of sortedClips) {
+    counter++
+    const seg = segmentForTime(clip.startTime)
+    const key = seg?.id ?? null
+    segmentGroups.get(key)!.push({
+      num: counter,
+      name: clip.fileName.replace(/\.[^.]+$/, ''),
+      startTime: clip.startTime,
+      duration: clip.duration - clip.trimStart - clip.trimEnd,
     })
+  }
 
-  const totalDuration = cues.reduce((sum, c) => Math.max(sum, c.startTime + c.duration), 0)
+  const groups: Group[] = []
+  for (const seg of sortedSegments) {
+    const cues = segmentGroups.get(seg.id) ?? []
+    if (cues.length > 0) groups.push({ segment: seg, cues })
+  }
+  const unassigned = segmentGroups.get(null) ?? []
+  if (unassigned.length > 0) groups.push({ segment: null, cues: unassigned })
+
+  const totalCues = sortedClips.length
+  const totalDuration = sortedClips.reduce((sum, c) => Math.max(sum, c.startTime + (c.duration - c.trimStart - c.trimEnd)), 0)
 
   const generateHTML = (): string => {
-    const rows = cues.map((c) => `
-      <tr>
-        <td class="num">${c.num}</td>
-        <td class="name">${c.name}</td>
-        <td class="lane">${c.trackName}</td>
-        <td class="time">${formatTime(c.startTime)}</td>
-        <td class="dur">${formatDuration(c.duration)}</td>
-      </tr>`).join('')
-
     const metaLine = [artist, album].filter(Boolean).join(' — ')
     const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+
+    const groupBlocks = groups.map(({ segment, cues }) => {
+      const segHeader = segment
+        ? `<tr class="seg-header">
+            <td colspan="4">
+              <span class="seg-name">${segment.name}</span>
+              <span class="seg-range">${formatTime(segment.startTime)} – ${formatTime(segment.endTime)} · ${formatDuration(segment.endTime - segment.startTime)}</span>
+            </td>
+          </tr>`
+        : `<tr class="seg-header"><td colspan="4"><span class="seg-name">Unassigned</span></td></tr>`
+
+      const rows = cues.map((c) => `
+        <tr>
+          <td class="num">${c.num}</td>
+          <td class="name">${c.name}</td>
+          <td class="time">${formatTime(c.startTime)}</td>
+          <td class="dur">${formatDuration(c.duration)}</td>
+        </tr>`).join('')
+
+      return segHeader + rows
+    }).join('')
 
     return `<!DOCTYPE html>
 <html>
@@ -82,10 +129,13 @@ export function TracklistPDFDialog({ open, onClose }: Props): JSX.Element | null
   thead th { text-align: left; border-bottom: 2px solid #222; padding: 6px 10px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: #444; }
   tbody td { padding: 9px 10px; border-bottom: 1px solid #e8e8e8; vertical-align: top; }
   tbody tr:last-child td { border-bottom: none; }
+  tr.seg-header td { padding: 14px 10px 6px; border-bottom: 1px solid #ccc; background: none; }
+  tr.seg-header:first-child td { padding-top: 6px; }
+  .seg-name { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #222; margin-right: 10px; }
+  .seg-range { font-size: 11px; color: #888; font-family: 'Courier New', monospace; }
   .num { color: #aaa; width: 32px; }
   .name { font-weight: 500; }
-  .lane { color: #666; font-size: 12px; }
-  .time { font-family: 'Courier New', monospace; color: #333; width: 56px; }
+  .time { font-family: 'Courier New', monospace; color: #333; width: 72px; }
   .dur { font-family: 'Courier New', monospace; color: #888; width: 64px; }
   .totals { font-size: 12px; color: #666; border-top: 1px solid #ccc; padding-top: 16px; margin-bottom: 24px; }
   .notes { font-size: 12px; color: #444; line-height: 1.6; border-left: 3px solid #ddd; padding-left: 12px; margin-bottom: 32px; }
@@ -102,15 +152,14 @@ export function TracklistPDFDialog({ open, onClose }: Props): JSX.Element | null
       <tr>
         <th>#</th>
         <th>Title</th>
-        <th>Track</th>
         <th>Start</th>
         <th>Duration</th>
       </tr>
     </thead>
-    <tbody>${rows}</tbody>
+    <tbody>${groupBlocks}</tbody>
   </table>
 
-  <div class="totals">${cues.length} track${cues.length !== 1 ? 's' : ''} · Total duration: ${formatDuration(totalDuration)}</div>
+  <div class="totals">${totalCues} track${totalCues !== 1 ? 's' : ''} · Total duration: ${formatDuration(totalDuration)}</div>
 
   ${notes ? `<div class="notes">${notes.replace(/\n/g, '<br>')}</div>` : ''}
 
@@ -146,7 +195,7 @@ export function TracklistPDFDialog({ open, onClose }: Props): JSX.Element | null
           <button onClick={onClose} disabled={busy} className="text-gray-600 hover:text-gray-300 disabled:opacity-30">✕</button>
         </div>
 
-        <p className="text-xs text-gray-500">{cues.length} tracks · {projectName}</p>
+        <p className="text-xs text-gray-500">{totalCues} tracks · {projectName}</p>
 
         <div className="flex flex-col gap-3">
           <Field label="Artist">
@@ -178,8 +227,8 @@ export function TracklistPDFDialog({ open, onClose }: Props): JSX.Element | null
           </Field>
         </div>
 
-        {/* Preview of cue list */}
-        <div className="bg-surface-base rounded border border-surface-border max-h-44 overflow-y-auto">
+        {/* Preview */}
+        <div className="bg-surface-base rounded border border-surface-border max-h-52 overflow-y-auto">
           <table className="w-full text-[10px]">
             <thead>
               <tr className="border-b border-surface-border">
@@ -190,13 +239,29 @@ export function TracklistPDFDialog({ open, onClose }: Props): JSX.Element | null
               </tr>
             </thead>
             <tbody>
-              {cues.map((c) => (
-                <tr key={c.num} className="border-b border-surface-border/50 last:border-0">
-                  <td className="px-2 py-1 text-gray-600">{c.num}</td>
-                  <td className="px-2 py-1 text-gray-300 truncate max-w-0 w-full">{c.name}</td>
-                  <td className="px-2 py-1 font-mono text-gray-500">{formatTime(c.startTime)}</td>
-                  <td className="px-2 py-1 font-mono text-gray-600">{formatDuration(c.duration)}</td>
-                </tr>
+              {groups.map(({ segment, cues }) => (
+                <>
+                  <tr key={segment?.id ?? 'unassigned'} className="border-b border-surface-border bg-surface-panel/50">
+                    <td colSpan={4} className="px-2 py-1">
+                      <span className="text-[9px] uppercase tracking-widest font-semibold text-gray-400">
+                        {segment ? segment.name : 'Unassigned'}
+                      </span>
+                      {segment && (
+                        <span className="ml-2 font-mono text-[9px] text-gray-600">
+                          {formatTime(segment.startTime)}–{formatTime(segment.endTime)}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                  {cues.map((c) => (
+                    <tr key={c.num} className="border-b border-surface-border/50 last:border-0">
+                      <td className="px-2 py-1 text-gray-600">{c.num}</td>
+                      <td className="px-2 py-1 text-gray-300 truncate max-w-0 w-full">{c.name}</td>
+                      <td className="px-2 py-1 font-mono text-gray-500">{formatTime(c.startTime)}</td>
+                      <td className="px-2 py-1 font-mono text-gray-600">{formatDuration(c.duration)}</td>
+                    </tr>
+                  ))}
+                </>
               ))}
             </tbody>
           </table>

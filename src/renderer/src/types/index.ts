@@ -33,14 +33,18 @@ export interface Clip {
   automation: AutomationPoint[]
 }
 
-export interface Marker {
+export interface Segment {
   id: string
-  time: number
   name: string
+  startTime: number  // seconds
+  endTime: number    // seconds
   color: string
 }
 
-export const MARKER_COLORS = ['#6366f1', '#ec4899', '#14b8a6', '#f59e0b', '#22c55e', '#a855f7']
+export const SEGMENT_COLORS = [
+  '#6366f1', '#3b82f6', '#14b8a6', '#22c55e',
+  '#f59e0b', '#ef4444', '#a855f7', '#ec4899',
+]
 
 export interface TimelineState {
   zoom: number

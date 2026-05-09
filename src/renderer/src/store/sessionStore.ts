@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { nanoid } from '../utils/nanoid'
-import type { Track, Clip, WaveformData, Marker } from '../types'
-import { pickTrackColor, MARKER_COLORS } from '../types'
+import type { Track, Clip, WaveformData, Segment } from '../types'
+import { pickTrackColor } from '../types'
 
 // ── Crossfade computation ────────────────────────────────────────────────────
 
@@ -45,7 +45,9 @@ const MAX_HISTORY = 50
 interface SessionState {
   tracks: Track[]
   clips: Clip[]
-  markers: Marker[]
+  segments: Segment[]
+  segmentLaneHeight: number
+  segmentLaneCollapsed: boolean
   trackHeights: Record<string, number>
   laneHeights: Record<string, number>
   waveforms: Record<string, WaveformData>
@@ -82,10 +84,13 @@ interface SessionState {
   copyClip: (clipId: string) => void
   pasteClip: (atTime: number, targetTrackId?: string) => void
 
-  // Markers
-  addMarker: (time: number) => void
-  updateMarker: (id: string, patch: Partial<Pick<Marker, 'name' | 'color' | 'time'>>) => void
-  removeMarker: (id: string) => void
+  // Segments
+  updateSegment: (id: string, patch: Partial<Pick<Segment, 'startTime' | 'endTime' | 'name' | 'color'>>) => void
+  updateSegments: (updates: Array<{ id: string; patch: Partial<Pick<Segment, 'startTime' | 'endTime' | 'name' | 'color'>> }>) => void
+  addSegment: (seg: Segment) => void
+  removeSegment: (id: string) => void
+  setSegmentLaneHeight: (h: number) => void
+  setSegmentLaneCollapsed: (v: boolean) => void
 
   // Waveforms / selection / persistence
   setWaveform: (filePath: string, data: Partial<WaveformData>) => void
@@ -93,7 +98,7 @@ interface SessionState {
   selectTrack: (trackId: string | null) => void
   setTrackHeight: (trackId: string, height: number) => void
   setLaneHeight: (trackId: string, height: number) => void
-  loadSnapshot: (snapshot: { tracks: Track[]; clips: Clip[]; markers?: Marker[]; sessionLabel?: string; trackHeights?: Record<string, number>; laneHeights?: Record<string, number> }) => void
+  loadSnapshot: (snapshot: { tracks: Track[]; clips: Clip[]; segments?: Segment[]; segmentLaneHeight?: number; segmentLaneCollapsed?: boolean; sessionLabel?: string; trackHeights?: Record<string, number>; laneHeights?: Record<string, number> }) => void
   newSession: () => void
   setCurrentFile: (filePath: string | null) => void
   setSessionLabel: (label: string) => void
@@ -118,7 +123,9 @@ export const useSessionStore = create<SessionState>((set, get) => {
   return {
     tracks: [],
     clips: [],
-    markers: [],
+    segments: [],
+    segmentLaneHeight: 36,
+    segmentLaneCollapsed: false,
     trackHeights: {},
     laneHeights: {},
     waveforms: {},
@@ -396,28 +403,32 @@ export const useSessionStore = create<SessionState>((set, get) => {
       isDirty: true,
     })),
 
-    addMarker: (time) => {
-      const count = get().markers.length + 1
-      const color = MARKER_COLORS[(count - 1) % MARKER_COLORS.length]
-      set((s) => ({
-        markers: [...s.markers, { id: nanoid(), time, name: `Marker ${count}`, color }],
+    updateSegment: (id, patch) => set((s) => ({
+      segments: s.segments.map((seg) => seg.id === id ? { ...seg, ...patch } : seg),
+      isDirty: true,
+    })),
+    updateSegments: (updates) => set((s) => {
+      const patchMap = new Map(updates.map((u) => [u.id, u.patch]))
+      return { segments: s.segments.map((seg) => patchMap.has(seg.id) ? { ...seg, ...patchMap.get(seg.id) } : seg), isDirty: true }
+    }),
+    addSegment: (seg) => set((s) => ({ segments: [...s.segments, seg], isDirty: true })),
+    removeSegment: (id) => set((s) => {
+      const sorted = [...s.segments].sort((a, b) => a.startTime - b.startTime)
+      const idx = sorted.findIndex((seg) => seg.id === id)
+      const deleted = sorted[idx]
+      const next = sorted[idx + 1] ?? null
+      return {
+        segments: s.segments
+          .filter((seg) => seg.id !== id)
+          .map((seg) => seg.id === next?.id ? { ...seg, startTime: deleted.startTime } : seg),
         isDirty: true,
-      }))
-    },
+      }
+    }),
+    setSegmentLaneHeight: (h) => set({ segmentLaneHeight: Math.max(20, Math.min(120, h)), isDirty: true }),
+    setSegmentLaneCollapsed: (v) => set({ segmentLaneCollapsed: v }),
 
-    updateMarker: (id, patch) => {
-      set((s) => ({
-        markers: s.markers.map((m) => (m.id === id ? { ...m, ...patch } : m)),
-        isDirty: true,
-      }))
-    },
-
-    removeMarker: (id) => {
-      set((s) => ({ markers: s.markers.filter((m) => m.id !== id), isDirty: true }))
-    },
-
-    loadSnapshot: ({ tracks, clips, markers, sessionLabel, trackHeights, laneHeights }) => {
-      set({ tracks, clips, markers: markers ?? [], sessionLabel: sessionLabel ?? '', trackHeights: trackHeights ?? {}, laneHeights: laneHeights ?? {}, past: [], future: [], isDirty: false, selectedClipId: null, selectedClipIds: [] })
+    loadSnapshot: ({ tracks, clips, segments, segmentLaneHeight, segmentLaneCollapsed, sessionLabel, trackHeights, laneHeights }) => {
+      set({ tracks, clips, segments: segments ?? [], segmentLaneHeight: segmentLaneHeight ?? 36, segmentLaneCollapsed: segmentLaneCollapsed ?? false, sessionLabel: sessionLabel ?? '', trackHeights: trackHeights ?? {}, laneHeights: laneHeights ?? {}, past: [], future: [], isDirty: false, selectedClipId: null, selectedClipIds: [] })
     },
 
     newSession: () => {
@@ -426,7 +437,9 @@ export const useSessionStore = create<SessionState>((set, get) => {
       set({
         tracks: [t1, t2],
         clips: [],
-        markers: [],
+        segments: [],
+        segmentLaneHeight: 36,
+        segmentLaneCollapsed: false,
         trackHeights: {},
         laneHeights: {},
         sessionLabel: '',

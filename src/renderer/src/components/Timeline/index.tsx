@@ -6,9 +6,10 @@ import { audioEngine } from '../../audio/audioEngine'
 import { TrackHeader } from './TrackHeader'
 import { TimelineTrack } from './TimelineTrack'
 import { TimeRuler } from './TimeRuler'
-import { MarkerFlag } from './MarkerFlag'
 import { DragProvider } from './DragContext'
+import { SegmentLaneContent, SegmentLaneHeader } from './SegmentLane'
 import type { Clip } from '../../types'
+import { SEGMENT_COLORS } from '../../types'
 
 const RULER_HEIGHT = 28
 const TRACK_HEIGHT = 100
@@ -28,10 +29,14 @@ interface Props {
 export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef, zoomByRef }: Props = {}): JSX.Element {
   const tracks = useSessionStore((s) => s.tracks)
   const clips = useSessionStore((s) => s.clips)
-  const markers = useSessionStore((s) => s.markers)
-  const addMarker = useSessionStore((s) => s.addMarker)
-  const updateMarker = useSessionStore((s) => s.updateMarker)
-  const removeMarker = useSessionStore((s) => s.removeMarker)
+  const segments = useSessionStore((s) => s.segments)
+  const updateSegments = useSessionStore((s) => s.updateSegments)
+  const addSegment = useSessionStore((s) => s.addSegment)
+  const removeSegment = useSessionStore((s) => s.removeSegment)
+  const segmentLaneHeight = useSessionStore((s) => s.segmentLaneHeight)
+  const segmentLaneCollapsed = useSessionStore((s) => s.segmentLaneCollapsed)
+  const setSegmentLaneHeight = useSessionStore((s) => s.setSegmentLaneHeight)
+  const setSegmentLaneCollapsed = useSessionStore((s) => s.setSegmentLaneCollapsed)
   const trackHeights = useSessionStore((s) => s.trackHeights)
   const laneHeights = useSessionStore((s) => s.laneHeights)
   const setTrackHeight = useSessionStore((s) => s.setTrackHeight)
@@ -55,6 +60,7 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
   const rightPanelRef = useRef<HTMLDivElement>(null)
   const headerRef = useRef<HTMLDivElement>(null)
   const rulerContentRef = useRef<HTMLDivElement>(null)
+  const segmentContentRef = useRef<HTMLDivElement>(null)
   const zoomRef = useRef(zoom)
   useEffect(() => { zoomRef.current = zoom }, [zoom])
 
@@ -114,6 +120,9 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
     if (rulerContentRef.current) {
       rulerContentRef.current.style.transform = `translateX(-${el.scrollLeft}px)`
     }
+    if (segmentContentRef.current) {
+      segmentContentRef.current.style.transform = `translateX(-${el.scrollLeft}px)`
+    }
     setScrollX(el.scrollLeft)
     centerTimeRef.current = (el.scrollLeft + el.clientWidth / 2) / zoomRef.current
   }, [setScrollX])
@@ -139,12 +148,15 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
 
   // Total timeline width: furthest clip end + 60 s padding
   const totalDuration = useMemo(() => {
-    if (clips.length === 0) return 120
-    const maxEnd = Math.max(
-      ...clips.map((c) => c.startTime + c.duration - c.trimStart - c.trimEnd)
-    )
-    return maxEnd + 60
-  }, [clips])
+    const clipEnd = clips.length > 0
+      ? Math.max(...clips.map((c) => c.startTime + c.duration - c.trimStart - c.trimEnd))
+      : 0
+    const segEnd = segments.length > 0
+      ? Math.max(...segments.map((s) => s.endTime))
+      : 0
+    const base = Math.max(clipEnd, segEnd)
+    return base > 0 ? base + 60 : 120
+  }, [clips, segments])
 
   const totalWidth = totalDuration * zoom
 
@@ -190,7 +202,7 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
       const el = timelineRef.current
       if (!el) return
       const pos = useTransportStore.getState().playhead
-      const newZoom = Math.min(200, Math.max(0.5, zoomRef.current * factor))
+      const newZoom = zoomRef.current * factor
       setZoom(newZoom)
       requestAnimationFrame(() => {
         el.scrollLeft = Math.max(0, pos * newZoom - el.clientWidth / 2)
@@ -228,19 +240,6 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
     [zoom]
   )
 
-  const handleRulerDoubleClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      const strip = rulerContentRef.current?.parentElement
-      const scrollEl = timelineRef.current
-      if (!strip || !scrollEl) return
-      const rect = strip.getBoundingClientRect()
-      const x = e.clientX - rect.left + scrollEl.scrollLeft
-      const time = Math.round(Math.max(0, x / zoom) * 100) / 100
-      addMarker(time)
-    },
-    [zoom, addMarker]
-  )
-
   if (tracks.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-600">
@@ -256,6 +255,20 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
   }
 
   const playheadPx = playhead * zoom
+
+  const handleAddSegment = useCallback((): void => {
+    const sorted = [...segments].sort((a, b) => a.startTime - b.startTime)
+    const lastEnd = sorted.length > 0 ? sorted[sorted.length - 1].endTime : 0
+    const color = SEGMENT_COLORS[sorted.length % SEGMENT_COLORS.length]
+    const duration = 100 / zoom
+    addSegment({
+      id: crypto.randomUUID(),
+      name: `Section ${sorted.length + 1}`,
+      startTime: lastEnd,
+      endTime: lastEnd + duration,
+      color,
+    })
+  }, [segments, addSegment])
 
   return (
     <DragProvider>
@@ -280,6 +293,14 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
         </div>
         {/* Track view controls — fit / reset row heights */}
         <TrackViewButtons headerRef={headerRef} />
+        {/* Segment lane header */}
+        <SegmentLaneHeader
+          height={segmentLaneHeight}
+          collapsed={segmentLaneCollapsed}
+          segmentCount={segments.length}
+          onHeightChange={setSegmentLaneHeight}
+          onAdd={handleAddSegment}
+        />
       </div>
 
       {/* Right: ruler strip + scrollable tracks */}
@@ -294,7 +315,6 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
             ref={rulerContentRef}
             data-tour="ruler"
             onMouseDown={handleRulerMouseDown}
-            onDoubleClick={handleRulerDoubleClick}
             className="absolute top-0 left-0 cursor-crosshair will-change-transform"
             style={{ width: `${totalWidth}px`, minWidth: '100%' }}
           >
@@ -347,19 +367,21 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
               <div className="absolute top-0 bottom-0 left-0 w-px bg-red-500" />
             </div>
 
-            {/* Section markers */}
-            {markers.map((marker) => (
-              <MarkerFlag
-                key={marker.id}
-                marker={marker}
-                zoom={zoom}
-                rulerHeight={RULER_HEIGHT}
-                onUpdate={(patch) => updateMarker(marker.id, patch)}
-                onDelete={() => removeMarker(marker.id)}
-              />
-            ))}
           </div>
         </div>
+
+        {/* Segment lane — pinned below scrollable tracks, always visible */}
+        {!segmentLaneCollapsed && (
+          <SegmentLaneContent
+            contentRef={segmentContentRef}
+            segments={segments}
+            zoom={zoom}
+            totalWidth={totalWidth}
+            height={segmentLaneHeight}
+            onUpdate={updateSegments}
+            onDelete={removeSegment}
+          />
+        )}
       </div>
     </div>
     </DragProvider>
@@ -370,6 +392,8 @@ function TrackViewButtons({ headerRef }: { headerRef: React.RefObject<HTMLDivEle
   const tracks = useSessionStore((s) => s.tracks)
   const laneHeights = useSessionStore((s) => s.laneHeights)
   const setTrackHeight = useSessionStore((s) => s.setTrackHeight)
+  const segmentLaneCollapsed = useSessionStore((s) => s.segmentLaneCollapsed)
+  const setSegmentLaneCollapsed = useSessionStore((s) => s.setSegmentLaneCollapsed)
 
   const handleFit = useCallback(() => {
     if (!headerRef.current || tracks.length === 0) return
@@ -411,6 +435,18 @@ function TrackViewButtons({ headerRef }: { headerRef: React.RefObject<HTMLDivEle
           <line x1="1" y1="9" x2="11" y2="9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
         </svg>
         <span className="text-[8px] font-bold tracking-wider uppercase">Rst</span>
+      </button>
+      <div className="w-px bg-surface-border" />
+      <button
+        onClick={() => setSegmentLaneCollapsed(!segmentLaneCollapsed)}
+        title={segmentLaneCollapsed ? 'Show segments' : 'Hide segments'}
+        className="flex-1 flex items-center justify-center py-2 text-gray-500 hover:text-gray-200 hover:bg-surface-hover transition-colors gap-1.5"
+      >
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <rect x="1" y="2" width="10" height="3" rx="0.5" stroke="currentColor" strokeWidth="1.2"/>
+          <rect x="1" y="7" width="10" height="3" rx="0.5" stroke="currentColor" strokeWidth="1.2" opacity={segmentLaneCollapsed ? '0.3' : '1'}/>
+        </svg>
+        <span className="text-[8px] font-bold tracking-wider uppercase">Seg</span>
       </button>
     </div>
   )

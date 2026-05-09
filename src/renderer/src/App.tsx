@@ -117,8 +117,8 @@ export default function App(): JSX.Element {
   // ── Session helpers ──────────────────────────────────────────────────────
 
   const saveSession = useCallback(async () => {
-    const { tracks, clips, markers, sessionLabel, trackHeights, laneHeights } = useSessionStore.getState()
-    const json = JSON.stringify({ tracks, clips, markers, sessionLabel, trackHeights, laneHeights }, null, 2)
+    const { tracks, clips, segments, segmentLaneHeight, segmentLaneCollapsed, sessionLabel, trackHeights, laneHeights } = useSessionStore.getState()
+    const json = JSON.stringify({ tracks, clips, segments, segmentLaneHeight, segmentLaneCollapsed, sessionLabel, trackHeights, laneHeights }, null, 2)
     let filePath = currentFilePath
     if (!filePath) {
       filePath = await window.electronAPI.saveSession(json)
@@ -133,8 +133,8 @@ export default function App(): JSX.Element {
   }, [currentFilePath, setCurrentFile, markClean, toast])
 
   const saveSessionAs = useCallback(async () => {
-    const { tracks, clips, markers, sessionLabel, trackHeights, laneHeights } = useSessionStore.getState()
-    const json = JSON.stringify({ tracks, clips, markers, sessionLabel, trackHeights, laneHeights }, null, 2)
+    const { tracks, clips, segments, segmentLaneHeight, segmentLaneCollapsed, sessionLabel, trackHeights, laneHeights } = useSessionStore.getState()
+    const json = JSON.stringify({ tracks, clips, segments, segmentLaneHeight, segmentLaneCollapsed, sessionLabel, trackHeights, laneHeights }, null, 2)
     const filePath = await window.electronAPI.saveSession(json)
     if (!filePath) return
     setCurrentFile(filePath)
@@ -164,7 +164,7 @@ export default function App(): JSX.Element {
   const applySession = useCallback(async (result: { json: string; filePath: string }) => {
     audioEngine.cancelWarmup()
     setWarmup(null)
-    const data = JSON.parse(result.json) as { tracks: Track[]; clips: Clip[]; markers?: import('./types').Marker[]; sessionLabel?: string; trackHeights?: Record<string, number>; laneHeights?: Record<string, number> }
+    const data = JSON.parse(result.json) as { tracks: Track[]; clips: Clip[]; segments?: import('./types').Segment[]; segmentLaneHeight?: number; segmentLaneCollapsed?: boolean; sessionLabel?: string; trackHeights?: Record<string, number>; laneHeights?: Record<string, number> }
     loadSnapshot(data)
     setCurrentFile(result.filePath)
     for (const track of data.tracks) {
@@ -204,7 +204,7 @@ export default function App(): JSX.Element {
   const handleRestoreAutosave = useCallback(async () => {
     if (!autosave) return
     try {
-      const data = JSON.parse(autosave.json) as { tracks: Track[]; clips: Clip[]; markers?: import('./types').Marker[] }
+      const data = JSON.parse(autosave.json) as { tracks: Track[]; clips: Clip[] }
       loadSnapshot(data)
       for (const track of data.tracks) {
         const clipsForTrack = data.clips.filter((c) => c.trackId === track.id)
@@ -338,7 +338,7 @@ export default function App(): JSX.Element {
       }
       onProgress(45)
 
-      loadSnapshot({ tracks, clips, markers: [] })
+      loadSnapshot({ tracks, clips })
       onProgress(50)
 
       // Load waveforms + auto gain in parallel per unique file

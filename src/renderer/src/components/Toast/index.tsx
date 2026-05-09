@@ -6,7 +6,7 @@ export function ToastContainer(): JSX.Element {
   const remove = useToastStore((s) => s.remove)
 
   return (
-    <div className="fixed bottom-5 right-5 flex flex-col gap-2 z-[100] pointer-events-none">
+    <div className="fixed bottom-2 right-40 flex flex-col gap-2 z-[100] pointer-events-none">
       {toasts.map((t) => (
         <ToastItem key={t.id} toast={t} onClose={() => remove(t.id)} />
       ))}
@@ -29,13 +29,13 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }): J
         {toast.url && (
           <button
             onClick={() => window.electronAPI.openExternal(toast.url!)}
-            className="ml-2 underline underline-offset-2 text-accent hover:text-accent/80 transition-colors"
+            className="ml-2 underline transition-colors underline-offset-2 text-accent hover:text-accent/80"
           >
             Download
           </button>
         )}
       </span>
-      <button onClick={onClose} className="text-gray-500 hover:text-gray-300 leading-none text-xs">
+      <button onClick={onClose} className="text-xs leading-none text-gray-500 hover:text-gray-300">
         ✕
       </button>
     </div>
