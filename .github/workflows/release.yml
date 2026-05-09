@@ -12,10 +12,24 @@ jobs:
   prepare-release:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract release notes from CHANGELOG.md
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          awk -v v="$TAG" '
+            /^## / { if (found) exit; if ($0 == "## " v || index($0, "## " v " ") == 1) found=1; next }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          echo "--- Release notes for $TAG ---"
+          cat release-notes.md
+
       - name: Create draft release
         uses: softprops/action-gh-release@v2
         with:
           name: Limina Mix ${{ github.ref_name }}
+          body_path: release-notes.md
           draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
