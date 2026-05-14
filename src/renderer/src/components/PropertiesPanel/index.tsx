@@ -87,7 +87,7 @@ export function PropertiesPanel(): JSX.Element {
           type="button"
           onClick={handleCheckForUpdates}
           title="Check for updates"
-          className="text-gray-600 hover:text-gray-300 cursor-pointer underline underline-offset-2"
+          className="text-gray-600 underline cursor-pointer hover:text-gray-300 underline-offset-2"
         >
           Check for updates
         </button>
@@ -106,11 +106,11 @@ export function PropertiesPanel(): JSX.Element {
   }
 
   return (
-    <div data-tour="properties-panel" className="flex relative items-stretch h-14 border-t shrink-0 border-surface-border bg-surface-panel">
+    <div data-tour="properties-panel" className="flex relative items-stretch pr-32 h-14 border-t shrink-0 border-surface-border bg-surface-panel">
       {/* Colour strip */}
       <div className="w-1 shrink-0" style={{ background: track.color }} />
 
-      <div className="flex overflow-x-auto flex-grow gap-5 items-center px-4 w-full min-w-0">
+      <div className="flex overflow-x-auto flex-shrink gap-5 items-center px-4 w-full min-w-0">
         {/* File name */}
         <div className="flex flex-col flex-1 gap-0.5 min-w-0">
           <label className="text-[10px] text-gray-500 uppercase tracking-wider">File</label>

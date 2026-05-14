@@ -14,7 +14,7 @@ export function MiniWaveform({ peaks, color, duration, trimStart, trimEnd, gain 
 
   useEffect(() => {
     const canvas = canvasRef.current
-    if (!canvas || peaks.length === 0 || duration <= 0) return
+    if (!canvas || peaks.length < 2 || duration <= 0) return
 
     // Most browsers cap canvas width at 32767 physical px. If the clip is very
     // wide we cap the buffer and let CSS stretch it — still a clear overview.
@@ -34,23 +34,32 @@ export function MiniWaveform({ peaks, color, duration, trimStart, trimEnd, gain 
       const ctx = canvas.getContext('2d')
       if (!ctx) return
 
-      // Drawing coordinates in effective CSS pixels (may be < cssW when capped)
       const effectiveCssW = physW / dpr
       ctx.scale(dpr, dpr)
 
-      const startIdx = Math.floor((trimStart / duration) * peaks.length)
-      const endIdx = Math.ceil(((duration - trimEnd) / duration) * peaks.length)
-      const visible = peaks.slice(Math.max(0, startIdx), Math.min(peaks.length, endIdx))
-      if (visible.length === 0) return
+      // peaks is flat interleaved [min0, max0, min1, max1, ...]
+      const pairCount = peaks.length >> 1
+      const startPair = Math.max(0, Math.floor((trimStart / duration) * pairCount))
+      const endPair = Math.min(pairCount, Math.ceil(((duration - trimEnd) / duration) * pairCount))
+      const visibleCount = endPair - startPair
+      if (visibleCount <= 0) return
 
       ctx.clearRect(0, 0, effectiveCssW, cssH)
       ctx.fillStyle = color + 'aa'
 
-      const barW = effectiveCssW / visible.length
+      const barW = effectiveCssW / visibleCount
+      const drawW = Math.max(0.5, barW - 0.25)
       const scale = Math.min(2, Math.max(0, gain))
-      for (let i = 0; i < visible.length; i++) {
-        const h = Math.max(1, visible[i] * cssH * scale)
-        ctx.fillRect(i * barW, (cssH - h) / 2, Math.max(0.5, barW - 0.25), h)
+      const half = cssH / 2
+
+      for (let i = 0; i < visibleCount; i++) {
+        const idx = (startPair + i) * 2
+        const mn = peaks[idx] * scale
+        const mx = peaks[idx + 1] * scale
+        const top = half - mx * half
+        const bot = half - mn * half
+        const h = Math.max(1, bot - top)
+        ctx.fillRect(i * barW, Math.min(top, half - 0.5), drawW, h)
       }
     }
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.8.1
+
+- **Sharper waveforms** — Waveform extraction now reads at 48 kHz (was 8 kHz) and renders a true two-sided min/max envelope. Fade-ins and quiet passages no longer look quantized into blocky steps. Memory stays bounded regardless of clip length thanks to a streaming bucket extractor.
+- **File → Rebuild Waveforms** — New menu item clears every cached waveform in the session and re-extracts at the current zoom. Useful after the resolution upgrade above, or any time a waveform looks wrong.
+- **File → Export Waveform Data…** — Dump the cached peak data for every clip (with file metadata) to a JSON file for troubleshooting. One file, easy to share.
+
 ## v0.8.0
 
 - **Markers removed** — Markers have been removed from the timeline. Segments cover the same organisational need with a cleaner workflow; use segments to label and divide your session.

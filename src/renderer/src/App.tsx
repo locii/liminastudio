@@ -282,6 +282,71 @@ export default function App(): JSX.Element {
     } catch (e) { toast(`Export failed: ${e}`, 'error') }
   }, [loadSnapshot, markClean, toast])
 
+  const handleRebuildWaveforms = useCallback(async () => {
+    const { clips } = useSessionStore.getState()
+    const uniquePaths = [...new Set(clips.map((c) => c.filePath))]
+    if (uniquePaths.length === 0) { toast('No clips to rebuild', 'info'); return }
+
+    for (const filePath of uniquePaths) {
+      setWaveform(filePath, { peaks: [], loading: true })
+    }
+    toast(`Rebuilding ${uniquePaths.length} waveform${uniquePaths.length !== 1 ? 's' : ''}…`, 'info')
+
+    const zoom = useTransportStore.getState().zoom
+    let done = 0
+    await Promise.all(
+      uniquePaths.map(async (filePath) => {
+        const dur = useSessionStore.getState().clips.find((c) => c.filePath === filePath)?.duration ?? 300
+        try {
+          const peaks = await window.electronAPI.getWaveformPeaks(filePath, peaksForClip(dur, zoom))
+          setWaveform(filePath, { peaks, loading: false })
+        } catch {
+          setWaveform(filePath, { peaks: [], loading: false })
+        }
+        done++
+      })
+    )
+    toast(`Rebuilt ${done} waveform${done !== 1 ? 's' : ''}`, 'success')
+  }, [setWaveform, toast])
+
+  const handleExportWaveformData = useCallback(async () => {
+    const { clips, waveforms, sessionLabel } = useSessionStore.getState()
+    const byPath = new Map<string, { filePath: string; fileName: string; duration: number; clipIds: string[] }>()
+    for (const c of clips) {
+      const existing = byPath.get(c.filePath)
+      if (existing) existing.clipIds.push(c.id)
+      else byPath.set(c.filePath, { filePath: c.filePath, fileName: c.fileName, duration: c.duration, clipIds: [c.id] })
+    }
+    const entries = [...byPath.values()].map((info) => {
+      const wf = waveforms[info.filePath]
+      const peaks = wf?.peaks ?? []
+      return {
+        filePath: info.filePath,
+        fileName: info.fileName,
+        duration: info.duration,
+        clipIds: info.clipIds,
+        format: 'interleaved-min-max',
+        numPairs: peaks.length >> 1,
+        loaded: !wf?.loading && peaks.length > 0,
+        peaks,
+      }
+    })
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      sessionLabel,
+      app: 'Limina Studio',
+      sampleRate: 48000,
+      entries,
+    }
+    const defaultName = `${(sessionLabel || 'session').replace(/[^\w.-]+/g, '_')}-waveforms.json`
+    try {
+      const saved = await window.electronAPI.exportWaveformData(JSON.stringify(payload, null, 2), defaultName)
+      if (saved) toast(`Exported waveform data to ${saved.split('/').pop()}`, 'success')
+    } catch (e) {
+      toast(`Export failed: ${e}`, 'error')
+    }
+  }, [toast])
+
   const handleAddTrack = useCallback(async () => {
     const files = await window.electronAPI.openAudioFiles()
     for (const file of files) {
@@ -496,9 +561,11 @@ export default function App(): JSX.Element {
       window.electronAPI.onMenu('menu:redo', () => redo()),
       window.electronAPI.onMenu('menu:addTrack', () => handleAddTrack()),
       window.electronAPI.onMenu('menu:deleteClip', () => { if (selectedClipId) removeClip(selectedClipId) }),
+      window.electronAPI.onMenu('menu:rebuildWaveforms', () => handleRebuildWaveforms()),
+      window.electronAPI.onMenu('menu:exportWaveformData', () => handleExportWaveformData()),
     ]
     return () => unsubs.forEach((u) => u())
-  }, [saveSession, openSession, openRecentSession, handleCollect, handleExportZip, undo, redo, handleAddTrack, selectedClipId, removeClip])
+  }, [saveSession, openSession, openRecentSession, handleCollect, handleExportZip, undo, redo, handleAddTrack, selectedClipId, removeClip, handleRebuildWaveforms, handleExportWaveformData])
 
   return (
     <div className="flex flex-col h-full text-gray-200 bg-surface-base">

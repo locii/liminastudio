@@ -91,7 +91,7 @@ export function BottomTransport(): JSX.Element {
         onClick={handlePlayStop}
         disabled={disabled}
         title={playing ? 'Stop (Space)' : 'Play (Space)'}
-        className={`flex items-center justify-center w-9 h-9 rounded-md transition-colors mx-1 ${
+        className={`flex items-center justify-center w-9 h-9 rounded-full transition-colors mx-1 ${
           disabled
             ? 'text-gray-600 cursor-not-allowed bg-surface-hover'
             : playing
@@ -126,7 +126,7 @@ export function BottomTransport(): JSX.Element {
       </TransportBtn>
 
       {/* Master volume — absolutely positioned so it doesn't offset the centered buttons */}
-      <div className="absolute right-4 flex items-center gap-2">
+      <div className="flex absolute right-4 gap-2 items-center">
         <span className="text-[9px] font-bold tracking-widest uppercase shrink-0 text-accent/70">Master</span>
         <input
           type="range"
@@ -138,7 +138,7 @@ export function BottomTransport(): JSX.Element {
             audioEngine.setMasterVolume(v)
           }}
           onMouseUp={(e) => (e.target as HTMLInputElement).blur()}
-          className="w-24 h-1 appearance-none rounded-full cursor-ew-resize bg-surface-hover accent-accent"
+          className="w-24 h-1 rounded-full appearance-none cursor-ew-resize bg-surface-hover accent-accent"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           title={`Master volume: ${Math.round(masterVolume * 100)}%`}
         />

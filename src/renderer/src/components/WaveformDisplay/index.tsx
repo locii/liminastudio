@@ -35,8 +35,15 @@ export function WaveformDisplay({ peaks, duration, color, playhead, loading }: P
       barRadius: 1,
     })
 
-    // Load waveform from peaks only — no audio decoding in renderer
-    ws.load('', [Float32Array.from(peaks)], duration)
+    // peaks is interleaved [min, max] pairs — collapse to max-abs for WaveSurfer.
+    const pairCount = peaks.length >> 1
+    const maxAbs = new Float32Array(pairCount)
+    for (let i = 0; i < pairCount; i++) {
+      const mn = Math.abs(peaks[i * 2])
+      const mx = Math.abs(peaks[i * 2 + 1])
+      maxAbs[i] = mn > mx ? mn : mx
+    }
+    ws.load('', [maxAbs], duration)
 
     wsRef.current = ws
 

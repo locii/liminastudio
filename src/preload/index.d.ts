@@ -41,9 +41,11 @@ export interface ElectronAPI {
   readAudioFile: (filePath: string) => Promise<Uint8Array>
   getAudioMetadata: (filePath: string) => Promise<AudioFileMeta | null>
 
-  // Waveform
+  // Waveform — peaks are flat interleaved [min, max] pairs in normalized [-1, 1].
+  // Returned length is numPeaks * 2.
   getWaveformPeaks: (filePath: string, numPeaks?: number) => Promise<number[]>
   getPeakLevel: (filePath: string) => Promise<number>
+  exportWaveformData: (json: string, defaultName?: string) => Promise<string | null>
 
   // Session
   saveSession: (sessionJson: string) => Promise<string | null>
