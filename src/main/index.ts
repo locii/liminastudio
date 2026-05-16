@@ -1,6 +1,6 @@
 import { app, shell, BrowserWindow, Menu, ipcMain } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
-import { join, extname } from 'path'
+import { join, extname, basename } from 'path'
 import { promises as fs, createReadStream, readFileSync } from 'fs'
 import { createServer } from 'http'
 import type { AddressInfo } from 'net'
@@ -93,7 +93,7 @@ function startAudioServer(): void {
 import { registerFileHandlers } from './ipc/fileHandlers'
 import { registerAudioHandlers } from './ipc/audioHandlers'
 import { registerFfmpegHandlers } from './ipc/ffmpegHandlers'
-import { registerSessionHandlers } from './ipc/sessionHandlers'
+import { registerSessionHandlers, getRecent } from './ipc/sessionHandlers'
 import { registerPdfHandlers } from './ipc/pdfHandlers'
 
 let mainWindow: BrowserWindow | null = null
@@ -117,7 +117,16 @@ function send(channel: string): void {
   mainWindow?.webContents.send(channel)
 }
 
-function createAppMenu(): void {
+async function createAppMenu(): Promise<void> {
+  const recent = await getRecent()
+  const openRecentSubmenu: MenuItemConstructorOptions[] = recent.length > 0
+    ? recent.map((filePath) => ({
+        label: basename(filePath, '.limina'),
+        toolTip: filePath,
+        click: (): void => mainWindow?.webContents.send('menu:openRecent', filePath),
+      }))
+    : [{ label: 'No Recent Sessions', enabled: false }]
+
   const template: MenuItemConstructorOptions[] = [
     {
       label: 'File',
@@ -126,6 +135,7 @@ function createAppMenu(): void {
         { type: 'separator' },
         { label: 'Save Session', accelerator: 'CmdOrCtrl+S', click: () => send('menu:save') },
         { label: 'Open Session…', accelerator: 'CmdOrCtrl+O', click: () => send('menu:open') },
+        { label: 'Open Recent', submenu: openRecentSubmenu },
         { label: 'Import Session from Other App…', click: () => send('menu:import') },
         { type: 'separator' },
         { label: 'Export Mix…', accelerator: 'CmdOrCtrl+E', click: () => send('menu:export') },
@@ -302,7 +312,7 @@ app.whenReady().then(() => {
   registerFileHandlers()
   registerAudioHandlers()
   registerFfmpegHandlers(getMainWindow)
-  registerSessionHandlers()
+  registerSessionHandlers(() => createAppMenu().catch(console.error))
   registerPdfHandlers(getMainWindow)
 
   // Menu:addTrack sends renderer the same signal as button click
@@ -310,7 +320,7 @@ app.whenReady().then(() => {
     mainWindow?.setTitle(title)
   })
 
-  createAppMenu()
+  createAppMenu().catch(console.error)
   createWindow()
 
   app.on('activate', () => {

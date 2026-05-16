@@ -48,7 +48,7 @@ export interface ElectronAPI {
   exportWaveformData: (json: string, defaultName?: string) => Promise<string | null>
 
   // Session
-  saveSession: (sessionJson: string) => Promise<string | null>
+  saveSession: (sessionJson: string, defaultName?: string) => Promise<string | null>
   saveSessionAs: (sessionJson: string, filePath: string) => Promise<void>
   loadSession: () => Promise<{ json: string; filePath: string } | null>
   getRecentSessions: () => Promise<string[]>
@@ -80,6 +80,7 @@ export interface ElectronAPI {
 
   // Menu events (main → renderer)
   onMenu: (channel: string, callback: () => void) => () => void
+  onMenuOpenRecent: (callback: (filePath: string) => void) => () => void
 
   // Auto-updater
   quitAndInstall: () => void

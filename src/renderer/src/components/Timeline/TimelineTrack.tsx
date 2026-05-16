@@ -8,6 +8,10 @@ import type { Clip, Track } from '../../types'
 
 const TARGET_PEAK_LINEAR = Math.pow(10, -0.5 / 20)
 
+function peaksForClip(duration: number, zoom: number): number {
+  return Math.min(Math.ceil(duration * zoom), 50_000)
+}
+
 interface Props {
   track: Track
   tracks: Track[]
@@ -60,13 +64,13 @@ export function TimelineTrack({ track, tracks, clips, zoom, height, onHeightChan
       duration: meta.duration,
       startTime: atTime,
     })
-    window.electronAPI.getWaveformPeaks(filePath, 1200)
+    window.electronAPI.getWaveformPeaks(filePath, peaksForClip(meta.duration, zoom))
       .then((peaks) => setWaveform(filePath, { peaks, loading: false }))
       .catch(console.error)
     window.electronAPI.getPeakLevel(filePath)
       .then((peak) => { if (peak > 0) updateClip(clip.id, { volume: Math.min(2, TARGET_PEAK_LINEAR / peak) }) })
       .catch(() => {})
-  }, [track.id, addClipToTrack, updateClip, setWaveform, toast])
+  }, [track.id, zoom, addClipToTrack, updateClip, setWaveform, toast])
 
   const handleBgClick = useCallback((e: React.MouseEvent) => {
     if (e.target === e.currentTarget) selectClip(null)
@@ -86,8 +90,8 @@ export function TimelineTrack({ track, tracks, clips, zoom, height, onHeightChan
     const audioExts = new Set(['mp3', 'wav', 'flac', 'aiff', 'aif', 'm4a', 'ogg'])
 
     const rect = e.currentTarget.getBoundingClientRect()
-    const scrollLeft = e.currentTarget.closest('.overflow-auto')?.scrollLeft ?? 0
-    const dropTime = Math.max(0, Math.round(((e.clientX - rect.left + scrollLeft) / zoom) * 100) / 100)
+    // rect.left already shifts with scroll, so e.clientX - rect.left = correct content pixel position
+    const dropTime = Math.max(0, Math.round(((e.clientX - rect.left) / zoom) * 100) / 100)
 
     // Native file drop (from Finder)
     const nativeFiles = Array.from(e.dataTransfer.files).filter((f) => {
@@ -129,7 +133,7 @@ export function TimelineTrack({ track, tracks, clips, zoom, height, onHeightChan
         startTime: offsetTime,
       })
       window.electronAPI
-        .getWaveformPeaks(filePath, 1200)
+        .getWaveformPeaks(filePath, peaksForClip(meta.duration, zoom))
         .then((peaks) => setWaveform(filePath, { peaks, loading: false }))
         .catch(console.error)
       window.electronAPI
@@ -150,8 +154,7 @@ export function TimelineTrack({ track, tracks, clips, zoom, height, onHeightChan
         if ((e.target as HTMLElement).closest('[data-clip]')) return
         e.preventDefault()
         const rect = e.currentTarget.getBoundingClientRect()
-        const scrollLeft = e.currentTarget.closest('.overflow-auto')?.scrollLeft ?? 0
-        const atTime = Math.max(0, Math.round(((e.clientX - rect.left + scrollLeft) / zoom) * 100) / 100)
+        const atTime = Math.max(0, Math.round(((e.clientX - rect.left) / zoom) * 100) / 100)
         setCtxMenu({ x: e.clientX, y: e.clientY, atTime })
       }}
     >

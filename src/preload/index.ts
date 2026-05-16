@@ -15,7 +15,7 @@ const api: ElectronAPI = {
     ipcRenderer.invoke('audio:exportWaveformData', json, defaultName),
 
   // Session
-  saveSession: (sessionJson) => ipcRenderer.invoke('session:save', sessionJson),
+  saveSession: (sessionJson, defaultName) => ipcRenderer.invoke('session:save', sessionJson, defaultName),
   saveSessionAs: (sessionJson, filePath) => ipcRenderer.invoke('session:saveAs', sessionJson, filePath),
   loadSession: () => ipcRenderer.invoke('session:load'),
   getRecentSessions: () => ipcRenderer.invoke('session:getRecent'),
@@ -55,6 +55,11 @@ const api: ElectronAPI = {
     const handler = (): void => callback()
     ipcRenderer.on(channel, handler)
     return () => ipcRenderer.removeListener(channel, handler)
+  },
+  onMenuOpenRecent: (callback) => {
+    const handler = (_: unknown, filePath: string): void => callback(filePath)
+    ipcRenderer.on('menu:openRecent', handler)
+    return () => ipcRenderer.removeListener('menu:openRecent', handler)
   },
 
   // Auto-updater

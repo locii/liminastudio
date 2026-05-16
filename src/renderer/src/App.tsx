@@ -121,7 +121,7 @@ export default function App(): JSX.Element {
     const json = JSON.stringify({ tracks, clips, segments, segmentLaneHeight, segmentLaneCollapsed, sessionLabel, trackHeights, laneHeights }, null, 2)
     let filePath = currentFilePath
     if (!filePath) {
-      filePath = await window.electronAPI.saveSession(json)
+      filePath = await window.electronAPI.saveSession(json, sessionLabel || undefined)
       if (!filePath) return
       setCurrentFile(filePath)
     } else {
@@ -511,27 +511,34 @@ export default function App(): JSX.Element {
     })
   }, [openRecentSession])
 
+  useEffect(() => {
+    return window.electronAPI.onMenuOpenRecent((filePath) => {
+      openRecentSession(filePath)
+    })
+  }, [openRecentSession])
+
   // Re-fetch waveform peaks when zoom changes so density stays 1 peak/pixel for all clips
   useEffect(() => {
+    let prevZoom = useTransportStore.getState().zoom
     let timer: ReturnType<typeof setTimeout>
-    return useTransportStore.subscribe(
-      (s) => s.zoom,
-      (zoom) => {
-        clearTimeout(timer)
-        timer = setTimeout(() => {
-          const { clips } = useSessionStore.getState()
-          const seen = new Set<string>()
-          for (const clip of clips) {
-            if (seen.has(clip.filePath)) continue
-            seen.add(clip.filePath)
-            window.electronAPI
-              .getWaveformPeaks(clip.filePath, peaksForClip(clip.duration, zoom))
-              .then((peaks) => setWaveform(clip.filePath, { peaks, loading: false }))
-              .catch(() => {})
-          }
-        }, 300)
-      }
-    )
+    return useTransportStore.subscribe((state) => {
+      if (state.zoom === prevZoom) return
+      prevZoom = state.zoom
+      const zoom = state.zoom
+      clearTimeout(timer)
+      timer = setTimeout(() => {
+        const { clips } = useSessionStore.getState()
+        const seen = new Set<string>()
+        for (const clip of clips) {
+          if (seen.has(clip.filePath)) continue
+          seen.add(clip.filePath)
+          window.electronAPI
+            .getWaveformPeaks(clip.filePath, peaksForClip(clip.duration, zoom))
+            .then((peaks) => setWaveform(clip.filePath, { peaks, loading: false }))
+            .catch(() => {})
+        }
+      }, 300)
+    })
   }, [setWaveform])
 
   useEffect(() => {
@@ -588,6 +595,9 @@ export default function App(): JSX.Element {
         onSaveAs={saveSessionAs}
         onCollect={handleCollect}
         onExportZip={handleExportZip}
+        onRebuildWaveforms={handleRebuildWaveforms}
+        onExportWaveformData={handleExportWaveformData}
+        onOpenRecent={openRecentSession}
         onFitToWindow={() => fitToWindowRef.current?.()}
         onFocusPlayhead={() => focusPlayheadRef.current?.()}
         onZoomIn={() => zoomByRef.current?.(1.25)}

@@ -24,6 +24,9 @@ interface Props {
   onSaveAs: () => void
   onCollect: () => void
   onExportZip: () => void
+  onRebuildWaveforms: () => void
+  onExportWaveformData: () => void
+  onOpenRecent: (filePath: string) => void
   onFitToWindow: () => void
   onFocusPlayhead: () => void
   onZoomIn: () => void
@@ -34,6 +37,7 @@ interface Props {
 export function TransportBar({
   onAddTrack, onAddEmptyTrack, onOpenExportWav, onOpenExportMp3, onExportPDF,
   onNewSession, onOpen, onImport, onSave, onSaveAs, onCollect, onExportZip,
+  onRebuildWaveforms, onExportWaveformData, onOpenRecent,
   onFitToWindow, onFocusPlayhead, onZoomIn, onZoomOut, onStartTour,
 }: Props): JSX.Element {
   const playing = useTransportStore((s) => s.playing)
@@ -52,8 +56,15 @@ export function TransportBar({
   const [fileMenuOpen, setFileMenuOpen] = useState(false)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [recentOpen, setRecentOpen] = useState(false)
+  const [recentSessions, setRecentSessions] = useState<string[]>([])
   const fileMenuRef = useRef<HTMLDivElement>(null)
   const addMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!fileMenuOpen) { setRecentOpen(false); return }
+    window.electronAPI.getRecentSessions().then(setRecentSessions).catch(() => {})
+  }, [fileMenuOpen])
 
   const totalDuration = clips.length
     ? Math.max(...clips.map((c) => c.startTime + c.duration - c.trimStart - c.trimEnd))
@@ -157,10 +168,45 @@ export function TransportBar({
           </button>
 
           {fileMenuOpen && (
-            <div className="absolute left-0 top-full z-[200] py-1 mt-1 w-52 text-xs rounded border shadow-xl bg-surface-panel border-surface-border">
+            <div className="absolute left-0 top-full z-[200] py-1 mt-1 w-56 text-xs rounded border shadow-xl bg-surface-panel border-surface-border">
               <MenuItem label="New Session" onClick={menuAction(onNewSession)} />
               <Divider />
               <MenuItem label="Open Session…" shortcut="⌘O" onClick={menuAction(onOpen)} />
+
+              {/* Open Recent flyout */}
+              <div
+                className="relative"
+                onMouseEnter={() => setRecentOpen(true)}
+                onMouseLeave={() => setRecentOpen(false)}
+              >
+                <button className="w-full flex items-center justify-between px-3 py-1.5 text-gray-300 hover:bg-surface-hover transition-colors text-left">
+                  <span>Open Recent</span>
+                  <svg className="w-3 h-3 text-gray-500" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 2l4 3-4 3" />
+                  </svg>
+                </button>
+                {recentOpen && (
+                  <div className="absolute left-full top-0 z-[210] py-1 w-64 rounded border shadow-xl bg-surface-panel border-surface-border">
+                    {recentSessions.length > 0 ? recentSessions.map((filePath) => {
+                      const name = filePath.split(/[\\/]/).pop()?.replace(/\.limina$/, '') ?? filePath
+                      return (
+                        <button
+                          key={filePath}
+                          title={filePath}
+                          onClick={menuAction(() => onOpenRecent(filePath))}
+                          className="w-full flex flex-col px-3 py-1.5 text-left hover:bg-surface-hover transition-colors"
+                        >
+                          <span className="text-gray-300 truncate">{name}</span>
+                          <span className="text-gray-600 text-[10px] truncate">{filePath}</span>
+                        </button>
+                      )
+                    }) : (
+                      <div className="px-3 py-1.5 text-gray-600">No recent sessions</div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <MenuItem label="Import session" onClick={menuAction(onImport)} />
               <Divider />
               <MenuItem
@@ -178,6 +224,9 @@ export function TransportBar({
               <Divider />
               <MenuItem label="Collect Project Files" onClick={menuAction(onCollect)} />
               <MenuItem label="Export Project as ZIP…" onClick={menuAction(onExportZip)} />
+              <Divider />
+              <MenuItem label="Rebuild Waveforms" onClick={menuAction(onRebuildWaveforms)} />
+              <MenuItem label="Export Waveform Data…" onClick={menuAction(onExportWaveformData)} />
             </div>
           )}
         </div>

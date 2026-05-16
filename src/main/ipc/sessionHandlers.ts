@@ -11,7 +11,7 @@ const RECENT_FILE = join(app.getPath('userData'), 'recent-sessions.json')
 const AUTOSAVE_FILE = join(app.getPath('userData'), 'autosave.limina')
 const MAX_RECENT = 5
 
-async function getRecent(): Promise<string[]> {
+export async function getRecent(): Promise<string[]> {
   try {
     const data = await fs.readFile(RECENT_FILE, 'utf-8')
     return JSON.parse(data)
@@ -26,22 +26,25 @@ async function addRecent(filePath: string): Promise<void> {
   await fs.writeFile(RECENT_FILE, JSON.stringify(updated), 'utf-8')
 }
 
-export function registerSessionHandlers(): void {
-  ipcMain.handle('session:save', async (_, sessionJson: string): Promise<string | null> => {
+export function registerSessionHandlers(rebuildMenu?: () => void): void {
+  ipcMain.handle('session:save', async (_, sessionJson: string, defaultName?: string): Promise<string | null> => {
+    const safeName = defaultName ? defaultName.replace(/[/\\:*?"<>|]/g, '_') : 'session'
     const result = await dialog.showSaveDialog({
       title: 'Save Session',
-      defaultPath: 'session.limina',
+      defaultPath: `${safeName}.limina`,
       filters: [{ name: 'Limina Session', extensions: ['limina'] }],
     })
     if (result.canceled || !result.filePath) return null
     await fs.writeFile(result.filePath, sessionJson, 'utf-8')
     await addRecent(result.filePath)
+    rebuildMenu?.()
     return result.filePath
   })
 
   ipcMain.handle('session:saveAs', async (_, sessionJson: string, filePath: string): Promise<void> => {
     await fs.writeFile(filePath, sessionJson, 'utf-8')
     await addRecent(filePath)
+    rebuildMenu?.()
   })
 
   ipcMain.handle('session:load', async (): Promise<{ json: string; filePath: string } | null> => {
@@ -54,6 +57,7 @@ export function registerSessionHandlers(): void {
     const filePath = result.filePaths[0]
     const json = await fs.readFile(filePath, 'utf-8')
     await addRecent(filePath)
+    rebuildMenu?.()
     return { json, filePath }
   })
 
@@ -65,6 +69,7 @@ export function registerSessionHandlers(): void {
       try {
         const json = await fs.readFile(filePath, 'utf-8')
         await addRecent(filePath)
+        rebuildMenu?.()
         return { json, filePath }
       } catch {
         return null // file missing
