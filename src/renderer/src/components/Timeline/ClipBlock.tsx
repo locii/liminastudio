@@ -128,9 +128,9 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
         window.removeEventListener('mouseup', onUp)
         setDragState({ clipId: null, targetTrackId: null, width: 0, left: 0 })
 
-        // Only open the properties panel on a deliberate click, not after a drag
+        // Only update visual selection on a deliberate click — properties open via the icon button
         if (!hasDragged && !e.shiftKey) {
-          selectClip(clip.id)
+          useSessionStore.setState({ selectedClipIds: [clip.id] })
         }
 
         // Cross-track drop only for single-clip drags
@@ -291,10 +291,9 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
     (e: React.MouseEvent) => {
       e.preventDefault()
       e.stopPropagation()
-      selectClip(clip.id)
       setCtxMenu({ x: e.clientX, y: e.clientY })
     },
-    [clip.id, selectClip]
+    []
   )
 
   return (
@@ -310,6 +309,7 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
         borderLeft: `2px solid ${track.color}`,
       }}
       onMouseDown={onMouseDown}
+      onDoubleClick={(e) => { e.stopPropagation(); selectClip(clip.id) }}
       onContextMenu={onContextMenu}
     >
       {/* Waveform canvas */}
@@ -324,18 +324,42 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
         />
       )}
 
-      {/* Filename — sticky: stays visible when clip's left edge scrolls off-screen */}
+      {/* Label row — sticky: stays visible when clip's left edge scrolls off-screen */}
       <div
-        className="absolute top-1 text-[10px] text-white/60 truncate z-10 pointer-events-none"
+        className="absolute top-1 flex items-center gap-1 z-10 overflow-hidden rounded-full px-2 py-1.5 bg-black/40 hover:bg-black/60 cursor-pointer transition-colors group/label"
         style={{ left: `${labelLeft}px`, maxWidth: `${labelMaxWidth}px` }}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => { e.stopPropagation(); selectClip(clip.id) }}
       >
-        {clip.fileName}
+        {clip.mfbAlbumImageUrl && (
+          <img
+            src={clip.mfbAlbumImageUrl}
+            alt=""
+            className="object-cover w-4 h-4 rounded opacity-75 transition-opacity shrink-0 group-hover/label:opacity-100"
+          />
+        )}
+        <span className="text-[10px] text-white/60 truncate min-w-0 group-hover/label:text-white/90 transition-colors">
+          {clip.fileName}
+        </span>
+        <span
+          title="Clip properties"
+          className="text-[10px] text-white/60 truncate min-w-0 group-hover/label:text-white/90 transition-colors"
+        >
+          <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <line x1="1" y1="3" x2="11" y2="3" />
+            <line x1="1" y1="6" x2="11" y2="6" />
+            <line x1="1" y1="9" x2="11" y2="9" />
+            <circle cx="3.5" cy="3" r="1.2" fill="currentColor" stroke="none" />
+            <circle cx="7.5" cy="6" r="1.2" fill="currentColor" stroke="none" />
+            <circle cx="5" cy="9" r="1.2" fill="currentColor" stroke="none" />
+          </svg>
+        </span>
       </div>
 
       {/* Fade-in curve */}
       {clip.fadeIn > 0 && (
         <div
-          className="absolute top-0 left-0 bottom-0 pointer-events-none z-10"
+          className="absolute top-0 bottom-0 left-0 z-10 pointer-events-none"
           style={{ width: `${Math.min(clip.fadeIn * zoom, width * 0.5)}px` }}
         >
           <FadeCurve direction="in" color={track.color} curve={clip.fadeInCurve} />
@@ -345,7 +369,7 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
       {/* Fade-out curve */}
       {clip.fadeOut > 0 && (
         <div
-          className="absolute top-0 right-0 bottom-0 pointer-events-none z-10"
+          className="absolute top-0 right-0 bottom-0 z-10 pointer-events-none"
           style={{ width: `${Math.min(clip.fadeOut * zoom, width * 0.5)}px` }}
         >
           <FadeCurve direction="out" color={track.color} curve={clip.fadeOutCurve} />
@@ -386,20 +410,20 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
 
       {/* Left trim handle */}
       <div
-        className="absolute top-1/2 left-0 bottom-0 w-2 z-20 cursor-ew-resize group/trim"
+        className="absolute bottom-0 left-0 top-1/2 z-20 w-2 cursor-ew-resize group/trim"
         onMouseDown={onTrimStartMouseDown}
       >
-        <div className="absolute inset-0 group-hover/trim:bg-white/10 transition-colors" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-px h-2/5 bg-white/25 group-hover/trim:bg-white/60 rounded-full transition-colors" />
+        <div className="absolute inset-0 transition-colors group-hover/trim:bg-white/10" />
+        <div className="absolute top-1/2 left-1/2 w-px h-2/5 rounded-full transition-colors -translate-x-1/2 -translate-y-1/2 bg-white/25 group-hover/trim:bg-white/60" />
       </div>
 
       {/* Right trim handle */}
       <div
-        className="absolute top-1/2 right-0 bottom-0 w-2 z-20 cursor-ew-resize group/trimr"
+        className="absolute right-0 bottom-0 top-1/2 z-20 w-2 cursor-ew-resize group/trimr"
         onMouseDown={onTrimEndMouseDown}
       >
-        <div className="absolute inset-0 group-hover/trimr:bg-white/10 transition-colors" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-px h-2/5 bg-white/25 group-hover/trimr:bg-white/60 rounded-full transition-colors" />
+        <div className="absolute inset-0 transition-colors group-hover/trimr:bg-white/10" />
+        <div className="absolute top-1/2 left-1/2 w-px h-2/5 rounded-full transition-colors -translate-x-1/2 -translate-y-1/2 bg-white/25 group-hover/trimr:bg-white/60" />
       </div>
 
     </div>
@@ -407,7 +431,7 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
     {ctxMenu && createPortal(
       <div
         style={{ position: 'fixed', top: ctxMenu.y, left: ctxMenu.x, zIndex: 9999 }}
-        className="bg-surface-panel border border-surface-border rounded shadow-xl py-1 min-w-36 text-xs"
+        className="py-1 text-xs rounded border shadow-xl bg-surface-panel border-surface-border min-w-36"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <button

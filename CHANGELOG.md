@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.9.0
+
+- **Clip interaction redesign** — Double-click or click the label pill to open clip properties. Album art thumbnail shown in the clip label when available. Properties no longer open on single click, eliminating accidental panel opens during drag.
+
 ## v0.8.5
 
 - **Transport bar height fix** — The bottom transport bar was too short after the v0.8.3 redesign. Height restored to 66px with a larger album art thumbnail.

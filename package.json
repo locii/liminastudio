@@ -1,6 +1,6 @@
 {
   "name": "limina-mix",
-  "version": "0.8.5",
+  "version": "0.9.0",
   "description": "Limina Mix — multitrack audio editor for breathwork facilitators",
   "author": "Anthony Olsen",
   "main": "out/main/index.js",
