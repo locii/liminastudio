@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.9.1
+## v0.9.2
 
 - **Library re-linking improvements** — Clips that couldn't be matched to Limina Library (because files were moved, duplicates removed, or exported as WAV) now auto-link on session load. Matching is extension-agnostic, handles apostrophe stripping, and recognises WAV exports with sample-rate suffixes (e.g. `48000 1`).
 - **Re-link from Library** — New right-click option on any clip to manually trigger a Library lookup.
