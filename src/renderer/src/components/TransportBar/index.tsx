@@ -263,7 +263,7 @@ export function TransportBar({
                 </button>
               ) : downloading ? (
                 <div className="px-3 py-1.5 text-gray-500 flex items-center gap-2">
-                  <svg className="animate-spin h-3 w-3 text-accent shrink-0" viewBox="0 0 24 24" fill="none">
+                  <svg className="w-3 h-3 animate-spin text-accent shrink-0" viewBox="0 0 24 24" fill="none">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
                   </svg>
@@ -324,7 +324,7 @@ export function TransportBar({
             placeholder="Session name"
           />
         ) : (
-          <span className="flex items-center gap-1 shrink-0">
+          <span className="flex gap-1 items-center shrink-0">
             <span
               className="text-xs text-gray-400 truncate cursor-default select-none"
               onDoubleClick={startRename}
@@ -334,7 +334,7 @@ export function TransportBar({
             </span>
             <button
               onClick={startRename}
-              className="text-gray-600 hover:text-gray-300 transition-colors"
+              className="text-gray-600 transition-colors hover:text-gray-300"
               title="Rename session"
             >
               <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

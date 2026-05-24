@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.8.5
+
+- **Transport bar height fix** — The bottom transport bar was too short after the v0.8.3 redesign. Height restored to 66px with a larger album art thumbnail.
+
 ## v0.8.4
 
 - **Audio playback fix** — Suppressed a spurious console error that appeared when seeking or stopping while a clip was loading. The `AbortError` from interrupting a pending `play()` call is expected behaviour and no longer logged.

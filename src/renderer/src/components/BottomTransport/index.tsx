@@ -97,22 +97,22 @@ export function BottomTransport(): JSX.Element {
       <div
         data-tour="bottom-transport"
         className="flex items-center px-4 border-t shrink-0 bg-surface-panel border-surface-border"
-        style={{ height: 44 }}
+        style={{ height: 66 }}
       >
         {/* Left — thumbnail + time */}
-        <div className="flex flex-1 items-center gap-3 min-w-0">
+        <div className="flex flex-1 gap-3 items-center min-w-0">
           <button
             type="button"
             onClick={() => currentClip && setOverlayOpen(true)}
             title={currentClip ? 'Expand now playing' : undefined}
             disabled={!currentClip}
-            className="flex items-center justify-center w-7 h-7 rounded overflow-hidden shrink-0 transition-opacity disabled:opacity-0"
+            className="flex overflow-hidden justify-center items-center w-10 h-10 rounded transition-opacity shrink-0 disabled:opacity-0"
             style={noDrag}
           >
             {currentClip?.mfbAlbumImageUrl ? (
-              <img src={currentClip.mfbAlbumImageUrl} alt="" className="w-full h-full object-cover" />
+              <img src={currentClip.mfbAlbumImageUrl} alt="" className="object-cover w-full h-full" />
             ) : (
-              <div className="flex w-full h-full items-center justify-center bg-surface-hover rounded">
+              <div className="flex justify-center items-center w-full h-full rounded bg-surface-hover">
                 <svg className="w-3.5 h-3.5 text-gray-600" viewBox="0 0 12 12" fill="currentColor">
                   <path d="M5 2v6.55A2 2 0 1 0 7 10V4h2V2H5z" />
                 </svg>
@@ -120,7 +120,7 @@ export function BottomTransport(): JSX.Element {
             )}
           </button>
 
-          <span className="font-mono text-xs tabular-nums text-gray-400 select-none pointer-events-none whitespace-nowrap">
+          <span className="font-mono text-xs tabular-nums text-gray-400 whitespace-nowrap pointer-events-none select-none">
             {formatTime(playhead)}
             <span className="mx-1 text-gray-600">/</span>
             <span className="text-gray-500">{formatTime(endTime)}</span>
@@ -128,7 +128,7 @@ export function BottomTransport(): JSX.Element {
         </div>
 
         {/* Centre — transport buttons */}
-        <div className="flex items-center gap-1 shrink-0" style={noDrag}>
+        <div className="flex gap-1 items-center shrink-0" style={noDrag}>
           <TransportBtn onClick={handleStart} disabled={disabled} title="Go to start">
             <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
               <rect x="2" y="2" width="2" height="12" rx="0.5" />
@@ -181,8 +181,8 @@ export function BottomTransport(): JSX.Element {
         </div>
 
         {/* Right — master volume + version/update */}
-        <div className="flex flex-1 items-center justify-end gap-3" style={noDrag}>
-          <div className="flex items-center gap-2">
+        <div className="flex flex-1 gap-3 justify-end items-center" style={noDrag}>
+          <div className="flex gap-2 items-center">
             <span className="text-[9px] font-bold tracking-widest uppercase shrink-0 text-accent/70">Master</span>
             <input
               type="range"
