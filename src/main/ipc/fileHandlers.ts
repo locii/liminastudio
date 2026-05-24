@@ -110,8 +110,35 @@ export function registerFileHandlers(): void {
         console.log('[library:lookup] reading', foundPath)
         const catalogue = JSON.parse(raw!) as { files?: Array<Record<string, unknown>> }
         console.log('[library:lookup] catalogue has', catalogue.files?.length ?? 0, 'files, looking for:', filePath)
-        const match = catalogue.files?.find((f) => f['filePath'] === filePath)
-        if (!match) { console.log('[library:lookup] no path match'); return null }
+        let match = catalogue.files?.find((f) => f['filePath'] === filePath)
+        if (!match) {
+          const name = basename(filePath)
+          const stripExt = (s: string): string => s.replace(/\.[^.]+$/, '')
+          const normalize = (s: string): string =>
+            s.normalize('NFC').toLowerCase().replace(/['''\u02bc]/g, '').replace(/\s+/g, ' ').trim()
+          const nameStem = normalize(stripExt(name))
+
+          // 1. Exact stem match - extension-agnostic, apostrophe-normalized
+          match = catalogue.files?.find((f) => {
+            const catStem = normalize(stripExt(f['fileName'] as string))
+            return catStem === nameStem
+          })
+
+          // 2. Prefix match - handles extra suffixes added during WAV export (e.g. "48000 1")
+          if (!match) {
+            match = catalogue.files?.find((f) => {
+              const catStem = normalize(stripExt(f['fileName'] as string))
+              return nameStem.startsWith(catStem + ' ') || catStem.startsWith(nameStem + ' ')
+            })
+          }
+
+          if (match) {
+            console.log('[library:lookup] matched by filename:', name)
+          } else {
+            console.log('[library:lookup] no match for:', name)
+            return null
+          }
+        }
         if (!match['mfbTrackId']) { console.log('[library:lookup] found file but no mfbTrackId'); return null }
         console.log('[library:lookup] matched:', match['trackTitle'], 'id:', match['mfbTrackId'])
         return {

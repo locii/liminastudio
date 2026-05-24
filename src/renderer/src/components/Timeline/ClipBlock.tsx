@@ -326,7 +326,7 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
 
       {/* Label row — sticky: stays visible when clip's left edge scrolls off-screen */}
       <div
-        className="absolute top-1 flex items-center gap-1 z-10 overflow-hidden rounded-full px-2 py-1.5 bg-black/40 hover:bg-black/60 cursor-pointer transition-colors group/label"
+        className="absolute top-1 flex items-center gap-1 z-100 overflow-hidden rounded-full px-2 py-1.5 bg-black/40 hover:bg-black/60 cursor-pointer transition-colors group/label"
         style={{ left: `${labelLeft}px`, maxWidth: `${labelMaxWidth}px` }}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => { e.stopPropagation(); selectClip(clip.id) }}
@@ -465,6 +465,27 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
           }}
         >
           Rebuild Waveform
+        </button>
+        <button
+          className="w-full text-left px-3 py-1.5 hover:bg-surface-hover text-gray-300 transition-colors"
+          onClick={() => {
+            window.electronAPI
+              .lookupLibraryFile(clip.filePath)
+              .then((data) => {
+                if (data) updateClip(clip.id, {
+                  mfbTrackId: data.mfbTrackId,
+                  mfbTrackTitle: data.trackTitle || undefined,
+                  mfbArtist: data.artist || undefined,
+                  mfbAlbumImageUrl: data.albumImageUrl ?? undefined,
+                  mfbTags: data.tags,
+                  mfbBreathworkPhase: data.breathworkPhase,
+                })
+              })
+              .catch(() => {})
+            setCtxMenu(null)
+          }}
+        >
+          Re-link from Library
         </button>
         <div className="my-1 h-px bg-surface-border" />
         <button

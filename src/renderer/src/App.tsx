@@ -174,12 +174,27 @@ export default function App(): JSX.Element {
           .getWaveformPeaks(clip.filePath, peaksForClip(clip.duration, useTransportStore.getState().zoom))
           .then((peaks) => setWaveform(clip.filePath, { peaks, loading: false }))
           .catch(() => setWaveform(clip.filePath, { peaks: [], loading: false }))
+        if (clip.mfbTrackId == null) {
+          window.electronAPI
+            .lookupLibraryFile(clip.filePath)
+            .then((libData) => {
+              if (libData) updateClip(clip.id, {
+                mfbTrackId: libData.mfbTrackId,
+                mfbTrackTitle: libData.trackTitle || undefined,
+                mfbArtist: libData.artist || undefined,
+                mfbAlbumImageUrl: libData.albumImageUrl ?? undefined,
+                mfbTags: libData.tags,
+                mfbBreathworkPhase: libData.breathworkPhase,
+              })
+            })
+            .catch(() => {})
+        }
       }
     }
     window.electronAPI.clearAutosave(result.filePath)
     toast('Session loaded', 'success')
     triggerWarmup()
-  }, [loadSnapshot, setCurrentFile, setWaveform, toast, triggerWarmup])
+  }, [loadSnapshot, setCurrentFile, setWaveform, updateClip, toast, triggerWarmup])
 
   const openSession = useCallback(async () => {
     const result = await window.electronAPI.loadSession()
@@ -213,6 +228,21 @@ export default function App(): JSX.Element {
             .getWaveformPeaks(clip.filePath, peaksForClip(clip.duration, useTransportStore.getState().zoom))
             .then((peaks) => setWaveform(clip.filePath, { peaks, loading: false }))
             .catch(() => setWaveform(clip.filePath, { peaks: [], loading: false }))
+          if (clip.mfbTrackId == null) {
+            window.electronAPI
+              .lookupLibraryFile(clip.filePath)
+              .then((libData) => {
+                if (libData) updateClip(clip.id, {
+                  mfbTrackId: libData.mfbTrackId,
+                  mfbTrackTitle: libData.trackTitle || undefined,
+                  mfbArtist: libData.artist || undefined,
+                  mfbAlbumImageUrl: libData.albumImageUrl ?? undefined,
+                  mfbTags: libData.tags,
+                  mfbBreathworkPhase: libData.breathworkPhase,
+                })
+              })
+              .catch(() => {})
+          }
         }
       }
       await window.electronAPI.clearAutosave()
@@ -222,7 +252,7 @@ export default function App(): JSX.Element {
       toast(`Restore failed: ${e}`, 'error')
       setAutosave(null)
     }
-  }, [autosave, loadSnapshot, setWaveform, toast])
+  }, [autosave, loadSnapshot, setWaveform, updateClip, toast])
 
   const handleDiscardAutosave = useCallback(async () => {
     await window.electronAPI.clearAutosave()
