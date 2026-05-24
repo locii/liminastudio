@@ -1,7 +1,16 @@
-import { ipcMain, dialog, shell, clipboard } from 'electron'
+import { ipcMain, dialog, shell, clipboard, app } from 'electron'
 import { promises as fs } from 'fs'
-import { basename } from 'path'
+import { basename, join } from 'path'
 import * as mm from 'music-metadata'
+
+export interface LibraryMfbData {
+  mfbTrackId: number
+  trackTitle: string
+  artist: string
+  albumImageUrl: string | null
+  tags: string[]
+  breathworkPhase: string | null
+}
 
 export interface AudioFileMeta {
   path: string
@@ -82,6 +91,41 @@ export function registerFileHandlers(): void {
       })
       if (result.canceled || result.filePaths.length === 0) return null
       return result.filePaths[0]
+    }
+  )
+
+  ipcMain.handle(
+    'library:lookupFile',
+    async (_, filePath: string): Promise<LibraryMfbData | null> => {
+      try {
+        // Dev uses npm package name, production uses productName
+        const appData = app.getPath('appData')
+        let raw: string | null = null
+        let foundPath = ''
+        for (const dir of ['Limina Library', 'limina-library']) {
+          const p = join(appData, dir, 'catalogue.json')
+          try { raw = await fs.readFile(p, 'utf-8'); foundPath = p; break } catch { /* try next */ }
+        }
+        if (!raw) { console.log('[library:lookup] catalogue.json not found in', appData); return null }
+        console.log('[library:lookup] reading', foundPath)
+        const catalogue = JSON.parse(raw!) as { files?: Array<Record<string, unknown>> }
+        console.log('[library:lookup] catalogue has', catalogue.files?.length ?? 0, 'files, looking for:', filePath)
+        const match = catalogue.files?.find((f) => f['filePath'] === filePath)
+        if (!match) { console.log('[library:lookup] no path match'); return null }
+        if (!match['mfbTrackId']) { console.log('[library:lookup] found file but no mfbTrackId'); return null }
+        console.log('[library:lookup] matched:', match['trackTitle'], 'id:', match['mfbTrackId'])
+        return {
+          mfbTrackId: match['mfbTrackId'] as number,
+          trackTitle: (match['trackTitle'] as string) || '',
+          artist: (match['artist'] as string) || '',
+          albumImageUrl: (match['albumImageUrl'] as string | null) ?? null,
+          tags: (match['tags'] as string[]) ?? [],
+          breathworkPhase: (match['breathworkPhase'] as string | null) ?? null,
+        }
+      } catch (err) {
+        console.log('[library:lookup] error:', err)
+        return null
+      }
     }
   )
 

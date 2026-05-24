@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useSessionStore } from '../../store/sessionStore'
 import { useTransportStore } from '../../store/transportStore'
+import { useUpdaterStore } from '../../store/updaterStore'
 import { audioEngine } from '../../audio/audioEngine'
 import { KeyboardShortcuts } from '../KeyboardShortcuts'
 function formatTime(seconds: number): string {
@@ -52,6 +53,28 @@ export function TransportBar({
   const currentFilePath = useSessionStore((s) => s.currentFilePath)
   const sessionLabel = useSessionStore((s) => s.sessionLabel)
   const setSessionLabel = useSessionStore((s) => s.setSessionLabel)
+
+  const { downloading, downloadPercent, readyVersion } = useUpdaterStore()
+  const [checkState, setCheckState] = useState<'idle' | 'checking' | 'upToDate'>('idle')
+  const handleCheckForUpdates = useCallback(async (): Promise<void> => {
+    if (checkState !== 'idle') return
+    setCheckState('checking')
+    try {
+      const [result] = await Promise.all([
+        window.electronAPI.checkForUpdates(),
+        new Promise<void>((r) => setTimeout(r, 800)),
+      ])
+      if (!result.hasUpdate) {
+        setCheckState('upToDate')
+        setTimeout(() => setCheckState('idle'), 3000)
+      } else {
+        setCheckState('idle')
+      }
+    } catch {
+      setCheckState('upToDate')
+      setTimeout(() => setCheckState('idle'), 3000)
+    }
+  }, [checkState])
 
   const [fileMenuOpen, setFileMenuOpen] = useState(false)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
@@ -162,6 +185,9 @@ export function TransportBar({
             }`}
           >
             File
+            {readyVersion && !fileMenuOpen && (
+              <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" title={`Update v${readyVersion} ready`} />
+            )}
             <svg className="w-2.5 h-2.5 opacity-40" viewBox="0 0 10 6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M1 1l4 4 4-4" />
             </svg>
@@ -227,6 +253,30 @@ export function TransportBar({
               <Divider />
               <MenuItem label="Rebuild Waveforms" onClick={menuAction(onRebuildWaveforms)} />
               <MenuItem label="Export Waveform Data…" onClick={menuAction(onExportWaveformData)} />
+              <Divider />
+              {readyVersion ? (
+                <button
+                  onClick={() => { setFileMenuOpen(false); window.electronAPI.quitAndInstall() }}
+                  className="w-full flex items-center justify-between px-3 py-1.5 text-accent hover:bg-surface-hover transition-colors text-left"
+                >
+                  <span>Restart to Install v{readyVersion}</span>
+                </button>
+              ) : downloading ? (
+                <div className="px-3 py-1.5 text-gray-500 flex items-center gap-2">
+                  <svg className="animate-spin h-3 w-3 text-accent shrink-0" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                  </svg>
+                  <span>Downloading update{downloadPercent > 0 ? ` ${downloadPercent}%` : '…'}</span>
+                </div>
+              ) : checkState === 'checking' ? (
+                <div className="px-3 py-1.5 text-gray-500">Checking…</div>
+              ) : checkState === 'upToDate' ? (
+                <div className="px-3 py-1.5 text-gray-500">Up to date</div>
+              ) : (
+                <MenuItem label="Check for Updates" onClick={menuAction(handleCheckForUpdates)} />
+              )}
+              <div className="px-3 py-1 text-[10px] text-gray-700">v{__APP_VERSION__}</div>
             </div>
           )}
         </div>

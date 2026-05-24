@@ -108,9 +108,9 @@ const STEPS: TourStep[] = [
   {
     id: 'properties',
     title: 'Clip Properties',
-    body: 'Select any clip to open the properties panel. Edit start time, fade in/out durations, clip volume, and which track the clip belongs to. Changes are reflected immediately in playback.',
+    body: 'Click any clip to open the properties panel. Adjust clip gain, sync Music for Breathwork metadata, and view track info. The panel slides in from the right and closes with the × button.',
     target: '[data-tour="properties-panel"]',
-    placement: 'top',
+    placement: 'left',
     spotlight: true,
   },
   {

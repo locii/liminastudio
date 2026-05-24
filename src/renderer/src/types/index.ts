@@ -31,6 +31,13 @@ export interface Clip {
   crossfadeOut: number
   volume: number
   automation: AutomationPoint[]
+  // MFB catalogue metadata — written by Limina Library at export time, refreshable via sync
+  mfbTrackId?: number | null
+  mfbTrackTitle?: string | null
+  mfbArtist?: string | null
+  mfbAlbumImageUrl?: string | null
+  mfbTags?: string[]
+  mfbBreathworkPhase?: string | null
 }
 
 export interface Segment {

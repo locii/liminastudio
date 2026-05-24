@@ -43,6 +43,7 @@ const api: ElectronAPI = {
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   readClipboardPath: () => ipcRenderer.invoke('shell:readClipboardPath'),
 
+  lookupLibraryFile: (filePath) => ipcRenderer.invoke('library:lookupFile', filePath),
   importFile: () => ipcRenderer.invoke('file:importFile'),
   pickFolder: () => ipcRenderer.invoke('file:pickFolder'),
   copyFiles: (srcPaths, destFolder) => ipcRenderer.invoke('file:copyFiles', srcPaths, destFolder),
@@ -83,6 +84,13 @@ const api: ElectronAPI = {
     ipcRenderer.on('session:fileOpened', handler)
     return () => ipcRenderer.removeListener('session:fileOpened', handler)
   },
+
+  // MFB account
+  mfbLogin: (email, password) => ipcRenderer.invoke('mfb:login', email, password),
+  mfbLogout: () => ipcRenderer.invoke('mfb:logout'),
+  mfbMe: () => ipcRenderer.invoke('mfb:me'),
+  mfbSearchTracks: (query) => ipcRenderer.invoke('mfb:searchTracks', query),
+  mfbFetchTrack: (id) => ipcRenderer.invoke('mfb:fetchTrack', id),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', api)

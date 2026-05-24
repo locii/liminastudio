@@ -309,6 +309,33 @@ export default function App(): JSX.Element {
     toast(`Rebuilt ${done} waveform${done !== 1 ? 's' : ''}`, 'success')
   }, [setWaveform, toast])
 
+  const handleSyncAllMfb = useCallback(async () => {
+    const { clips } = useSessionStore.getState()
+    const matched = clips.filter((c) => c.mfbTrackId != null)
+    if (matched.length === 0) { toast('No MFB-linked clips to sync', 'info'); return }
+    toast(`Syncing MFB data for ${matched.length} clip${matched.length !== 1 ? 's' : ''}…`, 'info')
+    let done = 0
+    for (const clip of matched) {
+      try {
+        const data = await window.electronAPI.mfbFetchTrack(clip.mfbTrackId!) as Record<string, unknown>
+        const allTags = ([] as { name: string }[]).concat(
+          ...Object.values((data['tags'] as Record<string, { name: string }[]>) ?? {})
+        )
+        const tags = allTags.map((t) => t.name)
+        const hourTag = (data['tags'] as Record<string, { name: string; slug?: { en?: string } }[]>)?.['Hour']?.[0]
+        updateClip(clip.id, {
+          mfbTrackTitle: (data['title'] as string) ?? undefined,
+          mfbArtist: (data['artist'] as string) ?? undefined,
+          mfbAlbumImageUrl: (data['album'] as Record<string, unknown>)?.['image_url'] as string ?? undefined,
+          mfbTags: tags,
+          mfbBreathworkPhase: hourTag?.slug?.en ?? null,
+        })
+        done++
+      } catch { /* skip per-clip failures */ }
+    }
+    toast(`Synced MFB data for ${done} clip${done !== 1 ? 's' : ''}`, 'success')
+  }, [toast, updateClip])
+
   const handleExportWaveformData = useCallback(async () => {
     const { clips, waveforms, sessionLabel } = useSessionStore.getState()
     const byPath = new Map<string, { filePath: string; fileName: string; duration: number; clipIds: string[] }>()
@@ -365,6 +392,19 @@ export default function App(): JSX.Element {
       window.electronAPI
         .getPeakLevel(file.path)
         .then((peak) => { if (peak > 0) updateClip(clip.id, { volume: Math.min(2, TARGET_PEAK_LINEAR / peak) }) })
+        .catch(() => {})
+      window.electronAPI
+        .lookupLibraryFile(file.path)
+        .then((data) => {
+          if (data) updateClip(clip.id, {
+            mfbTrackId: data.mfbTrackId,
+            mfbTrackTitle: data.trackTitle || undefined,
+            mfbArtist: data.artist || undefined,
+            mfbAlbumImageUrl: data.albumImageUrl ?? undefined,
+            mfbTags: data.tags,
+            mfbBreathworkPhase: data.breathworkPhase,
+          })
+        })
         .catch(() => {})
     }
   }, [addTrackWithClip, setWaveform, updateClip])
@@ -570,9 +610,10 @@ export default function App(): JSX.Element {
       window.electronAPI.onMenu('menu:deleteClip', () => { if (selectedClipId) removeClip(selectedClipId) }),
       window.electronAPI.onMenu('menu:rebuildWaveforms', () => handleRebuildWaveforms()),
       window.electronAPI.onMenu('menu:exportWaveformData', () => handleExportWaveformData()),
+      window.electronAPI.onMenu('menu:syncMfbData', () => handleSyncAllMfb()),
     ]
     return () => unsubs.forEach((u) => u())
-  }, [saveSession, openSession, openRecentSession, handleCollect, handleExportZip, undo, redo, handleAddTrack, selectedClipId, removeClip, handleRebuildWaveforms, handleExportWaveformData])
+  }, [saveSession, openSession, openRecentSession, handleCollect, handleExportZip, undo, redo, handleAddTrack, selectedClipId, removeClip, handleRebuildWaveforms, handleExportWaveformData, handleSyncAllMfb])
 
   return (
     <div className="flex flex-col h-full text-gray-200 bg-surface-base">
@@ -625,7 +666,7 @@ export default function App(): JSX.Element {
       )}
 
       {/* Timeline + master channel side-by-side, or welcome screen */}
-      <div className="flex overflow-hidden flex-1 min-h-0">
+      <div className="relative flex overflow-hidden flex-1 min-h-0">
         {tracks.length === 0 ? (
           <WelcomeScreen
             onOpen={openSession}
@@ -637,12 +678,12 @@ export default function App(): JSX.Element {
           <>
             <Timeline fitToWindowRef={fitToWindowRef} scrollToPlayheadRef={scrollToPlayheadRef} focusPlayheadRef={focusPlayheadRef} zoomByRef={zoomByRef} />
             <MasterChannel />
+            <PropertiesPanel />
           </>
         )}
       </div>
 
       {tracks.length > 0 && <BottomTransport />}
-      {tracks.length > 0 && <PropertiesPanel />}
 
       <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} defaultFormat={exportFormat} />
       <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} onImport={handleImport} />

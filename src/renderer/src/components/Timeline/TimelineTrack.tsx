@@ -140,6 +140,19 @@ export function TimelineTrack({ track, tracks, clips, zoom, height, onHeightChan
         .getPeakLevel(filePath)
         .then((peak) => { if (peak > 0) updateClip(clip.id, { volume: Math.min(2, TARGET_PEAK_LINEAR / peak) }) })
         .catch(() => {})
+      window.electronAPI
+        .lookupLibraryFile(filePath)
+        .then((data) => {
+          if (data) updateClip(clip.id, {
+            mfbTrackId: data.mfbTrackId,
+            mfbTrackTitle: data.trackTitle || undefined,
+            mfbArtist: data.artist || undefined,
+            mfbAlbumImageUrl: data.albumImageUrl ?? undefined,
+            mfbTags: data.tags,
+            mfbBreathworkPhase: data.breathworkPhase,
+          })
+        })
+        .catch(() => {})
       offsetTime += meta.duration
     }
   }, [track.id, zoom, addClipToTrack, updateClip, setWaveform, toast])

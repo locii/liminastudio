@@ -95,6 +95,7 @@ import { registerAudioHandlers } from './ipc/audioHandlers'
 import { registerFfmpegHandlers } from './ipc/ffmpegHandlers'
 import { registerSessionHandlers, getRecent } from './ipc/sessionHandlers'
 import { registerPdfHandlers } from './ipc/pdfHandlers'
+import { registerMfbHandlers } from './ipc/mfbHandlers'
 
 let mainWindow: BrowserWindow | null = null
 let pendingOpenFile: string | null = null
@@ -145,6 +146,7 @@ async function createAppMenu(): Promise<void> {
         { type: 'separator' },
         { label: 'Rebuild Waveforms', click: () => send('menu:rebuildWaveforms') },
         { label: 'Export Waveform Data…', click: () => send('menu:exportWaveformData') },
+        { label: 'Sync MFB Data', click: () => send('menu:syncMfbData') },
         { type: 'separator' },
         { role: 'quit' },
       ],
@@ -314,6 +316,7 @@ app.whenReady().then(() => {
   registerFfmpegHandlers(getMainWindow)
   registerSessionHandlers(() => createAppMenu().catch(console.error))
   registerPdfHandlers(getMainWindow)
+  registerMfbHandlers()
 
   // Menu:addTrack sends renderer the same signal as button click
   ipcMain.on('window:setTitle', (_, title: string) => {

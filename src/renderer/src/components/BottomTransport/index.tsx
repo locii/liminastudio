@@ -1,8 +1,10 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import type React from 'react'
 import { useSessionStore } from '../../store/sessionStore'
 import { useTransportStore } from '../../store/transportStore'
+import { useUpdaterStore } from '../../store/updaterStore'
 import { audioEngine } from '../../audio/audioEngine'
+import { NowPlayingOverlay } from '../NowPlayingOverlay'
 import type { Clip } from '../../types'
 
 function formatTime(seconds: number): string {
@@ -26,12 +28,39 @@ function getEndTime(clips: Clip[]): number {
 export function BottomTransport(): JSX.Element {
   const playing = useTransportStore((s) => s.playing)
   const playhead = useTransportStore((s) => s.playhead)
-  const looping = useTransportStore((s) => s.looping)
-  const toggleLoop = useTransportStore((s) => s.toggleLoop)
   const masterVolume = useTransportStore((s) => s.masterVolume)
   const setMasterVolume = useTransportStore((s) => s.setMasterVolume)
   const tracks = useSessionStore((s) => s.tracks)
   const clips = useSessionStore((s) => s.clips)
+  const [overlayOpen, setOverlayOpen] = useState(false)
+
+  const { downloading, downloadPercent, readyVersion } = useUpdaterStore()
+  const [checkState, setCheckState] = useState<'idle' | 'checking' | 'upToDate'>('idle')
+
+  const handleCheckForUpdates = useCallback(async (): Promise<void> => {
+    if (checkState !== 'idle') return
+    setCheckState('checking')
+    try {
+      const [result] = await Promise.all([
+        window.electronAPI.checkForUpdates(),
+        new Promise<void>((r) => setTimeout(r, 800)),
+      ])
+      if (!result.hasUpdate) {
+        setCheckState('upToDate')
+        setTimeout(() => setCheckState('idle'), 3000)
+      } else {
+        setCheckState('idle')
+      }
+    } catch {
+      setCheckState('upToDate')
+      setTimeout(() => setCheckState('idle'), 3000)
+    }
+  }, [checkState])
+
+  const currentClip = clips.find((c) => {
+    const end = c.startTime + c.duration - c.trimStart - c.trimEnd
+    return playhead >= c.startTime && playhead < end
+  }) ?? null
 
   const handlePlayStop = useCallback(async () => {
     if (playing) audioEngine.pause()
@@ -48,7 +77,6 @@ export function BottomTransport(): JSX.Element {
   const handlePrev = useCallback(() => {
     const boundaries = getSortedBoundaries(clips)
     const current = audioEngine.getCurrentPosition()
-    // Find the last boundary strictly before current position (with 0.2s tolerance)
     const prev = [...boundaries].reverse().find((t) => t < current - 0.2)
     audioEngine.seek(prev ?? 0)
   }, [clips])
@@ -61,92 +89,162 @@ export function BottomTransport(): JSX.Element {
   }, [clips])
 
   const disabled = tracks.length === 0
+  const noDrag = { WebkitAppRegion: 'no-drag' } as React.CSSProperties
+  const endTime = getEndTime(clips)
 
   return (
-    <div data-tour="bottom-transport" className="flex relative gap-1 justify-center items-center px-4 py-2 border-t shrink-0 bg-surface-panel border-surface-border">
-      {/* Time display — absolutely positioned so it doesn't offset the centered buttons */}
-      <span className="absolute left-4 font-mono text-xs tabular-nums text-gray-400 pointer-events-none select-none">
-        {formatTime(playhead)}
-        <span className="mx-1 text-gray-600">/</span>
-        <span className="text-gray-500">{formatTime(getEndTime(clips))}</span>
-      </span>
-
-      {/* Start */}
-      <TransportBtn onClick={handleStart} disabled={disabled} title="Go to start">
-        <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-          <rect x="2" y="2" width="2" height="12" rx="0.5" />
-          <path d="M6 8l7-4.5v9L6 8z" />
-        </svg>
-      </TransportBtn>
-
-      {/* Prev clip */}
-      <TransportBtn onClick={handlePrev} disabled={disabled} title="Previous clip">
-        <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-          <path d="M11 3L4 8l7 5V3z" />
-        </svg>
-      </TransportBtn>
-
-      {/* Play / Stop */}
-      <button
-        onClick={handlePlayStop}
-        disabled={disabled}
-        title={playing ? 'Stop (Space)' : 'Play (Space)'}
-        className={`flex items-center justify-center w-9 h-9 rounded-full transition-colors mx-1 ${
-          disabled
-            ? 'text-gray-600 cursor-not-allowed bg-surface-hover'
-            : playing
-            ? 'text-white bg-accent hover:bg-accent/80'
-            : 'text-gray-300 bg-surface-hover hover:bg-accent hover:text-white'
-        }`}
+    <>
+      <div
+        data-tour="bottom-transport"
+        className="flex items-center px-4 border-t shrink-0 bg-surface-panel border-surface-border"
+        style={{ height: 44 }}
       >
-        {playing ? (
-          <svg className="w-3.5 h-3.5" viewBox="0 0 12 12" fill="currentColor">
-            <rect x="1.5" y="1.5" width="9" height="9" rx="1" />
-          </svg>
-        ) : (
-          <svg className="w-3.5 h-3.5" viewBox="0 0 12 12" fill="currentColor">
-            <path d="M2.5 2l8 4-8 4V2z" />
-          </svg>
-        )}
-      </button>
+        {/* Left — thumbnail + time */}
+        <div className="flex flex-1 items-center gap-3 min-w-0">
+          <button
+            type="button"
+            onClick={() => currentClip && setOverlayOpen(true)}
+            title={currentClip ? 'Expand now playing' : undefined}
+            disabled={!currentClip}
+            className="flex items-center justify-center w-7 h-7 rounded overflow-hidden shrink-0 transition-opacity disabled:opacity-0"
+            style={noDrag}
+          >
+            {currentClip?.mfbAlbumImageUrl ? (
+              <img src={currentClip.mfbAlbumImageUrl} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <div className="flex w-full h-full items-center justify-center bg-surface-hover rounded">
+                <svg className="w-3.5 h-3.5 text-gray-600" viewBox="0 0 12 12" fill="currentColor">
+                  <path d="M5 2v6.55A2 2 0 1 0 7 10V4h2V2H5z" />
+                </svg>
+              </div>
+            )}
+          </button>
 
-      {/* Next clip */}
-      <TransportBtn onClick={handleNext} disabled={disabled} title="Next clip">
-        <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-          <path d="M5 3l7 5-7 5V3z" />
-        </svg>
-      </TransportBtn>
+          <span className="font-mono text-xs tabular-nums text-gray-400 select-none pointer-events-none whitespace-nowrap">
+            {formatTime(playhead)}
+            <span className="mx-1 text-gray-600">/</span>
+            <span className="text-gray-500">{formatTime(endTime)}</span>
+          </span>
+        </div>
 
-      {/* End */}
-      <TransportBtn onClick={handleEnd} disabled={disabled} title="Go to end">
-        <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-          <rect x="12" y="2" width="2" height="12" rx="0.5" />
-          <path d="M10 8L3 3.5v9L10 8z" />
-        </svg>
-      </TransportBtn>
+        {/* Centre — transport buttons */}
+        <div className="flex items-center gap-1 shrink-0" style={noDrag}>
+          <TransportBtn onClick={handleStart} disabled={disabled} title="Go to start">
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+              <rect x="2" y="2" width="2" height="12" rx="0.5" />
+              <path d="M6 8l7-4.5v9L6 8z" />
+            </svg>
+          </TransportBtn>
 
-      {/* Master volume — absolutely positioned so it doesn't offset the centered buttons */}
-      <div className="flex absolute right-4 gap-2 items-center">
-        <span className="text-[9px] font-bold tracking-widest uppercase shrink-0 text-accent/70">Master</span>
-        <input
-          type="range"
-          min={0} max={1} step={0.01}
-          value={masterVolume}
-          onChange={(e) => {
-            const v = parseFloat(e.target.value)
-            setMasterVolume(v)
-            audioEngine.setMasterVolume(v)
-          }}
-          onMouseUp={(e) => (e.target as HTMLInputElement).blur()}
-          className="w-24 h-1 rounded-full appearance-none cursor-ew-resize bg-surface-hover accent-accent"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-          title={`Master volume: ${Math.round(masterVolume * 100)}%`}
-        />
-        <span className="text-[9px] font-mono tabular-nums text-gray-400 w-7 text-right shrink-0">
-          {Math.round(masterVolume * 100)}
-        </span>
+          <TransportBtn onClick={handlePrev} disabled={disabled} title="Previous clip">
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+              <path d="M11 3L4 8l7 5V3z" />
+            </svg>
+          </TransportBtn>
+
+          <button
+            onClick={handlePlayStop}
+            disabled={disabled}
+            title={playing ? 'Stop (Space)' : 'Play (Space)'}
+            className={`flex items-center justify-center w-9 h-9 mx-1 rounded-full transition-colors ${
+              disabled
+                ? 'text-gray-600 cursor-not-allowed bg-surface-hover'
+                : playing
+                ? 'text-white bg-accent hover:bg-accent/80'
+                : 'text-gray-300 bg-surface-hover hover:bg-accent hover:text-white'
+            }`}
+            style={noDrag}
+          >
+            {playing ? (
+              <svg className="w-3.5 h-3.5" viewBox="0 0 12 12" fill="currentColor">
+                <rect x="1.5" y="1.5" width="9" height="9" rx="1" />
+              </svg>
+            ) : (
+              <svg className="w-3.5 h-3.5" viewBox="0 0 12 12" fill="currentColor">
+                <path d="M2.5 2l8 4-8 4V2z" />
+              </svg>
+            )}
+          </button>
+
+          <TransportBtn onClick={handleNext} disabled={disabled} title="Next clip">
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+              <path d="M5 3l7 5-7 5V3z" />
+            </svg>
+          </TransportBtn>
+
+          <TransportBtn onClick={handleEnd} disabled={disabled} title="Go to end">
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+              <rect x="12" y="2" width="2" height="12" rx="0.5" />
+              <path d="M10 8L3 3.5v9L10 8z" />
+            </svg>
+          </TransportBtn>
+        </div>
+
+        {/* Right — master volume + version/update */}
+        <div className="flex flex-1 items-center justify-end gap-3" style={noDrag}>
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] font-bold tracking-widest uppercase shrink-0 text-accent/70">Master</span>
+            <input
+              type="range"
+              min={0} max={1} step={0.01}
+              value={masterVolume}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value)
+                setMasterVolume(v)
+                audioEngine.setMasterVolume(v)
+              }}
+              onMouseUp={(e) => (e.target as HTMLInputElement).blur()}
+              className="w-24 h-1 rounded-full appearance-none cursor-ew-resize bg-surface-hover accent-accent"
+              title={`Master volume: ${Math.round(masterVolume * 100)}%`}
+            />
+            <span className="text-[9px] font-mono tabular-nums text-gray-400 w-6 text-right shrink-0">
+              {Math.round(masterVolume * 100)}
+            </span>
+          </div>
+
+          <div className="w-px h-4 bg-surface-border shrink-0" />
+
+          {/* Version / update status */}
+          {readyVersion ? (
+            <button
+              type="button"
+              onClick={() => window.electronAPI.quitAndInstall()}
+              className="flex items-center gap-1 text-[10px] text-accent hover:text-accent/80 transition-colors"
+              title={`Install update v${readyVersion} and restart`}
+            >
+              <svg className="w-2.5 h-2.5" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 1v6M2 5l3 3 3-3" />
+                <path d="M1 9h8" />
+              </svg>
+              v{readyVersion}
+            </button>
+          ) : downloading ? (
+            <div className="flex items-center gap-1 text-[10px] text-gray-500">
+              <svg className="animate-spin w-2.5 h-2.5 text-accent shrink-0" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+              </svg>
+              {downloadPercent > 0 ? `${downloadPercent}%` : '…'}
+            </div>
+          ) : checkState === 'checking' ? (
+            <span className="text-[10px] text-gray-600">checking…</span>
+          ) : checkState === 'upToDate' ? (
+            <span className="text-[10px] text-gray-600">up to date</span>
+          ) : (
+            <button
+              type="button"
+              onClick={handleCheckForUpdates}
+              title="Check for updates"
+              className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors tabular-nums"
+            >
+              v{__APP_VERSION__}
+            </button>
+          )}
+        </div>
       </div>
-    </div>
+
+      {overlayOpen && <NowPlayingOverlay onClose={() => setOverlayOpen(false)} />}
+    </>
   )
 }
 

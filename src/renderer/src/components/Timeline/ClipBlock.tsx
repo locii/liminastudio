@@ -63,10 +63,17 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
       if (e.button !== 0) return
       e.stopPropagation()
 
-      // If the clip is already selected and no modifier, keep the multi-selection so
-      // dragging works across all selected clips. Only reset if clicking outside the selection.
-      const alreadySelected = useSessionStore.getState().selectedClipIds.includes(clip.id)
-      if (!alreadySelected || e.shiftKey) selectClip(clip.id, e.shiftKey)
+      // For shift-click multi-select, commit selection immediately.
+      // For plain clicks, only update selectedClipIds (for drag) — selectedClipId (panel)
+      // is set on mouseup so dragging never accidentally opens the properties panel.
+      if (e.shiftKey) {
+        selectClip(clip.id, true)
+      } else {
+        const alreadyInSelection = useSessionStore.getState().selectedClipIds.includes(clip.id)
+        if (!alreadyInSelection) {
+          useSessionStore.setState({ selectedClipIds: [clip.id] })
+        }
+      }
 
       // Capture pre-drag state for a single undo step on release
       const preDragSnap = { tracks: useSessionStore.getState().tracks, clips: useSessionStore.getState().clips }
@@ -86,8 +93,15 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
         startY: e.clientY, startTrackIndex,
       }
 
+      let hasDragged = false
+
       const onMove = (me: MouseEvent): void => {
         if (!dragState.current.active) return
+        if (!hasDragged) {
+          const dx = me.clientX - dragState.current.startX
+          const dy = me.clientY - dragState.current.startY
+          if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasDragged = true
+        }
         // Snap the delta so all clips move together without drifting relative to each other
         const rawDelta = (me.clientX - dragState.current.startX) / zoom
         const snappedDelta = Math.round(rawDelta * 2) / 2
@@ -113,6 +127,11 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
         window.removeEventListener('mousemove', onMove)
         window.removeEventListener('mouseup', onUp)
         setDragState({ clipId: null, targetTrackId: null, width: 0, left: 0 })
+
+        // Only open the properties panel on a deliberate click, not after a drag
+        if (!hasDragged && !e.shiftKey) {
+          selectClip(clip.id)
+        }
 
         // Cross-track drop only for single-clip drags
         if (idsToMove.length === 1) {

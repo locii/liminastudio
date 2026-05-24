@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.8.3
+
+- **Properties panel redesigned** — Clip properties now open as a right-side drawer that slides in when you click a clip, rather than a fixed strip at the bottom. More vertical space means album art, track info, gain controls, and MFB data all have room to breathe. Drag a clip without it opening; only a deliberate click opens the panel.
+- **Library integration** — When a file is added or dragged into Mix, it is automatically looked up against Limina Library's catalogue. If the track has been matched in Library, its MFB title, artist, album art, tags, and breathwork phase are applied to the clip immediately with no extra steps.
+- **Find on MFB** — For clips not in Library, the properties panel now has a "Find on MFB" button. It pre-fills a search from the filename and lets you pick the correct track from results. No login required to search.
+- **Transport bar redesigned** — True three-column layout: time display and album art thumbnail on the left, transport buttons perfectly centred, master volume on the right. The thumbnail is clickable to open the Now Playing overlay.
+- **Version and update status in transport bar** — The version number sits at the bottom right of the transport bar. Click it to check for updates; it shows checking, up to date, download progress, and a restart prompt when an update is ready. Update status is also in File → Check for Updates.
+
+## v0.8.2
+
+- **Open Recent** — File menu now lists recently opened sessions with full path tooltips.
+
 ## v0.8.1
 
 - **Sharper waveforms** — Waveform extraction now reads at 48 kHz (was 8 kHz) and renders a true two-sided min/max envelope. Fade-ins and quiet passages no longer look quantized into blocky steps. Memory stays bounded regardless of clip length thanks to a streaming bucket extractor.

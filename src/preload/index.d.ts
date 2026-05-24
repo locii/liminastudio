@@ -1,3 +1,12 @@
+export interface LibraryMfbData {
+  mfbTrackId: number
+  trackTitle: string
+  artist: string
+  albumImageUrl: string | null
+  tags: string[]
+  breathworkPhase: string | null
+}
+
 export interface AudioFileMeta {
   path: string
   name: string
@@ -71,6 +80,7 @@ export interface ElectronAPI {
   showInFolder: (filePath: string) => Promise<void>
   openExternal: (url: string) => Promise<void>
   readClipboardPath: () => Promise<string | null>
+  lookupLibraryFile: (filePath: string) => Promise<LibraryMfbData | null>
   importFile: () => Promise<{ content: string; filePath: string; ext: string } | null>
   pickFolder: () => Promise<string | null>
   copyFiles: (srcPaths: string[], destFolder: string) => Promise<Record<string, string>>
@@ -91,6 +101,13 @@ export interface ElectronAPI {
 
   // File opened from OS (double-click or shell.openPath from Limina Library)
   onFileOpened: (callback: (filePath: string) => void) => () => void
+
+  // MFB account
+  mfbLogin: (email: string, password: string) => Promise<{ id: number; name: string; email: string }>
+  mfbLogout: () => Promise<void>
+  mfbMe: () => Promise<{ id: number; name: string; email: string } | null>
+  mfbSearchTracks: (query: string) => Promise<{ id: number; title: string; artists: { name: string }[]; album: { title: string } }[]>
+  mfbFetchTrack: (id: number) => Promise<Record<string, unknown>>
 }
 
 declare global {
