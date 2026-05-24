@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.8.4
+
+- **Audio playback fix** — Suppressed a spurious console error that appeared when seeking or stopping while a clip was loading. The `AbortError` from interrupting a pending `play()` call is expected behaviour and no longer logged.
+
 ## v0.8.3
 
 - **Properties panel redesigned** — Clip properties now open as a right-side drawer that slides in when you click a clip, rather than a fixed strip at the bottom. More vertical space means album art, track info, gain controls, and MFB data all have room to breathe. Drag a clip without it opening; only a deliberate click opens the panel.
