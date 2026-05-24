@@ -215,7 +215,7 @@ class AudioEngine {
       // is async — wait for the seeked event so play() starts at the right frame.
       const stopMs = (clipEnd - Math.max(seekPosition, clip.startTime)) * 1000
       const doPlay = (): void => {
-        audio.play().catch(console.error)
+        audio.play().catch((e: Error) => { if (e.name !== 'AbortError') console.error('[audioEngine]', e) })
         if (stopMs > 0) {
           const stopTid = setTimeout(() => { audio.pause() }, stopMs)
           this.pendingTimeouts.push(stopTid)
@@ -238,7 +238,7 @@ class AudioEngine {
       // remaining buffering jitter is absorbed.
       const stopMs = (clipEnd - clip.startTime) * 1000
       const tid = setTimeout(() => {
-        audio.play().catch(console.error)
+        audio.play().catch((e: Error) => { if (e.name !== 'AbortError') console.error('[audioEngine]', e) })
         const stopTid = setTimeout(() => { audio.pause() }, stopMs)
         this.pendingTimeouts.push(stopTid)
       }, Math.max(0, delayMs - 50))
