@@ -165,7 +165,7 @@ function buildFfmpegArgs(
   // Output codec
   const codecArgs: string[] =
     config.format === 'wav'
-      ? ['-c:a', 'pcm_s16le']
+      ? ['-c:a', 'pcm_s24le']
       : ['-c:a', 'libmp3lame', '-b:a', `${config.bitrate ?? 320}k`]
 
   const args = [

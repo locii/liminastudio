@@ -11,6 +11,7 @@ import { ToastContainer } from './components/Toast'
 import { WelcomeScreen } from './components/WelcomeScreen'
 import { AutosaveRestoreModal } from './components/AutosaveRestoreModal'
 import { GuidedTour } from './components/GuidedTour'
+import { WhatsNewModal } from './components/WhatsNewModal'
 import { useSessionStore } from './store/sessionStore'
 import { useTransportStore } from './store/transportStore'
 import { useToastStore } from './store/toastStore'
@@ -34,6 +35,7 @@ export default function App(): JSX.Element {
   const [pdfOpen, setPdfOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [tourOpen, setTourOpen] = useState(false)
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false)
   const [autosave, setAutosave] = useState<{ json: string; savedAt: string } | null>(null)
   const [warmup, setWarmup] = useState<{ done: number; total: number } | null>(null)
   const tracks = useSessionStore((s) => s.tracks)
@@ -77,6 +79,13 @@ export default function App(): JSX.Element {
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // Show What's New modal when the app version has changed since last launch
+  useEffect(() => {
+    const key = 'limina-mix-last-seen-version'
+    const lastSeen = localStorage.getItem(key)
+    if (lastSeen !== __APP_VERSION__) setWhatsNewOpen(true)
   }, [])
 
   // Check for a crash-recovery autosave on first mount
@@ -735,6 +744,14 @@ export default function App(): JSX.Element {
       )}
 
       {tourOpen && <GuidedTour onClose={() => setTourOpen(false)} />}
+
+      <WhatsNewModal
+        open={whatsNewOpen}
+        onClose={() => {
+          localStorage.setItem('limina-mix-last-seen-version', __APP_VERSION__)
+          setWhatsNewOpen(false)
+        }}
+      />
 
       <ToastContainer />
 
