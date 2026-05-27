@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type React from 'react'
 import { useSessionStore } from '../../store/sessionStore'
 import { useTransportStore } from '../../store/transportStore'
@@ -195,17 +195,18 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
     }
   }, [focusPlayheadRef, setZoom])
 
-  // Wire zoom-by-factor callback — zooms around the playhead
+  // Wire zoom-by-factor callback — anchors on the center of the visible viewport
   useEffect(() => {
     if (!zoomByRef) return
     zoomByRef.current = (factor: number) => {
       const el = timelineRef.current
       if (!el) return
-      const pos = useTransportStore.getState().playhead
-      const newZoom = zoomRef.current * factor
+      const currentZoom = zoomRef.current
+      const centerTime = (el.scrollLeft + el.clientWidth / 2) / currentZoom
+      const newZoom = Math.min(2000, Math.max(0.5, currentZoom * factor))
       setZoom(newZoom)
       requestAnimationFrame(() => {
-        el.scrollLeft = Math.max(0, pos * newZoom - el.clientWidth / 2)
+        el.scrollLeft = Math.max(0, centerTime * newZoom - el.clientWidth / 2)
       })
     }
   }, [zoomByRef, setZoom])
@@ -224,6 +225,71 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
     () => [...tracks].sort((a, b) => a.order - b.order),
     [tracks]
   )
+
+  // ── Marquee (rubber-band) selection ─────────────────────────────────────────
+
+  const [marqueeRect, setMarqueeRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
+
+  const onTimelineMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    const scrollEl = timelineRef.current
+    if (!scrollEl) return
+
+    const containerRect = scrollEl.getBoundingClientRect()
+    const startX = e.clientX - containerRect.left + scrollEl.scrollLeft
+    const startY = e.clientY - containerRect.top + scrollEl.scrollTop
+
+    let hasDragged = false
+
+    const onMove = (me: MouseEvent): void => {
+      const curX = me.clientX - containerRect.left + scrollEl.scrollLeft
+      const curY = me.clientY - containerRect.top + scrollEl.scrollTop
+
+      if (!hasDragged) {
+        if (Math.abs(curX - startX) > 4 || Math.abs(curY - startY) > 4) hasDragged = true
+        else return
+      }
+
+      const mr = {
+        x: Math.min(startX, curX),
+        y: Math.min(startY, curY),
+        w: Math.abs(curX - startX),
+        h: Math.abs(curY - startY),
+      }
+      setMarqueeRect(mr)
+
+      // Hit-test clips in real time
+      let trackY = 0
+      const hitIds: string[] = []
+      for (const track of sortedTracks) {
+        const h = getHeight(track.id)
+        const lh = getLaneHeight(track.id)
+        if (mr.y < trackY + h && mr.y + mr.h > trackY) {
+          for (const clip of (clipsByTrack.get(track.id) ?? [])) {
+            const effectiveDuration = clip.duration - clip.trimStart - clip.trimEnd
+            const clipLeft = clip.startTime * zoomRef.current
+            const clipRight = clipLeft + Math.max(4, effectiveDuration * zoomRef.current)
+            if (mr.x < clipRight && mr.x + mr.w > clipLeft) hitIds.push(clip.id)
+          }
+        }
+        trackY += h + lh
+      }
+      useSessionStore.setState({ selectedClipIds: hitIds })
+    }
+
+    const onUp = (): void => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      setMarqueeRect(null)
+      if (!hasDragged) {
+        // Plain click on empty space — deselect all
+        useSessionStore.setState({ selectedClipIds: [], selectedClipId: null })
+      }
+    }
+
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [sortedTracks, getHeight, getLaneHeight, clipsByTrack])
 
   const handleRulerMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -340,8 +406,9 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
         <div
           ref={timelineRef}
           data-tour="timeline"
-          className="flex-1 overflow-auto relative"
+          className="flex-1 overflow-auto relative select-none"
           onScroll={onTimelineScroll}
+          onMouseDown={onTimelineMouseDown}
         >
           <div style={{ width: `${totalWidth}px`, minWidth: '100%', position: 'relative' }}>
             {/* Track rows */}
@@ -358,6 +425,19 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
                 onLaneHeightChange={(h) => handleLaneHeightChange(track.id, h)}
               />
             ))}
+
+            {/* Marquee selection rect */}
+            {marqueeRect && (
+              <div
+                className="absolute pointer-events-none z-40 border border-indigo-400/70 bg-indigo-400/10 rounded-sm"
+                style={{
+                  left: marqueeRect.x,
+                  top: marqueeRect.y,
+                  width: marqueeRect.w,
+                  height: marqueeRect.h,
+                }}
+              />
+            )}
 
             {/* Playhead vertical line in the track area */}
             <div

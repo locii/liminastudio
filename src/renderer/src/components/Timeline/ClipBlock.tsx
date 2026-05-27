@@ -78,13 +78,17 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
       // Capture pre-drag state for a single undo step on release
       const preDragSnap = { tracks: useSessionStore.getState().tracks, clips: useSessionStore.getState().clips }
 
-      // Snapshot start positions of all clips to move (multi or single)
+      // Snapshot start positions and track indices of all clips to move
       const { selectedClipIds: ids, clips: allClips } = useSessionStore.getState()
       const idsToMove = ids.includes(clip.id) ? ids : [clip.id]
       const startTimesMap = new Map<string, number>()
+      const startTrackIndexMap = new Map<string, number>()
       for (const id of idsToMove) {
         const c = allClips.find((x) => x.id === id)
-        if (c) startTimesMap.set(id, c.startTime)
+        if (c) {
+          startTimesMap.set(id, c.startTime)
+          startTrackIndexMap.set(id, tracks.findIndex((t) => t.id === c.trackId))
+        }
       }
 
       const startTrackIndex = tracks.findIndex((t) => t.id === clip.trackId)
@@ -133,14 +137,23 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
           useSessionStore.setState({ selectedClipIds: [clip.id] })
         }
 
-        // Cross-track drop only for single-clip drags
-        if (idsToMove.length === 1) {
-          const deltaY = me.clientY - dragState.current.startY
-          const rawIdx = dragState.current.startTrackIndex + Math.round(deltaY / trackHeight)
-          const targetIdx = Math.max(0, Math.min(rawIdx, tracks.length - 1))
-          const targetTrack = tracks[targetIdx]
-          if (targetTrack && targetTrack.id !== clip.trackId) {
-            updateClipSilent(clip.id, { trackId: targetTrack.id })
+        // Apply cross-track movement to all dragged clips.
+        // Clamp the shared delta so no clip in the group goes out of bounds.
+        const rawTrackDelta = Math.round((me.clientY - dragState.current.startY) / trackHeight)
+        if (rawTrackDelta !== 0) {
+          const startIndices = [...startTrackIndexMap.values()]
+          const maxDelta = tracks.length - 1 - Math.max(...startIndices)
+          const minDelta = -Math.min(...startIndices)
+          const trackDelta = Math.max(minDelta, Math.min(rawTrackDelta, maxDelta))
+          if (trackDelta !== 0) {
+            const latestClips = useSessionStore.getState().clips
+            for (const [id, startIdx] of startTrackIndexMap) {
+              const newTrack = tracks[startIdx + trackDelta]
+              const currentClip = latestClips.find((c) => c.id === id)
+              if (newTrack && currentClip && newTrack.id !== currentClip.trackId) {
+                updateClipSilent(id, { trackId: newTrack.id })
+              }
+            }
           }
         }
         // Commit the entire drag as one undo step
@@ -160,7 +173,7 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
     (e: React.MouseEvent) => {
       if (e.button !== 0) return
       e.stopPropagation()
-      selectClip(clip.id)
+      useSessionStore.setState({ selectedClipIds: [clip.id] })
       const preTrimSnap = { tracks: useSessionStore.getState().tracks, clips: useSessionStore.getState().clips }
       trimState.current = {
         active: true, startX: e.clientX,
@@ -200,7 +213,7 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
     (e: React.MouseEvent) => {
       if (e.button !== 0) return
       e.stopPropagation()
-      selectClip(clip.id)
+      useSessionStore.setState({ selectedClipIds: [clip.id] })
       const preTrimSnap = { tracks: useSessionStore.getState().tracks, clips: useSessionStore.getState().clips }
       trimState.current = {
         active: true, startX: e.clientX,
@@ -236,7 +249,7 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
     (e: React.MouseEvent, type: 'in' | 'out') => {
       if (e.button !== 0) return
       e.stopPropagation()
-      selectClip(clip.id)
+      useSessionStore.setState({ selectedClipIds: [clip.id] })
       const preFadeSnap = { tracks: useSessionStore.getState().tracks, clips: useSessionStore.getState().clips }
       fadeState.current = {
         active: true, type,
@@ -309,6 +322,7 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
         borderLeft: `2px solid ${track.color}`,
       }}
       onMouseDown={onMouseDown}
+      onClick={(e) => e.stopPropagation()}
       onDoubleClick={(e) => { e.stopPropagation(); selectClip(clip.id) }}
       onContextMenu={onContextMenu}
     >
@@ -329,7 +343,7 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
         className="absolute top-1 flex items-center gap-1 z-100 overflow-hidden rounded-full px-2 py-1.5 bg-black/40 hover:bg-black/60 cursor-pointer transition-colors group/label"
         style={{ left: `${labelLeft}px`, maxWidth: `${labelMaxWidth}px` }}
         onMouseDown={(e) => e.stopPropagation()}
-        onClick={(e) => { e.stopPropagation(); selectClip(clip.id) }}
+        onClick={(e) => { e.stopPropagation(); selectClip(clip.id, e.shiftKey) }}
       >
         {clip.mfbAlbumImageUrl && (
           <img

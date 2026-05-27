@@ -522,8 +522,8 @@ export default function App(): JSX.Element {
       if (mod && e.shiftKey && e.key === 'z') { e.preventDefault(); redo(); return }
       if (mod && e.key === 'o') { e.preventDefault(); await openSession(); return }
       if (mod && e.key === 't') { e.preventDefault(); await handleAddTrack(); return }
-      if (mod && e.key === 'c' && selectedClipId) { e.preventDefault(); copyClip(selectedClipId); return }
-      if (mod && e.key === 'x' && selectedClipId) { e.preventDefault(); copyClip(selectedClipId); removeClip(selectedClipId); return }
+      if (mod && e.key === 'c' && (selectedClipId ?? selectedClipIds[0])) { e.preventDefault(); copyClip(selectedClipId ?? selectedClipIds[0]); return }
+      if (mod && e.key === 'x' && selectedClipIds.length > 0) { e.preventDefault(); copyClip(selectedClipId ?? selectedClipIds[0]); removeClips(selectedClipIds); return }
       if (mod && e.key === 'v') {
         e.preventDefault()
         if (useSessionStore.getState().copiedClip) {
@@ -553,6 +553,13 @@ export default function App(): JSX.Element {
             }
           }
         }
+        return
+      }
+
+      if (mod && e.key === 'a' && !inInput) {
+        e.preventDefault()
+        const allIds = useSessionStore.getState().clips.map((c) => c.id)
+        useSessionStore.setState({ selectedClipIds: allIds })
         return
       }
 

@@ -383,12 +383,14 @@ export const useSessionStore = create<SessionState>((set, get) => {
         const next = already
           ? s.selectedClipIds.filter((id) => id !== clipId)
           : [...s.selectedClipIds, clipId]
-        return {
-          selectedClipId: already && s.selectedClipId === clipId
+        // When adding to selection don't touch selectedClipId (keeps the
+        // properties panel stable). Only reassign it when the clip that owns
+        // the panel is being removed from the selection.
+        const selectedClipId =
+          already && s.selectedClipId === clipId
             ? (next[next.length - 1] ?? null)
-            : clipId,
-          selectedClipIds: next,
-        }
+            : s.selectedClipId
+        return { selectedClipId, selectedClipIds: next }
       })
     },
     selectTrack: (trackId) => set({ selectedTrackId: trackId }),

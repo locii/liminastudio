@@ -65,10 +65,16 @@ export function MiniWaveform({ peaks, color, duration, trimStart, trimEnd, gain 
 
     draw()
 
-    // Redraw whenever the clip block resizes (e.g. zoom changes)
-    const ro = new ResizeObserver(draw)
+    // Redraw whenever the clip block resizes (e.g. zoom changes).
+    // RAF-debounce so rapid zoom events only trigger one redraw per frame.
+    let rafId: number | null = null
+    const scheduleDraw = (): void => {
+      if (rafId !== null) return
+      rafId = requestAnimationFrame(() => { rafId = null; draw() })
+    }
+    const ro = new ResizeObserver(scheduleDraw)
     ro.observe(canvas)
-    return () => ro.disconnect()
+    return () => { ro.disconnect(); if (rafId !== null) cancelAnimationFrame(rafId) }
   }, [peaks, color, duration, trimStart, trimEnd, gain])
 
   return (

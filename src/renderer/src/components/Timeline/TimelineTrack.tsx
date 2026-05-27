@@ -27,7 +27,6 @@ export function TimelineTrack({ track, tracks, clips, zoom, height, onHeightChan
   const addClipToTrack = useSessionStore((s) => s.addClipToTrack)
   const updateClip = useSessionStore((s) => s.updateClip)
   const setWaveform = useSessionStore((s) => s.setWaveform)
-  const selectClip = useSessionStore((s) => s.selectClip)
   const toast = useToastStore((s) => s.add)
   const { getDragState, subscribe } = useDragContext()
 
@@ -72,9 +71,6 @@ export function TimelineTrack({ track, tracks, clips, zoom, height, onHeightChan
       .catch(() => {})
   }, [track.id, zoom, addClipToTrack, updateClip, setWaveform, toast])
 
-  const handleBgClick = useCallback((e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) selectClip(null)
-  }, [selectClip])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     const hasFiles = e.dataTransfer.types.includes('Files')
@@ -160,7 +156,6 @@ export function TimelineTrack({ track, tracks, clips, zoom, height, onHeightChan
   return (
     <div
       className="flex flex-col"
-      onClick={handleBgClick}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
       onContextMenu={(e) => {
