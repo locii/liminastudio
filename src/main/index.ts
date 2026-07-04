@@ -57,7 +57,10 @@ function startAudioServer(): void {
     res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Accept-Ranges', 'bytes')
 
-    const filePath = decodeURIComponent(new URL('http://x' + (req.url ?? '')).pathname)
+    let filePath = decodeURIComponent(new URL('http://x' + (req.url ?? '')).pathname)
+    // Windows drive paths arrive as "/C:/a/b.mp3" — drop the leading slash so
+    // fs/ffmpeg get a valid "C:/a/b.mp3". POSIX paths ("/Users/…") are untouched.
+    if (/^\/[A-Za-z]:\//.test(filePath)) filePath = filePath.slice(1)
     try {
       const { size } = await fs.stat(filePath)
       const mime = audioMime(filePath)

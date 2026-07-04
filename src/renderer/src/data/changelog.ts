@@ -10,6 +10,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.9.5',
+    date: 'July 2026',
+    sections: [
+      {
+        icon: '♪',
+        title: 'Windows audio playback fixed',
+        items: [
+          'Clip playback and preview produced no sound on Windows due to how the stream URL handled Windows file paths',
+          'Windows paths are now normalised correctly; macOS is unaffected',
+        ],
+      },
+    ],
+  },
+  {
     version: '0.9.4',
     date: 'May 2026',
     sections: [

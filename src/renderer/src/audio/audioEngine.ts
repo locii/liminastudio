@@ -51,9 +51,15 @@ class AudioEngine {
   private warmupCancelled = false
 
   private localUrl(filePath: string): string {
+    // Windows paths ("C:\a\b.mp3") have no leading slash and use backslashes,
+    // which fused the drive letter onto the port and corrupted the URL — audio
+    // never loaded. Normalise to a URL path: backslashes → slashes, guarantee a
+    // leading slash, then encode per segment. macOS paths already start with /.
+    const slashed = filePath.replace(/\\/g, '/')
+    const urlPath = slashed.startsWith('/') ? slashed : `/${slashed}`
     return (
       `http://127.0.0.1:${this.audioServerPort}` +
-      filePath.split('/').map(encodeURIComponent).join('/')
+      urlPath.split('/').map(encodeURIComponent).join('/')
     )
   }
 
