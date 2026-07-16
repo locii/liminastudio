@@ -332,12 +332,29 @@ export function MixPanel(): JSX.Element {
     try { localStorage.setItem('session-tour-completed', '1') } catch { /* noop */ }
   }, [])
 
-  // Open the queued tracks as an editable timeline in the Mix workspace.
-  const queueTrackCount = useMemo(() => mixQueue.filter((q) => q.kind === 'track').length, [mixQueue])
+  // Open the whole session as an editable timeline in Mix: explicit queue tracks
+  // in order, plus each tag generator materialised into steered tracks up to its
+  // allocated duration (or a default chunk when it has no duration cap).
   const handleOpenInMix = useCallback(() => {
     const byId = new Map(files.map((f) => [f.id, f]))
     const list: LibraryFile[] = []
-    for (const q of mixQueue) if (q.kind === 'track') { const f = byId.get(q.fileId); if (f) list.push(f) }
+    const used = new Set<string>()
+    for (const item of mixQueue) {
+      if (item.kind === 'track') {
+        const f = byId.get(item.fileId)
+        if (f?.filePath && !used.has(f.id)) { list.push(f); used.add(f.id) }
+      } else {
+        const ids = materializeGroup(item.tags, item.matchMode, item.feel, item.durationMin != null ? 300 : 15, used)
+        const targetMs = (item.durationMin ?? 0) * 60000
+        let accMs = 0
+        for (const id of ids) {
+          if (item.durationMin != null && accMs >= targetMs) break
+          const f = byId.get(id)
+          if (!f?.filePath || used.has(f.id)) continue
+          list.push(f); used.add(f.id); accMs += (f.duration || 0) * 1000
+        }
+      }
+    }
     if (list.length === 0) return
     openInMix(buildMixSessionFromFiles(list))
   }, [files, mixQueue])
@@ -561,9 +578,9 @@ export function MixPanel(): JSX.Element {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            disabled={queueTrackCount === 0}
+            disabled={mixQueue.length === 0}
             onClick={handleOpenInMix}
-            title="Open the queued tracks as an editable timeline in Mix"
+            title="Open the whole session as an editable timeline in Mix"
             className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded border border-accent/50 text-accent hover:bg-accent/10 transition-colors disabled:opacity-40 disabled:pointer-events-none"
           >
             Open in Mix
