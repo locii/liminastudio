@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback, memo } from 'react'
 import { useLibraryStore } from '../store/libraryStore'
-import { MixVisualizer, MixVizCanvas } from './MixVisualizer'
 import { MixCueEditorModal } from './MixCueEditorModal'
 import { SessionsModal } from './SessionsModal'
 import { SaveSessionModal } from './SaveSessionModal'
@@ -481,21 +480,6 @@ export function MixPanel(): JSX.Element {
     if (splitX > 0) { ctx.fillStyle = '#ffd9a8'; ctx.fillRect(Math.round(splitX) - 0.5, 0, 1, h) }
   }, [cur, cur?.peaks, cur?.introEndMs, cur?.outroStartMs, state.currentTime, state.duration, state.fading, canvasWidth, mixFadeIns])
 
-  // --- visualizer ----------------------------------------------------------
-  const [visualizerOpen, setVisualizerOpen] = useState(false)
-  const [showViz, setShowViz] = useState(false)
-  const getWave = useCallback((count: number): number[] => {
-    const f = curRef.current
-    const out = new Array(count).fill(0)
-    if (!f || f.peaks.length === 0) return out
-    const dur = f.duration || 1
-    const pos = engineRef.current?.position ?? 0
-    const idx = Math.floor((pos / dur) * f.peaks.length)
-    for (let i = 0; i < count; i++) { const j = idx - (count - 1 - i); if (j >= 0 && j < f.peaks.length) out[i] = f.peaks[j] }
-    return out
-  }, [])
-  const getTempo = useCallback((): number => curRef.current?.audioFeatures?.tempo ?? 0, [])
-
   // --- drop a pool track onto Now Playing to fade it in --------------------
   const [npDragOver, setNpDragOver] = useState(false)
   const [queueDragOver, setQueueDragOver] = useState(false)
@@ -694,26 +678,11 @@ export function MixPanel(): JSX.Element {
             onDrop={onNowPlayingDrop}
             className={`p-5 border-b shrink-0 border-surface-border transition-colors ${npDragOver ? 'bg-accent/10 ring-1 ring-inset ring-accent/40' : ''}`}
           >
-            {/* Inline visualizer (optional; fullscreen on expand) */}
-            {showViz && (
-              <div className="relative h-40 mb-4 overflow-hidden border rounded-lg border-surface-border">
-                {!visualizerOpen && <MixVizCanvas getWave={getWave} getTempo={getTempo} />}
-                <button type="button" onClick={() => setVisualizerOpen(true)}
-                  className="absolute flex items-center justify-center transition-colors rounded-full top-2 right-2 w-7 h-7 text-white/60 hover:text-white bg-black/30 hover:bg-black/50"
-                  title="Fullscreen visualizer">
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4" /></svg>
-                </button>
-              </div>
-            )}
+            
 
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-2 text-[9px] uppercase tracking-widest text-gray-600">
                 Now Playing{npDragOver && <span className="tracking-normal normal-case text-accent"> — drop to fade in</span>}
-                <button type="button" onClick={() => setShowViz((v) => !v)}
-                  className={`normal-case tracking-normal inline-flex items-center gap-1 transition-colors ${showViz ? 'text-accent' : 'text-gray-600 hover:text-gray-400'}`}
-                  title={showViz ? 'Hide visualizer' : 'Show visualizer'}>
-                  <svg className="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><path d="M1 8s2.5-4.5 7-4.5S15 8 15 8s-2.5 4.5-7 4.5S1 8 1 8z" /><circle cx="8" cy="8" r="1.7" /></svg>
-                </button>
               </span>
               {state.fading && state.outgoing ? (
                 <span className="flex items-center gap-1.5 text-[10px] text-accent">
@@ -808,7 +777,7 @@ export function MixPanel(): JSX.Element {
                   </button>
                 ) : (
                   <button type="button" disabled={!canPlay} onClick={() => startRecording()} title="Record this session (tracklist + edits)"
-                    className="flex items-center justify-center w-9 h-9 rounded-full border border-surface-border text-gray-400 hover:text-red-400 hover:border-red-500/50 hover:bg-red-500/10 transition-colors disabled:opacity-30 shrink-0">
+                    className="flex items-center justify-center text-gray-400 transition-colors border rounded-full w-9 h-9 border-surface-border hover:text-red-400 hover:border-red-500/50 hover:bg-red-500/10 disabled:opacity-30 shrink-0">
                     <span className="w-3 h-3 rounded-full bg-red-500/80" />
                   </button>
                 )}
@@ -816,8 +785,8 @@ export function MixPanel(): JSX.Element {
               ) : (
                 /* Free tier: locked Record — clicking opens the Pro upsell. */
                 <button type="button" onClick={() => setUpsellOpen(true)} title="Recording is a Pro feature"
-                  className="relative flex items-center justify-center w-9 h-9 rounded-full border border-surface-border text-gray-600 hover:text-accent hover:border-accent/50 hover:bg-accent/10 transition-colors shrink-0">
-                  <span className="w-3 h-3 rounded-full bg-gray-600" />
+                  className="relative flex items-center justify-center text-gray-600 transition-colors border rounded-full w-9 h-9 border-surface-border hover:text-accent hover:border-accent/50 hover:bg-accent/10 shrink-0">
+                  <span className="w-3 h-3 bg-gray-600 rounded-full" />
                   <svg className="absolute -top-1 -right-1 w-3.5 h-3.5 text-accent bg-surface-panel rounded-full p-px" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="2.5" y="5.5" width="7" height="5" rx="1" /><path d="M4 5.5V4a2 2 0 014 0v1.5" />
                   </svg>
@@ -1037,9 +1006,6 @@ export function MixPanel(): JSX.Element {
         />
       )}
 
-      {visualizerOpen && (
-        <MixVisualizer getWave={getWave} getTempo={getTempo} onClose={() => setVisualizerOpen(false)} />
-      )}
 
       {savePromptOpen && (
         <SaveSessionModal
@@ -1056,7 +1022,7 @@ export function MixPanel(): JSX.Element {
       {upsellOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-6">
           <div className="absolute inset-0 bg-black/70" onClick={() => setUpsellOpen(false)} />
-          <div className="relative flex flex-col w-full max-w-sm gap-4 p-5 shadow-2xl bg-surface-panel rounded-xl border border-surface-border">
+          <div className="relative flex flex-col w-full max-w-sm gap-4 p-5 border shadow-2xl bg-surface-panel rounded-xl border-surface-border">
             <div className="flex items-center gap-2">
               <svg className="w-4 h-4 text-accent" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2.5" y="5.5" width="7" height="5" rx="1" /><path d="M4 5.5V4a2 2 0 014 0v1.5" />
@@ -1233,7 +1199,7 @@ const QueueList = memo(function QueueList({ items, fileById, tagPreviews, select
                   {preview && preview.tracks.length > 0 ? (
                     <button type="button" onClick={(e) => { e.stopPropagation(); setCollapsed((c) => ({ ...c, [item.id]: !c[item.id] })) }}
                       onDoubleClick={(e) => e.stopPropagation()}
-                      className="shrink-0 text-gray-600 transition-colors hover:text-accent"
+                      className="text-gray-600 transition-colors shrink-0 hover:text-accent"
                       title={collapsed[item.id] ? 'Show queued tracks' : 'Hide queued tracks'}>
                       <svg className={`w-2.5 h-2.5 transition-transform ${collapsed[item.id] ? '' : 'rotate-90'}`} viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 2l4 3-4 3" /></svg>
                     </button>
