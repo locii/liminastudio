@@ -11,9 +11,9 @@ module.exports = {
           border: '#2a2a2a',
         },
         accent: {
-          DEFAULT: '#6366f1',
-          hover: '#818cf8',
-          muted: '#4f46e5',
+          DEFAULT: 'rgb(var(--accent) / <alpha-value>)',
+          hover: 'rgb(var(--accent-hover) / <alpha-value>)',
+          muted: 'rgb(var(--accent-muted) / <alpha-value>)',
         },
       },
     },

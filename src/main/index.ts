@@ -1,8 +1,10 @@
-import { app, shell, BrowserWindow, Menu, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, Menu, ipcMain, clipboard, nativeImage } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
 import { join, extname, basename } from 'path'
 import { promises as fs, createReadStream, readFileSync } from 'fs'
 import { createServer } from 'http'
+import { spawn } from 'child_process'
+import ffmpegPath from 'ffmpeg-static'
 import type { AddressInfo } from 'net'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
@@ -37,35 +39,104 @@ function initAutoUpdater(): void {
   setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 4 * 60 * 60 * 1_000)
 }
 
-function audioMime(filePath: string): string {
+function mimeForAudioExt(filePath: string): string {
   const ext = extname(filePath).toLowerCase()
   return (({
     '.mp3': 'audio/mpeg',
     '.wav': 'audio/wav',
     '.flac': 'audio/flac',
     '.ogg': 'audio/ogg',
+    '.oga': 'audio/ogg',
+    '.opus': 'audio/opus',
+    '.webm': 'audio/webm',
     '.aiff': 'audio/aiff',
     '.aif': 'audio/aiff',
     '.m4a': 'audio/mp4',
+    '.mp4': 'audio/mp4',
+    '.aac': 'audio/mp4',
   }) as Record<string, string>)[ext] ?? 'audio/mpeg'
+}
+
+// Chromium's HTMLAudioElement WAV decoder reliably plays only 16-bit integer PCM.
+// Float32 / 24-bit / WAVE_FORMAT_EXTENSIBLE files fall back to the device output
+// rate (48kHz on macOS), so 44.1kHz files play ~9% fast. Peek the RIFF header so
+// Library's Auto-Mix engine can route those through ffmpeg→FLAC instead of raw.
+async function inspectWavFormat(filePath: string): Promise<{ formatCode: number; bitsPerSample: number } | null> {
+  let fd: import('fs').promises.FileHandle | undefined
+  try {
+    fd = await fs.open(filePath, 'r')
+    const buf = Buffer.alloc(65536)
+    const { bytesRead } = await fd.read(buf, 0, 65536, 0)
+    if (bytesRead < 12) return null
+    const riff = buf.toString('ascii', 0, 4)
+    const wave = buf.toString('ascii', 8, 12)
+    if ((riff !== 'RIFF' && riff !== 'RF64' && riff !== 'BW64') || wave !== 'WAVE') return null
+    let pos = 12
+    while (pos + 8 <= bytesRead) {
+      const chunkId = buf.toString('ascii', pos, pos + 4)
+      const chunkSize = buf.readUInt32LE(pos + 4)
+      if (chunkId === 'fmt ' && pos + 8 + 16 <= bytesRead) {
+        const formatCode = buf.readUInt16LE(pos + 8)
+        const bitsPerSample = buf.readUInt16LE(pos + 8 + 14)
+        // WAVE_FORMAT_EXTENSIBLE stores the real format code in the sub-format GUID.
+        if (formatCode === 0xfffe && chunkSize >= 40 && pos + 8 + 26 <= bytesRead) {
+          return { formatCode: buf.readUInt16LE(pos + 8 + 24), bitsPerSample }
+        }
+        return { formatCode, bitsPerSample }
+      }
+      pos += 8 + chunkSize + (chunkSize & 1)
+    }
+    return null
+  } catch {
+    return null
+  } finally {
+    await fd?.close()
+  }
 }
 
 let audioServerPort = 0
 
 function startAudioServer(): void {
+  const ffmpeg = (ffmpegPath as string).replace('app.asar', 'app.asar.unpacked')
+
   const server = createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Accept-Ranges', 'bytes')
 
-    let filePath = decodeURIComponent(new URL('http://x' + (req.url ?? '')).pathname)
+    const url = new URL('http://x' + (req.url ?? ''))
+    let filePath = decodeURIComponent(url.pathname)
     // Windows drive paths arrive as "/C:/a/b.mp3" — drop the leading slash so
     // fs/ffmpeg get a valid "C:/a/b.mp3". POSIX paths ("/Users/…") are untouched.
     if (/^\/[A-Za-z]:\//.test(filePath)) filePath = filePath.slice(1)
-    try {
-      const { size } = await fs.stat(filePath)
-      const mime = audioMime(filePath)
-      const rangeHeader = req.headers['range']
 
+    let size = 0
+    try { size = (await fs.stat(filePath)).size } catch {
+      console.error('[audio server] not found', filePath)
+      res.writeHead(404); res.end(); return
+    }
+
+    // Library's Auto-Mix engine tags its requests with ?sr= (and ?ss= for a
+    // fade-in offset). Mix's own <audio> playback sends NO query params and must
+    // keep streaming raw with range support so `audio.currentTime` seeking works
+    // — so the ffmpeg transcode path is gated on those params and never touches Mix.
+    const isMixEngine = url.searchParams.has('sr')
+    const sr = parseInt(url.searchParams.get('sr') ?? '0') || 0
+    const startSec = parseFloat(url.searchParams.get('ss') ?? '0') || 0
+    const ext = extname(filePath).slice(1).toLowerCase()
+    const browserNative = new Set(['mp3', 'm4a', 'mp4', 'aac', 'ogg', 'oga', 'opus', 'webm', 'flac'])
+    const needsResample = sr > 48000
+    let wavSafe = false
+    if (ext === 'wav') {
+      const fmt = await inspectWavFormat(filePath)
+      wavSafe = !!(fmt && fmt.formatCode === 1 && fmt.bitsPerSample === 16)
+    }
+    const needsTranscode =
+      startSec > 0 ||
+      (isMixEngine && (needsResample || !(browserNative.has(ext) || (ext === 'wav' && wavSafe))))
+
+    if (!needsTranscode) {
+      const mime = mimeForAudioExt(filePath)
+      const rangeHeader = req.headers['range']
       if (rangeHeader) {
         const m = rangeHeader.match(/bytes=(\d+)-(\d*)/)
         if (!m) { res.writeHead(416); res.end(); return }
@@ -81,10 +152,25 @@ function startAudioServer(): void {
         res.writeHead(200, { 'Content-Type': mime, 'Content-Length': String(size) })
         createReadStream(filePath).pipe(res)
       }
-    } catch (err) {
-      console.error('[audio server]', filePath, err)
-      res.writeHead(404); res.end()
+      return
     }
+
+    // Transcode to FLAC — its framed bitstream streams cleanly and fixes the WAV
+    // speed skew. `-ss` before `-i` = fast input seek so the stream starts at the
+    // offset with no (pop-prone) client seek. Resample only when source > 48kHz.
+    const ffArgs = [
+      ...(startSec > 0 ? ['-ss', String(startSec)] : []),
+      '-i', filePath,
+      '-vn', '-ac', '2',
+      ...(needsResample ? ['-ar', '48000'] : []),
+      '-f', 'flac', '-compression_level', '0', 'pipe:1',
+    ]
+    res.writeHead(200, { 'Content-Type': 'audio/flac' })
+    const ff = spawn(ffmpeg, ffArgs)
+    ff.stdout.pipe(res)
+    ff.stderr.resume()
+    req.on('close', () => ff.kill())
+    ff.on('error', () => { res.end() })
   })
 
   server.listen(0, '127.0.0.1', () => {
@@ -93,12 +179,43 @@ function startAudioServer(): void {
   })
 }
 
+// Small waveform-bars icon shown under the cursor when dragging a library track.
+function createDragIcon(): Electron.NativeImage {
+  const size = 32
+  const buf = Buffer.alloc(size * size * 4)
+  const bars = [4, 7, 10, 13, 16, 19, 22, 25, 28]
+  const heights = [10, 18, 24, 20, 28, 22, 16, 12, 8]
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = (y * size + x) * 4
+      buf[i] = 26; buf[i + 1] = 26; buf[i + 2] = 26; buf[i + 3] = 220
+      for (let b = 0; b < bars.length; b++) {
+        if (x === bars[b] || x === bars[b] + 1) {
+          const top = Math.round(16 - heights[b] / 2)
+          const bot = Math.round(16 + heights[b] / 2)
+          if (y >= top && y <= bot) {
+            buf[i] = 99; buf[i + 1] = 102; buf[i + 2] = 241; buf[i + 3] = 255
+          }
+        }
+      }
+    }
+  }
+  return nativeImage.createFromBuffer(buf, { width: size, height: size })
+}
+
 import { registerFileHandlers } from './ipc/fileHandlers'
 import { registerAudioHandlers } from './ipc/audioHandlers'
 import { registerFfmpegHandlers } from './ipc/ffmpegHandlers'
 import { registerSessionHandlers, getRecent } from './ipc/sessionHandlers'
 import { registerPdfHandlers } from './ipc/pdfHandlers'
 import { registerMfbHandlers } from './ipc/mfbHandlers'
+// Ported from Limina Library
+import { registerScanHandlers } from './ipc/scanHandlers'
+import { registerCatalogueHandlers } from './ipc/catalogueHandlers'
+import { registerAuthHandlers } from './ipc/authHandlers'
+import { registerStudioHandlers } from './ipc/studioHandlers'
+import { registerMfbMatchHandlers } from './ipc/mfbMatchHandlers'
+import { registerLibraryAudioHandlers } from './ipc/libraryAudioHandlers'
 
 let mainWindow: BrowserWindow | null = null
 let pendingOpenFile: string | null = null
@@ -320,10 +437,33 @@ app.whenReady().then(() => {
   registerSessionHandlers(() => createAppMenu().catch(console.error))
   registerPdfHandlers(getMainWindow)
   registerMfbHandlers()
+  // Library data layer
+  registerScanHandlers()
+  registerCatalogueHandlers()
+  registerAuthHandlers()
+  registerStudioHandlers()
+  registerMfbMatchHandlers()
+  registerLibraryAudioHandlers()
 
   // Menu:addTrack sends renderer the same signal as button click
   ipcMain.on('window:setTitle', (_, title: string) => {
     mainWindow?.setTitle(title)
+  })
+
+  // Library UI window zoom (accessibility setting).
+  ipcMain.on('window:setZoom', (_, factor: number) => {
+    mainWindow?.webContents.setZoomFactor(factor)
+  })
+
+  // Drag a library track out onto the timeline (native file drag).
+  ipcMain.on('library:startDrag', (event, filePath: string) => {
+    event.sender.startDrag({ file: filePath, icon: createDragIcon() })
+    event.returnValue = null // required for sendSync
+  })
+
+  // Copy a library file's path to the clipboard.
+  ipcMain.handle('library:copyFile', (_, filePath: string) => {
+    clipboard.writeText(filePath)
   })
 
   createAppMenu().catch(console.error)

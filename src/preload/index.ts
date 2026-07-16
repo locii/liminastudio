@@ -85,12 +85,62 @@ const api: ElectronAPI = {
     return () => ipcRenderer.removeListener('session:fileOpened', handler)
   },
 
-  // MFB account
+  // MFB account (Mix's public search + login used by the clip PropertiesPanel)
   mfbLogin: (email, password) => ipcRenderer.invoke('mfb:login', email, password),
   mfbLogout: () => ipcRenderer.invoke('mfb:logout'),
   mfbMe: () => ipcRenderer.invoke('mfb:me'),
   mfbSearchTracks: (query) => ipcRenderer.invoke('mfb:searchTracks', query),
   mfbFetchTrack: (id) => ipcRenderer.invoke('mfb:fetchTrack', id),
+
+  // ── Library: folder scanning ───────────────────────────────────────────────
+  buildWatchedFolder: (folderPath) => ipcRenderer.invoke('library:buildWatchedFolder', folderPath),
+  scanFolder: (folderPath) => ipcRenderer.invoke('library:scanFolder', folderPath),
+  findOnDisk: (title, artist) => ipcRenderer.invoke('library:findOnDisk', title, artist),
+  scanFile: (filePath) => ipcRenderer.invoke('library:scanFile', filePath),
+  pickAudioFile: () => ipcRenderer.invoke('library:pickAudioFile'),
+
+  // ── Library: catalogue persistence ─────────────────────────────────────────
+  loadCatalogue: () => ipcRenderer.invoke('catalogue:load'),
+  saveCatalogue: (catalogue) => ipcRenderer.invoke('catalogue:save', catalogue),
+  listCatalogueBackups: () => ipcRenderer.invoke('catalogue:listBackups'),
+  restoreCatalogueBackup: (slot) => ipcRenderer.invoke('catalogue:restoreBackup', slot),
+
+  // ── Library: audio analysis (peaks on a distinct channel from Mix's) ───────
+  getLibraryPeaks: (filePath, numPeaks) => ipcRenderer.invoke('library:getWaveformPeaks', filePath, numPeaks),
+  getFileDuration: (filePath) => ipcRenderer.invoke('audio:getFileDuration', filePath),
+  analyzeCues: (filePath) => ipcRenderer.invoke('audio:analyzeCues', filePath),
+  analyzeFeatures: (filePath, durationSec) => ipcRenderer.invoke('audio:analyzeFeatures', filePath, durationSec),
+
+  // ── Library: shell / drag / zoom ───────────────────────────────────────────
+  copyFile: (filePath) => ipcRenderer.invoke('library:copyFile', filePath),
+  startDrag: (filePath) => ipcRenderer.sendSync('library:startDrag', filePath),
+  setZoom: (factor) => ipcRenderer.send('window:setZoom', factor),
+
+  // ── MFB catalogue match engine ─────────────────────────────────────────────
+  mfbCatalogueSearch: (query) => ipcRenderer.invoke('mfb:catalogueSearch', query),
+  mfbGetTrack: (id) => ipcRenderer.invoke('mfb:getTrack', id),
+  mfbMatchTracks: (entries) => ipcRenderer.invoke('mfb:matchTracks', entries),
+  mfbRankMatches: (entry) => ipcRenderer.invoke('mfb:rankMatches', entry),
+  mfbClearCatalogue: () => ipcRenderer.invoke('mfb:clearCatalogue'),
+  mfbGetUpdatedMap: () => ipcRenderer.invoke('mfb:getUpdatedMap'),
+  spotifySearch: (q) => ipcRenderer.invoke('spotify:search', q),
+  spotifyImport: (entry) => ipcRenderer.invoke('spotify:import', entry),
+  listSystemPresets: () => ipcRenderer.invoke('presets:list'),
+  saveSystemPreset: (preset) => ipcRenderer.invoke('presets:save', preset),
+  deleteSystemPreset: (id) => ipcRenderer.invoke('presets:delete', id),
+
+  // ── MFB account (Library-style auth; shares the same auth.bin token) ────────
+  authLogin: (email, password) => ipcRenderer.invoke('auth:login', email, password),
+  authLogout: () => ipcRenderer.invoke('auth:logout'),
+  authMe: () => ipcRenderer.invoke('auth:me'),
+  getUserPlaylists: () => ipcRenderer.invoke('auth:getUserPlaylists'),
+  getPlaylist: (id) => ipcRenderer.invoke('auth:getPlaylist', id),
+  searchPlaylistTracks: (query) => ipcRenderer.invoke('auth:searchPlaylistTracks', query),
+  syncLibrary: (trackIds) => ipcRenderer.invoke('auth:syncLibrary', trackIds),
+
+  // ── Studio session hand-off (Library's existing IPC) ───────────────────────
+  studioSaveSession: (json, defaultName) => ipcRenderer.invoke('studio:saveSession', json, defaultName),
+  studioOpenFile: (filePath) => ipcRenderer.invoke('studio:openFile', filePath),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', api)

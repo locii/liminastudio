@@ -32,23 +32,15 @@ body {
   user-select: none;
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: #1a1a1a;
-}
-::-webkit-scrollbar-thumb {
-  background: #3a3a3a;
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #4a4a4a;
-}
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #1a1a1a; }
+::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #4a4a4a; }
 
-/* Library components */
 .hour-cell { scrollbar-width: none; }
 .hour-cell::-webkit-scrollbar { display: none; width: 0; height: 0; }
-button:focus:not(:focus-visible) { outline: none; box-shadow: none; }
+
+button:focus:not(:focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
