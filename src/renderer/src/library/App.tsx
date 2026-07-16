@@ -25,6 +25,7 @@ import { runCueScan } from './lib/cueScan'
 import { runFeatureScan, cancelFeatureScan } from './lib/featureScan'
 import { useUpdaterStore } from './store/updaterStore'
 import { useUIStore } from '../uiStore'
+import { WorkspaceSwitcher } from '../WorkspaceSwitcher'
 
 
 // The umbrella mounts/unmounts this app when switching surfaces. Guard once-per-run
@@ -501,16 +502,14 @@ export default function App(): JSX.Element {
             type="button"
             onClick={() => goHome('home')}
             title="Back to Home"
-            className="flex items-center justify-center w-6 h-6 text-gray-400 rounded border transition-colors bg-surface-hover hover:bg-surface-border border-surface-border"
+            className="flex items-center justify-center w-6 h-6 text-gray-400 transition-colors border rounded bg-surface-hover hover:bg-surface-border border-surface-border"
           >
             <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" />
             </svg>
           </button>
           <span className="text-gray-600 select-none">›</span>
-          <span className="text-xs font-semibold tracking-widest text-gray-300 uppercase select-none">
-            {mixMode ? 'Session' : 'Library'}
-          </span>
+          <WorkspaceSwitcher />
         </div>
         <div className="flex items-center gap-2">
           <MixMiniPlayer />

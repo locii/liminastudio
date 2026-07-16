@@ -5,6 +5,7 @@ import { useUpdaterStore } from '../../store/updaterStore'
 import { audioEngine } from '../../audio/audioEngine'
 import { KeyboardShortcuts } from '../KeyboardShortcuts'
 import { useUIStore } from '../../../uiStore'
+import { WorkspaceSwitcher } from '../../../WorkspaceSwitcher'
 function formatTime(seconds: number): string {
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
@@ -176,7 +177,7 @@ export function TransportBar({
         </svg>
       </button>
       <span className="text-gray-600 text-[11px] select-none shrink-0">›</span>
-      <span className="text-[11px] font-semibold text-gray-300 tracking-widest uppercase shrink-0 select-none">Mix</span>
+      <WorkspaceSwitcher />
 
       <div className="w-px h-4 bg-surface-border shrink-0" />
 
