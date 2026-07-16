@@ -2,6 +2,7 @@ import MixApp from './mix/App'
 import LibraryApp from './library/App'
 import { Home } from './Home'
 import { PlaylistsSurface } from './PlaylistsSurface'
+import { NavConfirmModal } from './NavConfirmModal'
 import { useUIStore } from './uiStore'
 
 /**
@@ -11,14 +12,24 @@ import { useUIStore } from './uiStore'
  */
 export default function Root(): JSX.Element {
   const surface = useUIStore((s) => s.surface)
-  switch (surface) {
-    case 'mix':
-      return <MixApp />
-    case 'library':
-      return <LibraryApp />
-    case 'playlists':
-      return <PlaylistsSurface />
-    default:
-      return <Home />
-  }
+
+  const view = ((): JSX.Element => {
+    switch (surface) {
+      case 'mix':
+        return <MixApp />
+      case 'library':
+        return <LibraryApp />
+      case 'playlists':
+        return <PlaylistsSurface />
+      default:
+        return <Home />
+    }
+  })()
+
+  return (
+    <>
+      {view}
+      <NavConfirmModal />
+    </>
+  )
 }

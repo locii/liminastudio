@@ -12,6 +12,7 @@ import { LibraryDock } from './components/LibraryDock'
 import { GlobalControls } from '../GlobalControls'
 import { WorkspaceSwitcher } from '../WorkspaceSwitcher'
 import { useUIStore } from '../uiStore'
+import { requestNavigate } from '../navigate'
 import { AutosaveRestoreModal } from './components/AutosaveRestoreModal'
 import { GuidedTour } from './components/GuidedTour'
 import { WhatsNewModal } from './components/WhatsNewModal'
@@ -693,7 +694,7 @@ export default function App(): JSX.Element {
         <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           <button
             type="button"
-            onClick={() => setSurface('home')}
+            onClick={() => requestNavigate(() => setSurface('home'))}
             title="Back to Home"
             className="flex items-center justify-center w-6 h-6 text-gray-400 rounded border transition-colors bg-surface-hover hover:bg-surface-border border-surface-border"
           >

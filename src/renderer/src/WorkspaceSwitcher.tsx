@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useUIStore } from './uiStore'
 import { useLibraryStore } from './library/store/libraryStore'
+import { requestNavigate } from './navigate'
 
 type Workspace = 'library' | 'playlists' | 'session' | 'mix'
 
-const LABELS: Record<Workspace, string> = { library: 'Library', playlists: 'Playlists', session: 'Session', mix: 'Mix' }
+const LABELS: Record<Workspace, string> = { library: 'Library', playlists: 'Playlists', session: 'Session Mode', mix: 'Mix Mode' }
 const ORDER: Workspace[] = ['library', 'playlists', 'session', 'mix']
 
 /**
@@ -24,11 +25,14 @@ export function WorkspaceSwitcher(): JSX.Element {
 
   const goTo = (w: Workspace): void => {
     setOpen(false)
+    if (w === current) return
     const lib = useLibraryStore.getState()
-    if (w === 'library') { lib.exitMixMode(); setSurface('library') }
-    else if (w === 'session') { lib.enterMixMode(); setSurface('library') }
-    else if (w === 'playlists') setSurface('playlists')
-    else setSurface('mix')
+    requestNavigate(() => {
+      if (w === 'library') { lib.exitMixMode(); setSurface('library') }
+      else if (w === 'session') { lib.enterMixMode(); setSurface('library') }
+      else if (w === 'playlists') setSurface('playlists')
+      else setSurface('mix')
+    })
   }
 
   useEffect(() => {
@@ -54,7 +58,7 @@ export function WorkspaceSwitcher(): JSX.Element {
         </svg>
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-[200] mt-1.5 min-w-[130px] rounded border border-surface-border bg-surface-panel shadow-lg py-1">
+        <div className="absolute left-0 top-full z-[200] mt-1.5 min-w-[145px] rounded border border-surface-border bg-surface-panel shadow-lg py-1">
           {ORDER.map((w) => (
             <button
               key={w}

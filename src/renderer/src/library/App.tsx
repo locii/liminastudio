@@ -26,6 +26,7 @@ import { runFeatureScan, cancelFeatureScan } from './lib/featureScan'
 import { useUpdaterStore } from './store/updaterStore'
 import { useUIStore } from '../uiStore'
 import { WorkspaceSwitcher } from '../WorkspaceSwitcher'
+import { requestNavigate } from '../navigate'
 
 
 // The umbrella mounts/unmounts this app when switching surfaces. Guard once-per-run
@@ -500,7 +501,7 @@ export default function App(): JSX.Element {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => goHome('home')}
+            onClick={() => requestNavigate(() => goHome('home'))}
             title="Back to Home"
             className="flex items-center justify-center w-6 h-6 text-gray-400 transition-colors border rounded bg-surface-hover hover:bg-surface-border border-surface-border"
           >
