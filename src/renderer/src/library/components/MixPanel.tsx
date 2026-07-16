@@ -13,6 +13,8 @@ import { feelScore, materializeGroup, getGenStart } from '../lib/mixSelection'
 import type { MixEngine } from '../lib/mixEngine'
 import type { LibraryFile } from '../types'
 import type { MixQueueItem } from '../store/libraryStore'
+import { openInMix } from '../../openInMix'
+import { buildMixSessionFromFiles } from '../../buildMixSession'
 
 // Where the Pro upsell (locked Session Mode features) sends free users.
 const PRO_UPSELL_URL = 'https://musicforbreathwork.com/pricing'
@@ -331,6 +333,16 @@ export function MixPanel(): JSX.Element {
     try { localStorage.setItem('session-tour-completed', '1') } catch { /* noop */ }
   }, [])
 
+  // Open the queued tracks as an editable timeline in the Mix workspace.
+  const queueTrackCount = useMemo(() => mixQueue.filter((q) => q.kind === 'track').length, [mixQueue])
+  const handleOpenInMix = useCallback(() => {
+    const byId = new Map(files.map((f) => [f.id, f]))
+    const list: LibraryFile[] = []
+    for (const q of mixQueue) if (q.kind === 'track') { const f = byId.get(q.fileId); if (f) list.push(f) }
+    if (list.length === 0) return
+    openInMix(buildMixSessionFromFiles(list))
+  }, [files, mixQueue])
+
   // Session recording: save-prompt modal, sessions viewer, and a 1s elapsed tick.
   const [savePromptOpen, setSavePromptOpen] = useState(false)
   const [sessionsOpen, setSessionsOpen] = useState(false)
@@ -563,6 +575,15 @@ export function MixPanel(): JSX.Element {
       {/* Header — tour "?" now lives in the standard top-right toolbar */}
       <div className="flex items-center h-10 gap-4 px-4 border-b shrink-0 bg-surface-panel border-surface-border">
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            disabled={queueTrackCount === 0}
+            onClick={handleOpenInMix}
+            title="Open the queued tracks as an editable timeline in Mix"
+            className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded border border-accent/50 text-accent hover:bg-accent/10 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+          >
+            Open in Mix
+          </button>
           {!isPro ? (
             /* Free tier: locked Load — opens the Pro upsell instead of loading. */
             <button type="button" onClick={() => setUpsellOpen(true)} title="Loading templates & sessions is a Pro feature"
