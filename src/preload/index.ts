@@ -93,6 +93,7 @@ const api: ElectronAPI = {
   mfbFetchTrack: (id) => ipcRenderer.invoke('mfb:fetchTrack', id),
 
   // ── Library: folder scanning ───────────────────────────────────────────────
+  libraryPickFolder: () => ipcRenderer.invoke('library:pickFolder'),
   buildWatchedFolder: (folderPath) => ipcRenderer.invoke('library:buildWatchedFolder', folderPath),
   scanFolder: (folderPath) => ipcRenderer.invoke('library:scanFolder', folderPath),
   findOnDisk: (title, artist) => ipcRenderer.invoke('library:findOnDisk', title, artist),

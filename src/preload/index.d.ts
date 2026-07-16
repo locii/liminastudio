@@ -153,6 +153,7 @@ export interface ElectronAPI {
   mfbFetchTrack: (id: number) => Promise<Record<string, unknown>>
 
   // ── Library: folder scanning ───────────────────────────────────────────────
+  libraryPickFolder: () => Promise<string | null>
   buildWatchedFolder: (folderPath: string) => Promise<WatchedFolder>
   scanFolder: (folderPath: string) => Promise<ScanResult>
   findOnDisk: (title: string, artist: string) => Promise<string[]>

@@ -244,7 +244,10 @@ export default function App(): JSX.Element {
   }, [])
 
   const handleAddFolder = useCallback(async (droppedPath?: string) => {
-    const folderPath = droppedPath ?? await window.electronAPI.pickFolder()
+    // Guard: some onClick handlers pass the click event as the arg — ignore
+    // anything that isn't a real dropped path string.
+    const dropped = typeof droppedPath === 'string' ? droppedPath : undefined
+    const folderPath = dropped ?? await window.electronAPI.libraryPickFolder()
     if (!folderPath) return
 
     setScanning(true)
