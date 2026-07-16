@@ -67,7 +67,7 @@ export function LibraryDock(): JSX.Element {
 
   if (!open) {
     return (
-      <div className="flex flex-col items-center py-2 w-8 border-r shrink-0 bg-surface-panel border-surface-border">
+      <div className="flex flex-col items-center py-2 w-8 border-l shrink-0 bg-surface-panel border-surface-border">
         <button
           type="button"
           onClick={() => setOpen(true)}
@@ -83,7 +83,7 @@ export function LibraryDock(): JSX.Element {
   }
 
   return (
-    <div className="flex flex-col w-64 border-r shrink-0 bg-surface-panel border-surface-border min-h-0">
+    <div className="flex flex-col w-64 border-l shrink-0 bg-surface-panel border-surface-border min-h-0">
       {/* Header */}
       <div className="flex items-center justify-between h-8 px-2 border-b shrink-0 border-surface-border">
         <span className="text-[10px] font-semibold tracking-wider text-gray-500 uppercase select-none pl-1">Library</span>
@@ -93,7 +93,7 @@ export function LibraryDock(): JSX.Element {
           title="Hide library"
           className="flex justify-center items-center w-5 h-5 text-gray-500 rounded transition-colors hover:text-gray-200 hover:bg-surface-hover"
         >
-          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6" /></svg>
+          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
         </button>
       </div>
 

@@ -723,9 +723,9 @@ export default function App(): JSX.Element {
           />
         ) : (
           <>
-            <LibraryDock />
             <Timeline fitToWindowRef={fitToWindowRef} scrollToPlayheadRef={scrollToPlayheadRef} focusPlayheadRef={focusPlayheadRef} zoomByRef={zoomByRef} />
             <MasterChannel />
+            <LibraryDock />
             <PropertiesPanel />
           </>
         )}
