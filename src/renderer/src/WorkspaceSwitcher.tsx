@@ -52,7 +52,7 @@ export function WorkspaceSwitcher(): JSX.Element {
         </svg>
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1.5 min-w-[130px] rounded border border-surface-border bg-surface-panel shadow-lg py-1">
+        <div className="absolute left-0 top-full z-[200] mt-1.5 min-w-[130px] rounded border border-surface-border bg-surface-panel shadow-lg py-1">
           {ORDER.map((w) => (
             <button
               key={w}
