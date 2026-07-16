@@ -9,6 +9,7 @@ import { ImportDialog } from './components/ImportDialog'
 import { TracklistPDFDialog } from './components/TracklistPDFDialog'
 import { ToastContainer } from './components/Toast'
 import { WelcomeScreen } from './components/WelcomeScreen'
+import { LibraryDock } from './components/LibraryDock'
 import { AutosaveRestoreModal } from './components/AutosaveRestoreModal'
 import { GuidedTour } from './components/GuidedTour'
 import { WhatsNewModal } from './components/WhatsNewModal'
@@ -722,6 +723,7 @@ export default function App(): JSX.Element {
           />
         ) : (
           <>
+            <LibraryDock />
             <Timeline fitToWindowRef={fitToWindowRef} scrollToPlayheadRef={scrollToPlayheadRef} focusPlayheadRef={focusPlayheadRef} zoomByRef={zoomByRef} />
             <MasterChannel />
             <PropertiesPanel />
