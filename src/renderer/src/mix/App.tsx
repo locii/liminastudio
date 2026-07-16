@@ -10,6 +10,7 @@ import { TracklistPDFDialog } from './components/TracklistPDFDialog'
 import { ToastContainer } from './components/Toast'
 import { WelcomeScreen } from './components/WelcomeScreen'
 import { LibraryDock } from './components/LibraryDock'
+import { GlobalControls } from '../GlobalControls'
 import { AutosaveRestoreModal } from './components/AutosaveRestoreModal'
 import { GuidedTour } from './components/GuidedTour'
 import { WhatsNewModal } from './components/WhatsNewModal'
@@ -88,6 +89,13 @@ export default function App(): JSX.Element {
     const key = 'limina-mix-last-seen-version'
     const lastSeen = localStorage.getItem(key)
     if (lastSeen !== __APP_VERSION__) setWhatsNewOpen(true)
+  }, [])
+
+  // The persistent global "?" dispatches this — open Mix's guided tour.
+  useEffect(() => {
+    const handler = (): void => setTourOpen(true)
+    window.addEventListener('app:start-tour', handler)
+    return () => window.removeEventListener('app:start-tour', handler)
   }, [])
 
   // Check for a crash-recovery autosave on first mount
@@ -665,11 +673,13 @@ export default function App(): JSX.Element {
 
   return (
     <div className="flex flex-col h-full text-gray-200 bg-surface-base">
-      {/* macOS traffic-light drag region */}
+      {/* macOS traffic-light drag region + persistent global controls */}
       <div
-        className="h-7 shrink-0 bg-surface-panel"
+        className="flex items-center justify-end px-3 h-7 shrink-0 bg-surface-panel"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-      />
+      >
+        <GlobalControls />
+      </div>
 
       <TransportBar
         onAddTrack={handleAddTrack}

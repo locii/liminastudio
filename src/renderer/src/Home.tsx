@@ -1,6 +1,7 @@
 import logo from './mix/assets/limina-logo.png'
 import { useUIStore } from './uiStore'
 import { useLibraryStore } from './library/store/libraryStore'
+import { GlobalControls } from './GlobalControls'
 
 interface Tile {
   label: string
@@ -29,7 +30,7 @@ export function Home(): JSX.Element {
       ),
     },
     {
-      label: 'Create Session',
+      label: 'View / Create Sessions',
       desc: 'Run a live, tag-driven session with automatic crossfades.',
       go: () => {
         useLibraryStore.getState().enterMixMode()
@@ -43,7 +44,7 @@ export function Home(): JSX.Element {
       ),
     },
     {
-      label: 'Create Mix',
+      label: 'View / Create Mix',
       desc: 'Arrange tracks on a timeline, set crossfades, and export the full mix.',
       go: () => setSurface('mix'),
       icon: (
@@ -59,9 +60,11 @@ export function Home(): JSX.Element {
 
   return (
     <div className="flex flex-col h-full text-gray-200 bg-surface-base">
-      <div className="h-7 shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />
-      <div className="flex flex-col flex-1 gap-10 justify-center items-center px-8 select-none">
-        <div className="flex flex-col gap-3 items-center">
+      <div className="flex items-center justify-end h-9 px-3 shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
+        <GlobalControls />
+      </div>
+      <div className="flex flex-col items-center justify-center flex-1 gap-10 px-8 select-none">
+        <div className="flex flex-col items-center gap-3">
           <img src={logo} alt="Limina Studio" className="object-contain w-20 h-20 rounded-2xl" draggable={false} />
           <div className="text-center">
             <h1 className="text-lg font-semibold tracking-wide text-gray-100">Limina Studio</h1>
@@ -69,15 +72,15 @@ export function Home(): JSX.Element {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 w-full max-w-3xl sm:grid-cols-3">
+        <div className="grid w-full max-w-3xl grid-cols-1 gap-4 sm:grid-cols-3">
           {tiles.map((t) => (
             <button
               key={t.label}
               type="button"
               onClick={t.go}
-              className="group flex flex-col gap-3 p-5 text-left rounded-xl border transition-all border-surface-border bg-surface-panel hover:border-accent/60 hover:bg-surface-hover"
+              className="flex flex-col gap-3 p-5 text-left transition-all border group rounded-xl border-surface-border bg-surface-panel hover:border-accent/60 hover:bg-surface-hover"
             >
-              <span className="flex justify-center items-center w-10 h-10 text-gray-400 rounded-lg border transition-colors border-surface-border bg-surface-base group-hover:text-accent group-hover:border-accent/40">
+              <span className="flex items-center justify-center w-10 h-10 text-gray-400 transition-colors border rounded-lg border-surface-border bg-surface-base group-hover:text-accent group-hover:border-accent/40">
                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   {t.icon}
                 </svg>
