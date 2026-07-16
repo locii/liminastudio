@@ -3,6 +3,7 @@ import LibraryApp from './library/App'
 import { Home } from './Home'
 import { PlaylistsSurface } from './PlaylistsSurface'
 import { NavConfirmModal } from './NavConfirmModal'
+import { OverwriteModal } from './OverwriteModal'
 import { useUIStore } from './uiStore'
 
 /**
@@ -30,6 +31,7 @@ export default function Root(): JSX.Element {
     <>
       {view}
       <NavConfirmModal />
+      <OverwriteModal />
     </>
   )
 }

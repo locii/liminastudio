@@ -14,6 +14,7 @@ import type { LibraryFile } from '../types'
 import type { MixQueueItem } from '../store/libraryStore'
 import { openInMix } from '../../openInMix'
 import { buildMixSessionFromFiles } from '../../buildMixSession'
+import { requestOpen } from '../../openGuard'
 
 // Where the Pro upsell (locked Session Mode features) sends free users.
 const PRO_UPSELL_URL = 'https://musicforbreathwork.com/pricing'
@@ -356,7 +357,7 @@ export function MixPanel(): JSX.Element {
       }
     }
     if (list.length === 0) return
-    openInMix(buildMixSessionFromFiles(list))
+    requestOpen('mix', () => openInMix(buildMixSessionFromFiles(list)))
   }, [files, mixQueue])
 
   // Session recording: save-prompt modal, sessions viewer, and a 1s elapsed tick.

@@ -1,6 +1,7 @@
 import { useSessionStore } from './mix/store/sessionStore'
 import { useTransportStore } from './mix/store/transportStore'
 import { useUIStore } from './uiStore'
+import { stopAllPlayback } from './navigate'
 
 type SessionSnapshot = Parameters<ReturnType<typeof useSessionStore.getState>['loadSnapshot']>[0]
 
@@ -12,6 +13,7 @@ type SessionSnapshot = Parameters<ReturnType<typeof useSessionStore.getState>['l
 export function openInMix(session: SessionSnapshot | string): void {
   try {
     const data = (typeof session === 'string' ? JSON.parse(session) : session) as SessionSnapshot
+    stopAllPlayback() // moving into Mix — stop any session/timeline playback first
     const store = useSessionStore.getState()
     store.loadSnapshot(data)
 

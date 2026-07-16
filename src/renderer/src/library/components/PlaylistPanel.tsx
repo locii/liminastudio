@@ -4,6 +4,7 @@ import type { LibraryFile, MfbPlaylistDetail, MfbPlaylistTrack } from '../types'
 import { appleMusicDeepLink } from '../types'
 import { useUIStore } from '../../uiStore'
 import { openInMix } from '../../openInMix'
+import { requestOpen } from '../../openGuard'
 
 const SEGMENT_COLORS = [
   '#6366f1', '#3b82f6', '#14b8a6', '#22c55e',
@@ -374,7 +375,7 @@ export function PlaylistPanel(): JSX.Element {
     setOpening(true)
     try {
       const session = await buildLiminaSession(detail!, allFiles)
-      openInMix(JSON.stringify(session))
+      requestOpen('mix', () => openInMix(JSON.stringify(session)))
     } finally {
       setOpening(false)
     }
@@ -382,10 +383,12 @@ export function PlaylistPanel(): JSX.Element {
 
   // Open the playlist's matched tracks as an Auto-Mix queue in Session mode.
   function handleOpenInSession(): void {
-    clearQueue()
-    for (const fileId of matchedQueue) addQueueTrack(fileId)
-    enterMixMode()
-    setSurface('library')
+    requestOpen('session', () => {
+      clearQueue()
+      for (const fileId of matchedQueue) addQueueTrack(fileId)
+      enterMixMode()
+      setSurface('library')
+    })
   }
 
   let trackIndex = 0
