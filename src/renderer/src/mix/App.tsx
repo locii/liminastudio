@@ -8,7 +8,6 @@ import { ExportDialog } from './components/ExportDialog'
 import { ImportDialog } from './components/ImportDialog'
 import { TracklistPDFDialog } from './components/TracklistPDFDialog'
 import { ToastContainer } from './components/Toast'
-import { WelcomeScreen } from './components/WelcomeScreen'
 import { LibraryDock } from './components/LibraryDock'
 import { GlobalControls } from '../GlobalControls'
 import { WorkspaceSwitcher } from '../WorkspaceSwitcher'
@@ -43,7 +42,6 @@ export default function App(): JSX.Element {
   const [libraryDockOpen, setLibraryDockOpen] = useState(false)
   const [autosave, setAutosave] = useState<{ json: string; savedAt: string } | null>(null)
   const [warmup, setWarmup] = useState<{ done: number; total: number } | null>(null)
-  const tracks = useSessionStore((s) => s.tracks)
   const fitToWindowRef = useRef<(() => void) | null>(null)
   const scrollToPlayheadRef = useRef<(() => void) | null>(null)
   const focusPlayheadRef = useRef<(() => void) | null>(null)
@@ -106,6 +104,12 @@ export default function App(): JSX.Element {
   // the prompt was noise. Autosave still WRITES (useAutoSave) so nothing is lost;
   // to re-enable the restore prompt, call window.electronAPI.checkAutosave() here
   // and setAutosave(result).
+
+  // Mix opens straight into an empty session (no welcome splash) when nothing is
+  // loaded, so you can start dragging tracks in immediately.
+  useEffect(() => {
+    if (useSessionStore.getState().tracks.length === 0) newSession()
+  }, [newSession])
 
 
   // Sync window title
@@ -745,26 +749,16 @@ export default function App(): JSX.Element {
         </div>
       )}
 
-      {/* Timeline + master channel side-by-side, or welcome screen */}
+      {/* Timeline + master channel side-by-side. Mix opens straight into an empty
+          session (no welcome splash) — see the auto-init effect above. */}
       <div className="relative flex overflow-hidden flex-1 min-h-0">
-        {tracks.length === 0 ? (
-          <WelcomeScreen
-            onOpen={openSession}
-            onOpenRecent={openRecentSession}
-            onNewSession={handleNewSession}
-            onImport={() => setImportOpen(true)}
-          />
-        ) : (
-          <>
-            <Timeline fitToWindowRef={fitToWindowRef} scrollToPlayheadRef={scrollToPlayheadRef} focusPlayheadRef={focusPlayheadRef} zoomByRef={zoomByRef} />
-            {!libraryDockOpen && <MasterChannel />}
-            <LibraryDock open={libraryDockOpen} onOpenChange={setLibraryDockOpen} />
-            <PropertiesPanel />
-          </>
-        )}
+        <Timeline fitToWindowRef={fitToWindowRef} scrollToPlayheadRef={scrollToPlayheadRef} focusPlayheadRef={focusPlayheadRef} zoomByRef={zoomByRef} />
+        {!libraryDockOpen && <MasterChannel />}
+        <LibraryDock open={libraryDockOpen} onOpenChange={setLibraryDockOpen} />
+        <PropertiesPanel />
       </div>
 
-      {tracks.length > 0 && <BottomTransport />}
+      <BottomTransport />
 
       <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} defaultFormat={exportFormat} />
       <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} onImport={handleImport} />
