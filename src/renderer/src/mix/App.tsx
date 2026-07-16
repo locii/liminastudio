@@ -37,6 +37,7 @@ export default function App(): JSX.Element {
   const [importOpen, setImportOpen] = useState(false)
   const [tourOpen, setTourOpen] = useState(false)
   const [whatsNewOpen, setWhatsNewOpen] = useState(false)
+  const [libraryDockOpen, setLibraryDockOpen] = useState(false)
   const [autosave, setAutosave] = useState<{ json: string; savedAt: string } | null>(null)
   const [warmup, setWarmup] = useState<{ done: number; total: number } | null>(null)
   const tracks = useSessionStore((s) => s.tracks)
@@ -724,8 +725,8 @@ export default function App(): JSX.Element {
         ) : (
           <>
             <Timeline fitToWindowRef={fitToWindowRef} scrollToPlayheadRef={scrollToPlayheadRef} focusPlayheadRef={focusPlayheadRef} zoomByRef={zoomByRef} />
-            <MasterChannel />
-            <LibraryDock />
+            {!libraryDockOpen && <MasterChannel />}
+            <LibraryDock open={libraryDockOpen} onOpenChange={setLibraryDockOpen} />
             <PropertiesPanel />
           </>
         )}
