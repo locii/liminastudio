@@ -319,6 +319,13 @@ export function MixPanel(): JSX.Element {
       if (!localStorage.getItem('session-tour-completed')) setTourOpen(true)
     } catch { /* noop */ }
   }, [])
+  // The standard top-right "?" (in the toolbar) dispatches this — open the
+  // session-mode tour for this workspace.
+  useEffect(() => {
+    const handler = (): void => setTourOpen(true)
+    window.addEventListener('app:start-tour', handler)
+    return () => window.removeEventListener('app:start-tour', handler)
+  }, [])
   const closeTour = useCallback(() => {
     setTourOpen(false)
     try { localStorage.setItem('session-tour-completed', '1') } catch { /* noop */ }
@@ -553,10 +560,8 @@ export function MixPanel(): JSX.Element {
 
   return (
     <div className="flex flex-col flex-1 min-w-0 bg-surface-base">
-      {/* Header */}
+      {/* Header — tour "?" now lives in the standard top-right toolbar */}
       <div className="flex items-center h-10 gap-4 px-4 border-b shrink-0 bg-surface-panel border-surface-border">
-        <button type="button" onClick={() => setTourOpen(true)} title="Session Mode tour"
-          className="flex items-center justify-center w-5 h-5 rounded-full border border-surface-border text-[10px] text-gray-500 hover:text-gray-200 hover:border-accent/50 transition-colors shrink-0">?</button>
         <div className="flex items-center gap-3">
           {!isPro ? (
             /* Free tier: locked Load — opens the Pro upsell instead of loading. */

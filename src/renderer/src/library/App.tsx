@@ -601,7 +601,12 @@ export default function App(): JSX.Element {
           </button>
           <button
             type="button"
-            onClick={() => setTourOpen(true)}
+            onClick={() => {
+              // Swap context: in Session mode open the session tour (MixPanel
+              // listens for this), otherwise open the Library browse tour.
+              if (mixMode) window.dispatchEvent(new CustomEvent('app:start-tour'))
+              else setTourOpen(true)
+            }}
             title="Start guided tour"
             className="flex items-center justify-center w-6 h-6 text-xs text-gray-300 transition-colors border rounded bg-surface-hover hover:bg-surface-border border-surface-border"
           >
