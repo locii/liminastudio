@@ -75,7 +75,7 @@ export function PlaylistsSurface(): JSX.Element {
                 key={p.id}
                 type="button"
                 onClick={() => selectPlaylist(p.id)}
-                className={`w-full text-left px-3 py-2 text-[12px] truncate border-b transition-colors border-surface-border/40 ${selectedPlaylistId === p.id ? 'bg-accent/15 text-accent' : 'text-gray-300 hover:bg-surface-hover'}`}
+                className={`w-full shrink-0 text-left px-3 py-2.5 text-[12px] truncate border-b transition-colors border-surface-border/40 ${selectedPlaylistId === p.id ? 'bg-accent/15 text-accent' : 'text-gray-300 hover:bg-surface-hover'}`}
               >
                 {p.title}
               </button>
