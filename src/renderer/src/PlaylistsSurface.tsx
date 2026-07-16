@@ -70,14 +70,25 @@ export function PlaylistsSurface(): JSX.Element {
             Playlists
           </p>
           {userAccount && playlists.length > 0 && (
-            <div className="p-2 border-b shrink-0 border-surface-border">
+            <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-surface-border shrink-0">
+              <svg className="w-3 h-3 text-gray-600 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="5" cy="5" r="3.5" />
+                <path d="M8 8l2.5 2.5" />
+              </svg>
               <input
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search playlists…"
-                className="w-full px-2 py-1 text-[11px] text-gray-200 rounded border bg-surface-base border-surface-border placeholder:text-gray-600 focus:outline-none focus:border-accent/50"
+                placeholder="Filter playlists…"
+                className="flex-1 min-w-0 bg-transparent text-[11px] text-gray-300 placeholder-gray-700 outline-none"
               />
+              {query ? (
+                <button type="button" onClick={() => setQuery('')} className="text-gray-600 transition-colors hover:text-gray-400 shrink-0" title="Clear filter">
+                  <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                    <path d="M2 2l8 8M10 2l-8 8" />
+                  </svg>
+                </button>
+              ) : null}
             </div>
           )}
           <div className="overflow-y-auto flex-1 min-h-0">
