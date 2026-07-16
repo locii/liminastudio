@@ -52,7 +52,6 @@ export function MixPanel(): JSX.Element {
   const removeMixTag = useLibraryStore((s) => s.removeMixTag)
   const clearMixTags = useLibraryStore((s) => s.clearMixTags)
   const setMixMatchMode = useLibraryStore((s) => s.setMixMatchMode)
-  const exitMixMode = useLibraryStore((s) => s.exitMixMode)
   const selectFile = useLibraryStore((s) => s.selectFile)
   const selectedFileId = useLibraryStore((s) => s.selectedFileId)
   const updateFile = useLibraryStore((s) => s.updateFile)
@@ -556,13 +555,6 @@ export function MixPanel(): JSX.Element {
     <div className="flex flex-col flex-1 min-w-0 bg-surface-base">
       {/* Header */}
       <div className="flex items-center h-10 gap-4 px-4 border-b shrink-0 border-surface-border">
-        <div className="flex items-center min-w-0 gap-2">
-          <svg className="w-3.5 h-3.5 text-accent shrink-0" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M2 3h2.5a4 4 0 013.2 1.6L9 6.5l1.3 1.9A4 4 0 0013.5 10M2 10h2.5a4 4 0 002.8-1.2M13.5 4h-1.5a4 4 0 00-3.2 1.6" />
-          </svg>
-          <span className="text-[11px] font-semibold tracking-widest text-gray-200 uppercase">Session Mode</span>
-        </div>
-        <button type="button" onClick={() => exitMixMode()} className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors uppercase">x Close</button>
         <button type="button" onClick={() => setTourOpen(true)} title="Session Mode tour"
           className="flex items-center justify-center w-5 h-5 rounded-full border border-surface-border text-[10px] text-gray-500 hover:text-gray-200 hover:border-accent/50 transition-colors shrink-0">?</button>
         <div className="flex items-center gap-3 ml-auto">

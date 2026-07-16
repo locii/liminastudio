@@ -496,7 +496,7 @@ export default function App(): JSX.Element {
 
       {/* Top bar */}
       <div className="flex items-center justify-between h-10 px-4 border-b shrink-0 bg-surface-panel border-surface-border">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => goHome('home')}
@@ -507,14 +507,10 @@ export default function App(): JSX.Element {
               <path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" />
             </svg>
           </button>
-          <button
-            type="button"
-            onClick={() => setShowWelcome((v) => !v)}
-            className="text-xs font-semibold tracking-widest text-gray-300 uppercase transition-colors select-none hover:text-white"
-            title="About Limina Library"
-          >
-            Limina Library
-          </button>
+          <span className="text-gray-600 select-none">›</span>
+          <span className="text-xs font-semibold tracking-widest text-gray-300 uppercase select-none">
+            {mixMode ? 'Session' : 'Library'}
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <MixMiniPlayer />

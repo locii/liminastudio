@@ -175,15 +175,8 @@ export function TransportBar({
           <path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" />
         </svg>
       </button>
-
-      {/* App name — click to go to welcome screen */}
-      <button
-        onClick={onNewSession}
-        className="text-[11px] font-semibold text-gray-300 tracking-widest uppercase shrink-0 select-none transition-colors hover:text-white"
-        title="Go to welcome screen"
-      >
-        Limina Mix
-      </button>
+      <span className="text-gray-600 text-[11px] select-none shrink-0">›</span>
+      <span className="text-[11px] font-semibold text-gray-300 tracking-widest uppercase shrink-0 select-none">Mix</span>
 
       <div className="w-px h-4 bg-surface-border shrink-0" />
 
