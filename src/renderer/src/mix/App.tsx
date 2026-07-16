@@ -11,6 +11,8 @@ import { ToastContainer } from './components/Toast'
 import { WelcomeScreen } from './components/WelcomeScreen'
 import { LibraryDock } from './components/LibraryDock'
 import { GlobalControls } from '../GlobalControls'
+import { WorkspaceSwitcher } from '../WorkspaceSwitcher'
+import { useUIStore } from '../uiStore'
 import { AutosaveRestoreModal } from './components/AutosaveRestoreModal'
 import { GuidedTour } from './components/GuidedTour'
 import { WhatsNewModal } from './components/WhatsNewModal'
@@ -73,6 +75,7 @@ export default function App(): JSX.Element {
   const markClean = useSessionStore((s) => s.markClean)
   const toast = useToastStore((s) => s.add)
   const { setDownloading, setReady } = useUpdaterStore()
+  const setSurface = useUIStore((s) => s.setSurface)
 
   // Prevent buttons from stealing keyboard focus on mouse click so Space/shortcuts
   // always reach the document-level handler rather than activating the last clicked button.
@@ -673,11 +676,31 @@ export default function App(): JSX.Element {
 
   return (
     <div className="flex flex-col h-full text-gray-200 bg-surface-base">
-      {/* macOS traffic-light drag region + persistent global controls */}
+      {/* macOS traffic-light drag region */}
       <div
-        className="flex items-center justify-end px-3 h-7 shrink-0 bg-surface-panel"
+        className="h-7 shrink-0 bg-surface-panel"
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+      />
+
+      {/* App toolbar — consistent across all workspaces */}
+      <div
+        className="flex items-center justify-between px-3 h-10 border-b shrink-0 bg-surface-panel border-surface-border"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
+        <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+          <button
+            type="button"
+            onClick={() => setSurface('home')}
+            title="Back to Home"
+            className="flex items-center justify-center w-6 h-6 text-gray-400 rounded border transition-colors bg-surface-hover hover:bg-surface-border border-surface-border"
+          >
+            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" />
+            </svg>
+          </button>
+          <span className="text-gray-600 select-none">›</span>
+          <WorkspaceSwitcher />
+        </div>
         <GlobalControls />
       </div>
 
