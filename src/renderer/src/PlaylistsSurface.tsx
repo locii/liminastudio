@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLibraryStore } from './library/store/libraryStore'
 import { PlaylistPanel } from './library/components/PlaylistPanel'
+import { PlayerBar } from './library/components/PlayerBar'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 import { GlobalControls } from './GlobalControls'
 import { useUIStore } from './uiStore'
@@ -125,6 +126,9 @@ export function PlaylistsSurface(): JSX.Element {
           )}
         </div>
       </div>
+
+      {/* Preview player (clip viewer + transport) — renders only while previewing */}
+      <PlayerBar />
     </div>
   )
 }
