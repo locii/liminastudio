@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLibraryStore } from '../../../library/store/libraryStore'
-import { phaseColorForTag } from '../../../library/types'
 import type { LibraryFile } from '../../../library/types'
 
 // Ensure the catalogue is loaded once per app run, even if the user opens Mix
@@ -38,6 +37,8 @@ export function LibraryDock(): JSX.Element {
   const [query, setQuery] = useState('')
   // Local filter state — independent of Library's own browse filter.
   const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [tagQuery, setTagQuery] = useState('')
   const files = useLibraryStore((s) => s.files)
   const toggleSelectedTag = (t: string): void =>
     setSelectedTags((ts) => (ts.includes(t) ? ts.filter((x) => x !== t) : [...ts, t]))
@@ -107,33 +108,52 @@ export function LibraryDock(): JSX.Element {
         />
       </div>
 
-      {/* Tag filter */}
-      <div className="p-2 border-b shrink-0 border-surface-border max-h-32 overflow-y-auto">
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[9px] font-semibold tracking-wider text-gray-600 uppercase">Tags</span>
+      {/* Tag filter — add/remove tags (same pattern as session mode) */}
+      <div className="p-2 border-b shrink-0 border-surface-border">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {selectedTags.map((tag) => (
+            <span key={tag} className="inline-flex items-center gap-1 pl-2.5 pr-1.5 py-1 rounded-full bg-accent/15 border border-accent/30 text-[11px] text-accent">
+              {tag}
+              <button type="button" onClick={() => toggleSelectedTag(tag)} className="opacity-60 hover:opacity-100" aria-label={`Remove ${tag}`}>
+                <svg className="w-2.5 h-2.5" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 2l6 6M8 2l-6 6" /></svg>
+              </button>
+            </span>
+          ))}
+          <button type="button" onClick={() => setPickerOpen((v) => !v)}
+            className="inline-flex items-center gap-1 pl-2 pr-2.5 py-1 rounded-full border border-dashed border-surface-border text-[11px] text-gray-400 hover:text-gray-200 hover:border-gray-500 transition-colors"
+            title={pickerOpen ? 'Close tag panel' : 'Filter by tags'}>
+            <svg className="w-2.5 h-2.5" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">{pickerOpen ? <path d="M2 2l6 6M8 2l-6 6" /> : <path d="M5 1v8M1 5h8" />}</svg>
+            {pickerOpen ? 'Close tags' : 'Add tag'}
+          </button>
           {selectedTags.length > 0 && (
-            <button type="button" onClick={clearSelectedTags} className="text-[9px] text-gray-500 hover:text-gray-300">clear</button>
+            <button type="button" onClick={clearSelectedTags} className="ml-auto text-[10px] text-gray-600 hover:text-gray-400 transition-colors">Clear</button>
           )}
         </div>
-        {tagCounts.length === 0 ? (
-          <p className="text-[10px] leading-relaxed text-gray-600">Tags appear once tracks are matched to Music for Breathwork in the Library.</p>
-        ) : (
-          <div className="flex flex-wrap gap-1">
-            {tagCounts.map(([tag, count]) => {
-              const active = selectedTags.includes(tag)
-              const phase = phaseColorForTag(tag)
-              return (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() => toggleSelectedTag(tag)}
-                  className={`px-1.5 py-0.5 rounded text-[10px] border transition-colors ${active ? 'border-accent bg-accent/20 text-accent' : 'border-surface-border text-gray-400 hover:bg-surface-hover'}`}
-                  style={phase && !active ? { color: phase, borderColor: `${phase}55` } : undefined}
-                >
-                  {tag} <span className="opacity-50">{count}</span>
-                </button>
-              )
-            })}
+
+        {pickerOpen && (
+          <div className="mt-2 border rounded border-surface-border bg-surface-base">
+            <input
+              type="text" autoFocus value={tagQuery} onChange={(e) => setTagQuery(e.target.value)} placeholder="Filter tags…"
+              className="w-full bg-transparent px-2.5 py-1.5 text-[11px] text-gray-300 placeholder-gray-700 outline-none border-b border-surface-border"
+            />
+            <div className="py-1 overflow-y-auto max-h-40">
+              {tagCounts.length === 0 ? (
+                <p className="px-2.5 py-1 text-[10px] leading-relaxed text-gray-600">Tags appear once tracks are matched to Music for Breathwork in the Library.</p>
+              ) : (
+                tagCounts
+                  .filter(([t]) => !selectedTags.includes(t) && t.toLowerCase().includes(tagQuery.toLowerCase()))
+                  .slice(0, 60)
+                  .map(([tag, count]) => (
+                    <button
+                      key={tag} type="button"
+                      onClick={() => { toggleSelectedTag(tag); setTagQuery('') }}
+                      className="w-full flex items-center justify-between px-2.5 py-1 text-left text-[11px] text-gray-400 hover:bg-surface-hover hover:text-gray-200 transition-colors"
+                    >
+                      <span className="truncate">{tag}</span><span className="text-[10px] text-gray-600 tabular-nums ml-2">{count}</span>
+                    </button>
+                  ))
+              )}
+            </div>
           </div>
         )}
       </div>
