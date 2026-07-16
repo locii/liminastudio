@@ -20,12 +20,20 @@ export function PlaylistsSurface(): JSX.Element {
   const setPlaylists = useLibraryStore((s) => s.setPlaylists)
   const selectedPlaylistId = useLibraryStore((s) => s.selectedPlaylistId)
   const selectPlaylist = useLibraryStore((s) => s.selectPlaylist)
+  const files = useLibraryStore((s) => s.files)
   const [query, setQuery] = useState('')
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return q ? playlists.filter((p) => p.title.toLowerCase().includes(q)) : playlists
   }, [playlists, query])
+
+  // MFB track ids that are matched to a local file — for the "present / total"
+  // count shown on each playlist row.
+  const matchedMfbIds = useMemo(
+    () => new Set(files.filter((f) => f.mfbTrackId != null).map((f) => f.mfbTrackId as number)),
+    [files],
+  )
 
   // Fetch the user's playlists when signed in (auth is populated app-wide by the
   // global profile button).
@@ -105,16 +113,23 @@ export function PlaylistsSurface(): JSX.Element {
             ) : filtered.length === 0 ? (
               <p className="p-3 text-[11px] text-gray-600">No playlists match.</p>
             ) : (
-              filtered.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => selectPlaylist(p.id)}
-                  className={`w-full shrink-0 text-left px-3 py-2.5 text-[12px] truncate border-b transition-colors border-surface-border/40 ${selectedPlaylistId === p.id ? 'bg-accent/15 text-accent' : 'text-gray-300 hover:bg-surface-hover'}`}
-                >
-                  {p.title}
-                </button>
-              ))
+              filtered.map((p) => {
+                const total = p.trackIds?.length ?? 0
+                const present = (p.trackIds ?? []).filter((id) => matchedMfbIds.has(id)).length
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => selectPlaylist(p.id)}
+                    className={`flex items-center gap-2 w-full shrink-0 px-3 py-2.5 text-[12px] border-b transition-colors border-surface-border/40 ${selectedPlaylistId === p.id ? 'bg-accent/15 text-accent' : 'text-gray-300 hover:bg-surface-hover'}`}
+                  >
+                    <span className="flex-1 min-w-0 text-left truncate">{p.title}</span>
+                    <span className="text-[10px] text-gray-600 tabular-nums shrink-0" title={`${present} of ${total} tracks in your library`}>
+                      {present}/{total}
+                    </span>
+                  </button>
+                )
+              })
             )}
           </div>
         </div>
