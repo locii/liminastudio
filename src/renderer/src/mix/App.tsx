@@ -33,6 +33,10 @@ function peaksForClip(duration: number, zoom: number): number {
   return Math.min(Math.ceil(duration * zoom), 50_000)
 }
 
+// Guards the crash-recovery autosave check so it runs once per app run, not on
+// every remount when switching back to the Mix workspace.
+let autosaveChecked = false
+
 export default function App(): JSX.Element {
   const [exportOpen, setExportOpen] = useState(false)
   const [exportFormat, setExportFormat] = useState<'wav' | 'mp3'>('wav')
@@ -101,8 +105,12 @@ export default function App(): JSX.Element {
     return () => window.removeEventListener('app:start-tour', handler)
   }, [])
 
-  // Check for a crash-recovery autosave on first mount
+  // Check for a crash-recovery autosave only once per app run. The Mix app
+  // remounts on every workspace switch, so without this guard the restore prompt
+  // would reappear each time you re-open Mix (for your own current session).
   useEffect(() => {
+    if (autosaveChecked) return
+    autosaveChecked = true
     window.electronAPI.checkAutosave().then((result) => {
       if (result) setAutosave(result)
     })
