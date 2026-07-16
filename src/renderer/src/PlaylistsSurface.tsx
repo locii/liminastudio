@@ -46,13 +46,13 @@ export function PlaylistsSurface(): JSX.Element {
       <div className="h-7 shrink-0 bg-surface-panel" style={drag} />
 
       {/* App toolbar — consistent across all workspaces */}
-      <div className="flex items-center justify-between px-3 h-10 border-b shrink-0 bg-surface-panel border-surface-border" style={drag}>
+      <div className="flex items-center justify-between h-10 px-3 border-b shrink-0 bg-surface-panel border-surface-border" style={drag}>
         <div className="flex items-center gap-2" style={noDrag}>
           <button
             type="button"
             onClick={() => setSurface('home')}
             title="Back to Home"
-            className="flex items-center justify-center w-6 h-6 text-gray-400 rounded border transition-colors bg-surface-hover hover:bg-surface-border border-surface-border"
+            className="flex items-center justify-center w-6 h-6 text-gray-400 transition-colors border rounded bg-surface-hover hover:bg-surface-border border-surface-border"
           >
             <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" />
@@ -66,10 +66,13 @@ export function PlaylistsSurface(): JSX.Element {
 
       {/* Index (left) + detail */}
       <div className="flex flex-1 min-h-0">
-        <div className="flex flex-col w-72 min-h-0 border-r shrink-0 border-surface-border">
-          <p className="px-3 py-2 text-[10px] font-semibold tracking-wider text-gray-500 uppercase border-b shrink-0 border-surface-border">
-            Playlists
-          </p>
+        <div className="flex flex-col w-64 min-h-0 border-r shrink-0 border-surface-border">
+          {/* Header styled like the Library sidebar's active tab (e.g. Tags) */}
+          <div className="flex border-b border-surface-border shrink-0">
+            <div className="flex-1 py-2 text-[10px] uppercase tracking-wider text-center text-gray-200 bg-surface-hover border-b-2 border-accent -mb-px select-none">
+              Playlists
+            </div>
+          </div>
           {userAccount && playlists.length > 0 && (
             <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-surface-border shrink-0">
               <svg className="w-3 h-3 text-gray-600 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -92,7 +95,7 @@ export function PlaylistsSurface(): JSX.Element {
               ) : null}
             </div>
           )}
-          <div className="overflow-y-auto flex-1 min-h-0">
+          <div className="flex-1 min-h-0 overflow-y-auto">
             {!userAccount ? (
               <p className="p-3 text-[11px] leading-relaxed text-gray-500">
                 Sign in with your Music for Breathwork account (top-right) to see your playlists.
