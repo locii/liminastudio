@@ -4,6 +4,7 @@ import { useTransportStore } from '../../store/transportStore'
 import { useUpdaterStore } from '../../store/updaterStore'
 import { audioEngine } from '../../audio/audioEngine'
 import { KeyboardShortcuts } from '../KeyboardShortcuts'
+import { useUIStore } from '../../../uiStore'
 function formatTime(seconds: number): string {
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
@@ -41,6 +42,7 @@ export function TransportBar({
   onRebuildWaveforms, onExportWaveformData, onOpenRecent,
   onFitToWindow, onFocusPlayhead, onZoomIn, onZoomOut, onStartTour,
 }: Props): JSX.Element {
+  const goHome = useUIStore((s) => s.setSurface)
   const playing = useTransportStore((s) => s.playing)
   const looping = useTransportStore((s) => s.looping)
   const zoom = useTransportStore((s) => s.zoom)
@@ -161,6 +163,18 @@ export function TransportBar({
 
   return (
     <div className="flex gap-3 items-center px-3 h-11 border-b bg-surface-panel border-surface-border shrink-0">
+
+      {/* Home — back to the umbrella switcher */}
+      <button
+        type="button"
+        onClick={() => goHome('home')}
+        title="Back to Home"
+        className="flex items-center justify-center w-6 h-6 text-gray-400 rounded border transition-colors bg-surface-hover hover:bg-surface-border border-surface-border shrink-0"
+      >
+        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" />
+        </svg>
+      </button>
 
       {/* App name — click to go to welcome screen */}
       <button

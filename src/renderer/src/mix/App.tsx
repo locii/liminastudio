@@ -16,7 +16,6 @@ import { useSessionStore } from './store/sessionStore'
 import { useTransportStore } from './store/transportStore'
 import { useToastStore } from './store/toastStore'
 import { useUpdaterStore } from './store/updaterStore'
-import { useUIStore } from '../uiStore'
 import { audioEngine } from './audio/audioEngine'
 import { useAutoSave } from './hooks/useAutoSave'
 import type { Track, Clip } from './types'
@@ -71,7 +70,6 @@ export default function App(): JSX.Element {
   const markClean = useSessionStore((s) => s.markClean)
   const toast = useToastStore((s) => s.add)
   const { setDownloading, setReady } = useUpdaterStore()
-  const goHome = useUIStore((s) => s.setSurface)
 
   // Prevent buttons from stealing keyboard focus on mouse click so Space/shortcuts
   // always reach the document-level handler rather than activating the last clicked button.
@@ -665,23 +663,11 @@ export default function App(): JSX.Element {
 
   return (
     <div className="flex flex-col h-full text-gray-200 bg-surface-base">
-      {/* macOS traffic-light drag region + Home button */}
+      {/* macOS traffic-light drag region */}
       <div
-        className="flex justify-end items-center px-3 h-7 shrink-0 bg-surface-panel"
+        className="h-7 shrink-0 bg-surface-panel"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-      >
-        <button
-          type="button"
-          onClick={() => goHome('home')}
-          title="Back to Home"
-          className="flex items-center justify-center w-6 h-6 text-gray-400 rounded border transition-colors bg-surface-hover hover:bg-surface-border border-surface-border"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-        >
-          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" />
-          </svg>
-        </button>
-      </div>
+      />
 
       <TransportBar
         onAddTrack={handleAddTrack}
