@@ -1,6 +1,7 @@
 import MixApp from './mix/App'
 import LibraryApp from './library/App'
 import { Home } from './Home'
+import { PlaylistsSurface } from './PlaylistsSurface'
 import { useUIStore } from './uiStore'
 
 /**
@@ -15,6 +16,8 @@ export default function Root(): JSX.Element {
       return <MixApp />
     case 'library':
       return <LibraryApp />
+    case 'playlists':
+      return <PlaylistsSurface />
     default:
       return <Home />
   }

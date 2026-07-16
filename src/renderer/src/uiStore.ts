@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 /** Which sub-app the umbrella is showing. `home` is the launch switcher. */
-export type Surface = 'home' | 'library' | 'mix'
+export type Surface = 'home' | 'library' | 'mix' | 'playlists'
 
 interface UIState {
   surface: Surface

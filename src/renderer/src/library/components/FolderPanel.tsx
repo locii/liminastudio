@@ -262,9 +262,9 @@ export function FolderPanel({ onAddFolder, onRescan }: Props): JSX.Element {
           <span className="text-[11px] text-accent/70">Drop folder</span>
         </div>
       )}
-      {/* Mode toggle */}
+      {/* Mode toggle — playlists live in their own workspace now; sessions dropped */}
       <div className="flex border-b border-surface-border shrink-0">
-        {(['tags', 'playlists', 'sessions', 'folders'] as PanelMode[]).map((m) => (
+        {(['tags', 'folders'] as PanelMode[]).map((m) => (
           <button
             key={m}
             data-tour={m === 'playlists' ? 'playlists-tab' : undefined}

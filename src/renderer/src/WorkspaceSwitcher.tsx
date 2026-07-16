@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { useUIStore } from './uiStore'
 import { useLibraryStore } from './library/store/libraryStore'
 
-type Workspace = 'library' | 'session' | 'mix'
+type Workspace = 'library' | 'playlists' | 'session' | 'mix'
 
-const LABELS: Record<Workspace, string> = { library: 'Library', session: 'Session', mix: 'Mix' }
-const ORDER: Workspace[] = ['library', 'session', 'mix']
+const LABELS: Record<Workspace, string> = { library: 'Library', playlists: 'Playlists', session: 'Session', mix: 'Mix' }
+const ORDER: Workspace[] = ['library', 'playlists', 'session', 'mix']
 
 /**
  * Toolbar workspace switcher (sits next to the Home icon in both apps' toolbars).
@@ -19,13 +19,15 @@ export function WorkspaceSwitcher(): JSX.Element {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
-  const current: Workspace = surface === 'mix' ? 'mix' : mixMode ? 'session' : 'library'
+  const current: Workspace =
+    surface === 'mix' ? 'mix' : surface === 'playlists' ? 'playlists' : mixMode ? 'session' : 'library'
 
   const goTo = (w: Workspace): void => {
     setOpen(false)
     const lib = useLibraryStore.getState()
     if (w === 'library') { lib.exitMixMode(); setSurface('library') }
     else if (w === 'session') { lib.enterMixMode(); setSurface('library') }
+    else if (w === 'playlists') setSurface('playlists')
     else setSurface('mix')
   }
 
