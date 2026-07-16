@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLibraryStore } from './library/store/libraryStore'
 import { PlaylistPanel } from './library/components/PlaylistPanel'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
@@ -19,6 +19,12 @@ export function PlaylistsSurface(): JSX.Element {
   const setPlaylists = useLibraryStore((s) => s.setPlaylists)
   const selectedPlaylistId = useLibraryStore((s) => s.selectedPlaylistId)
   const selectPlaylist = useLibraryStore((s) => s.selectPlaylist)
+  const [query, setQuery] = useState('')
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return q ? playlists.filter((p) => p.title.toLowerCase().includes(q)) : playlists
+  }, [playlists, query])
 
   // Fetch the user's playlists when signed in (auth is populated app-wide by the
   // global profile button).
@@ -59,28 +65,43 @@ export function PlaylistsSurface(): JSX.Element {
 
       {/* Index (left) + detail */}
       <div className="flex flex-1 min-h-0">
-        <div className="flex flex-col overflow-y-auto w-72 border-r shrink-0 border-surface-border">
+        <div className="flex flex-col w-72 min-h-0 border-r shrink-0 border-surface-border">
           <p className="px-3 py-2 text-[10px] font-semibold tracking-wider text-gray-500 uppercase border-b shrink-0 border-surface-border">
             Playlists
           </p>
-          {!userAccount ? (
-            <p className="p-3 text-[11px] leading-relaxed text-gray-500">
-              Sign in with your Music for Breathwork account (top-right) to see your playlists.
-            </p>
-          ) : playlists.length === 0 ? (
-            <p className="p-3 text-[11px] text-gray-600">No playlists found.</p>
-          ) : (
-            playlists.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => selectPlaylist(p.id)}
-                className={`w-full shrink-0 text-left px-3 py-2.5 text-[12px] truncate border-b transition-colors border-surface-border/40 ${selectedPlaylistId === p.id ? 'bg-accent/15 text-accent' : 'text-gray-300 hover:bg-surface-hover'}`}
-              >
-                {p.title}
-              </button>
-            ))
+          {userAccount && playlists.length > 0 && (
+            <div className="p-2 border-b shrink-0 border-surface-border">
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search playlists…"
+                className="w-full px-2 py-1 text-[11px] text-gray-200 rounded border bg-surface-base border-surface-border placeholder:text-gray-600 focus:outline-none focus:border-accent/50"
+              />
+            </div>
           )}
+          <div className="overflow-y-auto flex-1 min-h-0">
+            {!userAccount ? (
+              <p className="p-3 text-[11px] leading-relaxed text-gray-500">
+                Sign in with your Music for Breathwork account (top-right) to see your playlists.
+              </p>
+            ) : playlists.length === 0 ? (
+              <p className="p-3 text-[11px] text-gray-600">No playlists found.</p>
+            ) : filtered.length === 0 ? (
+              <p className="p-3 text-[11px] text-gray-600">No playlists match.</p>
+            ) : (
+              filtered.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => selectPlaylist(p.id)}
+                  className={`w-full shrink-0 text-left px-3 py-2.5 text-[12px] truncate border-b transition-colors border-surface-border/40 ${selectedPlaylistId === p.id ? 'bg-accent/15 text-accent' : 'text-gray-300 hover:bg-surface-hover'}`}
+                >
+                  {p.title}
+                </button>
+              ))
+            )}
+          </div>
         </div>
 
         <div className="flex flex-1 min-w-0">
