@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react'
 import { useLibraryStore } from '../store/libraryStore'
 import type { LibraryFile, MfbPlaylistDetail, MfbPlaylistTrack } from '../types'
 import { appleMusicDeepLink } from '../types'
+import { useUIStore } from '../../uiStore'
+import { openInMix } from '../../openInMix'
 
 const SEGMENT_COLORS = [
   '#6366f1', '#3b82f6', '#14b8a6', '#22c55e',
@@ -286,6 +288,11 @@ export function PlaylistPanel(): JSX.Element {
   const detail = useLibraryStore((s) => s.selectedPlaylistDetail)
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [opening, setOpening] = useState(false)
+  const addQueueTrack = useLibraryStore((s) => s.addQueueTrack)
+  const clearQueue = useLibraryStore((s) => s.clearQueue)
+  const enterMixMode = useLibraryStore((s) => s.enterMixMode)
+  const setSurface = useUIStore((s) => s.setSurface)
   const [contextMenu, setContextMenu] = useState<{ filePath: string; fileId: string; x: number; y: number } | null>(null)
 
   useEffect(() => {
@@ -362,22 +369,41 @@ export function PlaylistPanel(): JSX.Element {
     }
   }
 
+  // Open the playlist as an editable timeline in the Mix workspace (in-app).
+  async function handleOpenInMix(): Promise<void> {
+    setOpening(true)
+    try {
+      const session = await buildLiminaSession(detail!, allFiles)
+      openInMix(JSON.stringify(session))
+    } finally {
+      setOpening(false)
+    }
+  }
+
+  // Open the playlist's matched tracks as an Auto-Mix queue in Session mode.
+  function handleOpenInSession(): void {
+    clearQueue()
+    for (const fileId of matchedQueue) addQueueTrack(fileId)
+    enterMixMode()
+    setSurface('library')
+  }
+
   let trackIndex = 0
 
   return (
-    <div className="flex overflow-hidden flex-col flex-1 min-w-0">
+    <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
       {/* Header */}
-      <div className="flex gap-3 items-center px-4 py-3 border-b shrink-0 border-surface-border bg-surface-panel">
+      <div className="flex items-center gap-3 px-4 py-3 border-b shrink-0 border-surface-border bg-surface-panel">
         {/* Album art */}
         {(() => {
           const imgUrl = allTracks[0]?.album_image_url
           const isPlayingPlaylist = previewFileId !== null && matchedQueue.includes(previewFileId)
           return (
-            <div className="overflow-hidden relative w-10 h-10 rounded shrink-0 bg-surface-hover">
+            <div className="relative w-10 h-10 overflow-hidden rounded shrink-0 bg-surface-hover">
               {imgUrl ? (
                 <img src={imgUrl} alt="" className="object-cover w-full h-full" />
               ) : (
-                <div className="flex justify-center items-center w-full h-full">
+                <div className="flex items-center justify-center w-full h-full">
                   <svg className="w-5 h-5 text-gray-700" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M1 3h8M1 6h6M1 9h4" />
                   </svg>
@@ -407,8 +433,8 @@ export function PlaylistPanel(): JSX.Element {
           )
         })()}
         {/* Title + stats + actions */}
-        <div className="flex flex-col flex-1 gap-1 min-w-0">
-        <div className="flex gap-2 items-center">
+        <div className="flex flex-col flex-1 min-w-0 gap-1">
+        <div className="flex items-center gap-2">
           <div className="flex flex-col flex-1 min-w-0">
             <div className="flex gap-4">
               <h2 className="text-[12px] font-semibold text-gray-200 truncate min-w-0">{detail.title}</h2>
@@ -421,7 +447,7 @@ export function PlaylistPanel(): JSX.Element {
                 Edit
               </a>
             </div>
-            <div className="flex gap-3 items-center">
+            <div className="flex items-center gap-3">
             <span className="text-[10px] text-gray-500 tabular-nums">
               {matchedCount}/{allTracks.length} tracks
             </span>
@@ -437,26 +463,36 @@ export function PlaylistPanel(): JSX.Element {
           <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
-              disabled={matchedCount === 0 || saving}
-              onClick={handleCreateSession}
-              className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] rounded border border-surface-border text-gray-200 hover:text-gray-200 hover:bg-surface-border transition-colors disabled:opacity-40 disabled:pointer-events-none"
+              disabled={matchedCount === 0 || opening}
+              onClick={handleOpenInMix}
+              title="Open this playlist as an editable timeline in Mix"
+              className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] rounded border border-accent/50 text-accent hover:bg-accent/10 transition-colors disabled:opacity-40 disabled:pointer-events-none"
             >
-              {saving && (
+              {opening && (
                 <svg className="w-2.5 h-2.5 animate-spin shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                   <path d="M6 1v2M6 9v2M1 6h2M9 6h2" />
                 </svg>
               )}
-              {saving ? 'Creating…' : savedPath ? 'Create New Version for Limina Mix' : 'Export playlist to Limina Mix'}
+              {opening ? 'Opening…' : 'Open in Mix'}
             </button>
-            {savedPath && (
-              <button
-                type="button"
-                onClick={() => window.electronAPI.studioOpenFile(savedPath)}
-                className="px-2 py-0.5 text-[10px] rounded border border-surface-border text-gray-200 hover:text-gray-200 hover:bg-surface-border transition-colors"
-              >
-                Open in Limina Mix
-              </button>
-            )}
+            <button
+              type="button"
+              disabled={matchedCount === 0}
+              onClick={handleOpenInSession}
+              title="Load these tracks into Session mode's Auto-Mix queue"
+              className="px-2 py-0.5 text-[10px] rounded border border-surface-border text-gray-200 hover:text-gray-200 hover:bg-surface-border transition-colors disabled:opacity-40 disabled:pointer-events-none"
+            >
+              Open in Session
+            </button>
+            <button
+              type="button"
+              disabled={matchedCount === 0 || saving}
+              onClick={handleCreateSession}
+              title="Save a .limina session file to disk"
+              className="px-2 py-0.5 text-[10px] rounded border border-surface-border text-gray-400 hover:text-gray-200 hover:bg-surface-border transition-colors disabled:opacity-40 disabled:pointer-events-none"
+            >
+              {saving ? 'Saving…' : savedPath ? 'Save new .limina…' : 'Save .limina…'}
+            </button>
           </div>
         </div>
           
@@ -473,11 +509,11 @@ export function PlaylistPanel(): JSX.Element {
       </div>
 
       {/* Track list with segments */}
-      <div className="overflow-y-auto flex-1 min-h-0">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {detail.segments.map((segment) => (
           <div key={segment.id}>
             {/* Segment header */}
-            <div className="flex gap-2 items-center px-3 h-6 border-b select-none bg-surface-panel/60 border-surface-border/50">
+            <div className="flex items-center h-6 gap-2 px-3 border-b select-none bg-surface-panel/60 border-surface-border/50">
               <span className="text-[9px] uppercase tracking-widest text-gray-600 truncate">{segment.name}</span>
             </div>
 
@@ -513,7 +549,7 @@ export function PlaylistPanel(): JSX.Element {
                   <span className="w-5 shrink-0 text-center text-[10px] text-gray-600 tabular-nums">{i + 1}</span>
 
                   {/* Album thumbnail with play overlay */}
-                  <div className="overflow-hidden relative w-5 h-5 rounded shrink-0 bg-surface-hover">
+                  <div className="relative w-5 h-5 overflow-hidden rounded shrink-0 bg-surface-hover">
                     {track.album_image_url ? (
                       <img src={track.album_image_url} alt="" className={`object-cover w-full h-full transition-opacity ${isPlaying ? 'opacity-60' : 'opacity-100 group-hover:opacity-60'}`} />
                     ) : (
