@@ -27,6 +27,10 @@ import { useUpdaterStore } from './store/updaterStore'
 import { useUIStore } from '../uiStore'
 
 
+// The umbrella mounts/unmounts this app when switching surfaces. Guard once-per-run
+// effects with module-level flags so they don't re-fire every time you re-enter Library.
+let whatsNewChecked = false
+
 export default function App(): JSX.Element {
   const { setDownloading, setReady } = useUpdaterStore()
   const goHome = useUIStore((s) => s.setSurface)
@@ -310,6 +314,8 @@ export default function App(): JSX.Element {
   // On a brand-new install (tour not yet completed) silently record the version
   // instead of showing the modal — it's not an update, it's a first launch.
   useEffect(() => {
+    if (whatsNewChecked) return
+    whatsNewChecked = true
     if (import.meta.env.DEV) { setWhatsNewOpen(true); return }
     try {
       const key = 'limina-library-last-seen-version'
@@ -319,6 +325,12 @@ export default function App(): JSX.Element {
         setWhatsNewOpen(true)
       }
     } catch { /* noop */ }
+  }, [])
+
+  // Stop and clear any track preview when leaving Library, so re-entering doesn't
+  // auto-replay it (PlayerBar auto-plays whatever previewFileId is set on mount).
+  useEffect(() => {
+    return () => { useLibraryStore.getState().setPreview(null, []) }
   }, [])
 
   function handleSettingsChange(s: AppSettings): void {
