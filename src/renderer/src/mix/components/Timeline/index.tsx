@@ -306,6 +306,22 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
     [zoom]
   )
 
+  // NOTE: all hooks must run before the empty-state early return below, or the
+  // hook order changes when tracks go 0 → non-empty (Rules of Hooks).
+  const handleAddSegment = useCallback((): void => {
+    const sorted = [...segments].sort((a, b) => a.startTime - b.startTime)
+    const lastEnd = sorted.length > 0 ? sorted[sorted.length - 1].endTime : 0
+    const color = SEGMENT_COLORS[sorted.length % SEGMENT_COLORS.length]
+    const duration = 100 / zoom
+    addSegment({
+      id: crypto.randomUUID(),
+      name: `Section ${sorted.length + 1}`,
+      startTime: lastEnd,
+      endTime: lastEnd + duration,
+      color,
+    })
+  }, [segments, addSegment])
+
   if (tracks.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-600">
@@ -321,20 +337,6 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
   }
 
   const playheadPx = playhead * zoom
-
-  const handleAddSegment = useCallback((): void => {
-    const sorted = [...segments].sort((a, b) => a.startTime - b.startTime)
-    const lastEnd = sorted.length > 0 ? sorted[sorted.length - 1].endTime : 0
-    const color = SEGMENT_COLORS[sorted.length % SEGMENT_COLORS.length]
-    const duration = 100 / zoom
-    addSegment({
-      id: crypto.randomUUID(),
-      name: `Section ${sorted.length + 1}`,
-      startTime: lastEnd,
-      endTime: lastEnd + duration,
-      color,
-    })
-  }, [segments, addSegment])
 
   return (
     <DragProvider>
