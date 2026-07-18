@@ -36,6 +36,12 @@ interface UIState {
    *  and cleared by PlaylistsSurface on mount. */
   collectionsPendingSessionId: string | null
   setCollectionsPendingSessionId: (id: string | null) => void
+  /** Deep-link: a library file to reveal + select when the Library next mounts
+   *  (e.g. "Show in Library" from a Collections playlist). Consumed and cleared
+   *  by the Library on mount — set directly here because switching surfaces
+   *  unmounts Collections, whose cleanup would otherwise clear the selection. */
+  libraryRevealFileId: string | null
+  setLibraryRevealFileId: (id: string | null) => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -78,4 +84,6 @@ export const useUIStore = create<UIState>((set) => ({
   setLibrarySetupOpen: (v) => set({ librarySetupOpen: v }),
   collectionsPendingSessionId: null,
   setCollectionsPendingSessionId: (id) => set({ collectionsPendingSessionId: id }),
+  libraryRevealFileId: null,
+  setLibraryRevealFileId: (id) => set({ libraryRevealFileId: id }),
 }))

@@ -729,7 +729,7 @@ export function MixPanel(): JSX.Element {
             </span>
           ) : savedSession ? (
             /* Just saved a recording — persistent chip linking to Collections */
-            <span className="flex items-center gap-2 min-w-0">
+            <span className="flex items-center min-w-0 gap-2">
               <span className="w-2 h-2 rounded-full bg-accent shrink-0" />
               <span className="text-xs text-gray-300 truncate">
                 Saved <span className="text-gray-400">&lsquo;{savedSession.name}&rsquo;</span>
@@ -739,7 +739,7 @@ export function MixPanel(): JSX.Element {
                 View in Collections →
               </button>
               <button type="button" onClick={() => setSavedSession(null)} title="Dismiss"
-                className="text-gray-600 hover:text-gray-400 transition-colors shrink-0">
+                className="text-gray-600 transition-colors hover:text-gray-400 shrink-0">
                 <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 2l8 8M10 2l-8 8" /></svg>
               </button>
             </span>
@@ -1121,14 +1121,6 @@ export function MixPanel(): JSX.Element {
                 <svg className="w-2.5 h-2.5" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2.5 1v8M5 1v8M7.5 1v8" /></svg>
                 Feel EQ{featureTargetEntries.length > 0 ? ` · ${featureTargetEntries.length}` : ''}
               </button>
-              {(mixTags.length > 0 || featureTargetEntries.length > 0) && (
-                <button type="button" onClick={() => addQueueTags(mixTags, mixMatchMode, mixFeatureTargets)}
-                  className="text-[10px] text-accent hover:text-accent/80 transition-colors inline-flex items-center gap-1"
-                  title="Add these tags + the current Feel EQ to Up Next as a generator">
-                  <svg className="w-2.5 h-2.5" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M5 1v8M1 5h8" /></svg>
-                  Add to queue
-                </button>
-              )}
               <div className="flex items-center gap-1 text-[10px]">
                 {(['any', 'all'] as const).map((m) => (
                   <button key={m} type="button" onClick={() => setMixMatchMode(m)}
@@ -1137,7 +1129,17 @@ export function MixPanel(): JSX.Element {
                   </button>
                 ))}
               </div>
-              {mixTags.length > 0 && <button type="button" onClick={() => clearMixTags()} className="ml-auto text-[10px] text-gray-600 hover:text-gray-400 transition-colors">Clear</button>}
+              {(mixTags.length > 0 || featureTargetEntries.length > 0) && (
+                <div className="flex items-center gap-3 ml-auto">
+                  {mixTags.length > 0 && <button type="button" onClick={() => clearMixTags()} className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors">Clear</button>}
+                  <button type="button" onClick={() => addQueueTags(mixTags, mixMatchMode, mixFeatureTargets)}
+                    className="text-[10px] px-2.5 py-1 rounded border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 transition-colors disabled:opacity-40 shrink-0"
+                    title="Add these tags + the current Feel EQ to Up Next as a generator">
+                    
+                    Add to queue
+                  </button>
+                </div>
+              )}
             </div>
 
             {pickerOpen && (

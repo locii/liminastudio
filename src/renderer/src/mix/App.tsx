@@ -15,7 +15,6 @@ import { useUIStore } from '../uiStore'
 import { requestNavigate } from '../navigate'
 import { AutosaveRestoreModal } from './components/AutosaveRestoreModal'
 import { GuidedTour } from './components/GuidedTour'
-import { WhatsNewModal } from './components/WhatsNewModal'
 import { useSessionStore } from './store/sessionStore'
 import { useTransportStore } from './store/transportStore'
 import { useToastStore } from './store/toastStore'
@@ -40,7 +39,6 @@ export default function App(): JSX.Element {
   const [pdfOpen, setPdfOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [tourOpen, setTourOpen] = useState(false)
-  const [whatsNewOpen, setWhatsNewOpen] = useState(false)
   const mixOpenLibraryOnMount = useUIStore((s) => s.mixOpenLibraryOnMount)
   const setMixOpenLibraryOnMount = useUIStore((s) => s.setMixOpenLibraryOnMount)
   const [libraryDockOpen, setLibraryDockOpen] = useState(false)
@@ -97,13 +95,6 @@ export default function App(): JSX.Element {
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
-  }, [])
-
-  // Show What's New modal when the app version has changed since last launch
-  useEffect(() => {
-    const key = 'limina-mix-last-seen-version'
-    const lastSeen = localStorage.getItem(key)
-    if (lastSeen !== __APP_VERSION__) setWhatsNewOpen(true)
   }, [])
 
   // The persistent global "?" dispatches this — open Mix's guided tour.
@@ -787,14 +778,6 @@ export default function App(): JSX.Element {
       )}
 
       {tourOpen && <GuidedTour onClose={() => setTourOpen(false)} />}
-
-      <WhatsNewModal
-        open={whatsNewOpen}
-        onClose={() => {
-          localStorage.setItem('limina-mix-last-seen-version', __APP_VERSION__)
-          setWhatsNewOpen(false)
-        }}
-      />
 
       <ToastContainer />
 

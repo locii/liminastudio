@@ -53,9 +53,7 @@ export function PlaylistPanel(): JSX.Element {
   const playlists = useLibraryStore((s) => s.playlists)
   const selectedPlaylistId = useLibraryStore((s) => s.selectedPlaylistId)
   const allFiles = useLibraryStore((s) => s.files)
-  const watchedFolders = useLibraryStore((s) => s.watchedFolders)
   const selectFile = useLibraryStore((s) => s.selectFile)
-  const showFileInLibrary = useLibraryStore((s) => s.showFileInLibrary)
   const selectMissingTrack = useLibraryStore((s) => s.selectMissingTrack)
   const selectedFileId = useLibraryStore((s) => s.selectedFileId)
   const selectedMissingTrackId = useLibraryStore((s) => s.selectedMissingTrackId)
@@ -74,6 +72,7 @@ export function PlaylistPanel(): JSX.Element {
   const addQueueTrack = useLibraryStore((s) => s.addQueueTrack)
   const clearQueue = useLibraryStore((s) => s.clearQueue)
   const enterMixMode = useLibraryStore((s) => s.enterMixMode)
+  const exitMixMode = useLibraryStore((s) => s.exitMixMode)
   const setSurface = useUIStore((s) => s.setSurface)
   const [contextMenu, setContextMenu] = useState<{ filePath: string; fileId: string; x: number; y: number } | null>(null)
   const [ellipsisOpen, setEllipsisOpen] = useState(false)
@@ -602,8 +601,12 @@ export function PlaylistPanel(): JSX.Element {
             type="button"
             className="w-full text-left px-3 py-1.5 text-gray-300 hover:bg-surface-hover transition-colors"
             onClick={() => {
-              const folder = watchedFolders.find((wf) => contextMenu.filePath.startsWith(wf.path))
-              showFileInLibrary(folder?.id ?? null, contextMenu.fileId)
+              // Stash the file to reveal and switch to the Library workspace. The
+              // reveal happens on the Library's mount — doing it here would be
+              // wiped when Collections unmounts (its cleanup clears the selection).
+              exitMixMode()
+              useUIStore.getState().setLibraryRevealFileId(contextMenu.fileId)
+              setSurface('library')
               setContextMenu(null)
             }}
           >

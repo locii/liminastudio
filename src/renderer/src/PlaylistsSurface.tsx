@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useLibraryStore } from './library/store/libraryStore'
 import type { SavedMix, MixSession, MixQueueItem } from './library/store/libraryStore'
 import { PlaylistPanel } from './library/components/PlaylistPanel'
+import { PropertiesPanel } from './library/components/PropertiesPanel'
+import { MissingTrackPanel } from './library/components/MissingTrackPanel'
 import { PlayerBar } from './library/components/PlayerBar'
 import { SessionTransportBar } from './SessionTransportBar'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
@@ -218,6 +220,8 @@ export function PlaylistsSurface(): JSX.Element {
   const enterMixMode = useLibraryStore((s) => s.enterMixMode)
   const selectPlaylist = useLibraryStore((s) => s.selectPlaylist)
   const selectedPlaylistId = useLibraryStore((s) => s.selectedPlaylistId)
+  const selectedFileId = useLibraryStore((s) => s.selectedFileId)
+  const selectedMissingTrackId = useLibraryStore((s) => s.selectedMissingTrackId)
 
   // Initial selection, in priority order: a "View in Collections" deep-link, then
   // the selection from the last visit. Either way, force its sidebar section open
@@ -533,38 +537,45 @@ export function PlaylistsSurface(): JSX.Element {
           </div>
         </div>
 
-        {/* Right: detail panel */}
+        {/* Right: detail panel + selected-track panel */}
         <div data-tour="collections-detail" className="flex flex-1 min-w-0">
-          {sel?.kind === 'playlist' ? (
-            selectedPlaylistId !== null ? <PlaylistPanel /> : null
-          ) : sel?.kind === 'template' && selTemplate ? (
-            <TemplateDetail
-              mix={selTemplate}
-              opening={opening}
-              onOpenInMix={() => openTemplateInMix(selTemplate)}
-              onOpenInSession={() => openTemplateInSessionMode(selTemplate)}
-              onDelete={() => { deleteMix(selTemplate.id); setSel(null) }}
-              onCancelOpen={cancelOpen}
-            />
-          ) : sel?.kind === 'session' && selSession ? (
-            <SessionDetail
-              session={selSession}
-              opening={opening}
-              onLoadPlay={() => openSessionInSessionMode(selSession)}
-              onOpenInMix={() => openSessionInMix(selSession)}
-              onDelete={() => { deleteMixSession(selSession.id); setSel(null) }}
-              onCancelOpen={cancelOpen}
-            />
-          ) : sel?.kind === 'mix' && selMixPath ? (
-            <MixDetail
-              filePath={selMixPath}
-              opening={opening}
-              onOpen={() => openMixFile(selMixPath)}
-              onCancelOpen={cancelOpen}
-            />
-          ) : (
-            <div className="flex flex-1 items-center justify-center text-[11px] text-gray-600 select-none">
-              Select a collection
+          <div className="flex flex-1 min-w-0">
+            {sel?.kind === 'playlist' ? (
+              selectedPlaylistId !== null ? <PlaylistPanel /> : null
+            ) : sel?.kind === 'template' && selTemplate ? (
+              <TemplateDetail
+                mix={selTemplate}
+                opening={opening}
+                onOpenInMix={() => openTemplateInMix(selTemplate)}
+                onOpenInSession={() => openTemplateInSessionMode(selTemplate)}
+                onDelete={() => { deleteMix(selTemplate.id); setSel(null) }}
+                onCancelOpen={cancelOpen}
+              />
+            ) : sel?.kind === 'session' && selSession ? (
+              <SessionDetail
+                session={selSession}
+                opening={opening}
+                onLoadPlay={() => openSessionInSessionMode(selSession)}
+                onOpenInMix={() => openSessionInMix(selSession)}
+                onDelete={() => { deleteMixSession(selSession.id); setSel(null) }}
+                onCancelOpen={cancelOpen}
+              />
+            ) : sel?.kind === 'mix' && selMixPath ? (
+              <MixDetail
+                filePath={selMixPath}
+                opening={opening}
+                onOpen={() => openMixFile(selMixPath)}
+                onCancelOpen={cancelOpen}
+              />
+            ) : (
+              <div className="flex flex-1 items-center justify-center text-[11px] text-gray-600 select-none">
+                Select a collection
+              </div>
+            )}
+          </div>
+          {(selectedFileId || selectedMissingTrackId != null) && (
+            <div className="border-l w-96 shrink-0 border-surface-border">
+              {selectedFileId ? <PropertiesPanel /> : <MissingTrackPanel key={selectedMissingTrackId} />}
             </div>
           )}
         </div>
@@ -659,6 +670,8 @@ function TemplateDetail({
   const files = useLibraryStore((s) => s.files)
   const previewFileId = useLibraryStore((s) => s.previewFileId)
   const setPreview = useLibraryStore((s) => s.setPreview)
+  const selectFile = useLibraryStore((s) => s.selectFile)
+  const selectedFileId = useLibraryStore((s) => s.selectedFileId)
   const fileById = useMemo(() => new Map(files.map((f) => [f.id, f])), [files])
 
   // Build a preview queue from all resolved track items
@@ -721,7 +734,8 @@ function TemplateDetail({
             const isPreviewing = f != null && previewFileId === f.id
             return (
               <div key={item.id ?? i}
-                className="flex items-center gap-2 px-3 transition-colors border-b group border-surface-border/50 hover:bg-surface-hover"
+                onClick={() => { if (f) selectFile(f.id) }}
+                className={`flex items-center gap-2 px-3 transition-colors border-b group cursor-pointer border-surface-border/50 hover:bg-surface-hover ${f && selectedFileId === f.id ? 'bg-surface-hover' : ''}`}
                 style={{ minHeight: 36 }}>
                 <span className="w-5 shrink-0 text-center text-[10px] text-gray-600 tabular-nums">{i + 1}</span>
                 <TrackThumb
@@ -797,6 +811,8 @@ function SessionDetail({
   const previewFileId = useLibraryStore((s) => s.previewFileId)
   const setPreview = useLibraryStore((s) => s.setPreview)
   const saveSessionAsTemplate = useLibraryStore((s) => s.saveSessionAsTemplate)
+  const selectFile = useLibraryStore((s) => s.selectFile)
+  const selectedFileId = useLibraryStore((s) => s.selectedFileId)
   const fileById = useMemo(() => new Map(files.map((f) => [f.id, f])), [files])
 
   const [copied, setCopied] = useState(false)
@@ -901,7 +917,8 @@ function SessionDetail({
           const isPreviewing = f != null && previewFileId === f.id
           return (
             <div key={i}
-              className="flex items-center gap-2 px-3 transition-colors border-b group border-surface-border/50 hover:bg-surface-hover"
+              onClick={() => { if (f) selectFile(f.id) }}
+              className={`flex items-center gap-2 px-3 transition-colors border-b group cursor-pointer border-surface-border/50 hover:bg-surface-hover ${f && selectedFileId === f.id ? 'bg-surface-hover' : ''}`}
               style={{ minHeight: 44 }}>
               {/* Timeline marker */}
               <span className="w-12 text-right font-mono text-[10px] text-gray-500 tabular-nums shrink-0">{fmtClock(r.atMs)}</span>

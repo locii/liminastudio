@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.0.1
+
+- **Collections — track details & find-on-disk** — Click any track in a playlist, template, or recorded session to open its details panel. A playlist track that isn't in your library yet opens a panel where you can search your disk and link the local file.
+- **Fixed "Show in Library"** — Right-clicking a playlist track and choosing "Show in Library" now reliably switches to the Library and reveals the track, instead of blanking the view.
+- **Session Mode** — The tag / Feel-EQ "Add to queue" button now matches the playlist button's style and sits neatly to the right of its row.
+
 ## v1.0.0
 
 **Limina Studio 1.0 — your library, session player, and multitrack mixer, unified.**

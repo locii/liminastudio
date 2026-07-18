@@ -232,6 +232,19 @@ export default function App(): JSX.Element {
     })
   }, [loadCatalogue, devSkipLoad])
 
+  // Consume a pending "Show in Library" reveal (e.g. from a Collections
+  // playlist) once the catalogue is loaded, so the file's folder resolves.
+  useEffect(() => {
+    if (!catalogueLoaded) return
+    const fileId = useUIStore.getState().libraryRevealFileId
+    if (!fileId) return
+    useUIStore.getState().setLibraryRevealFileId(null)
+    const st = useLibraryStore.getState()
+    const file = st.files.find((f) => f.id === fileId)
+    const folder = file ? st.watchedFolders.find((wf) => file.filePath.startsWith(wf.path)) : null
+    st.showFileInLibrary(folder?.id ?? null, fileId)
+  }, [catalogueLoaded])
+
   // Kick off the Auto-Mix cue scan once the library is loaded (low priority).
   useEffect(() => {
     if (!catalogueLoaded) return
