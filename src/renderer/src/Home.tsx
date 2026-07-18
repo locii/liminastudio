@@ -20,6 +20,7 @@ export function Home(): JSX.Element {
   const setLoginSkipped = useUIStore((s) => s.setLoginSkipped)
   const hasFiles = useWizardHasFiles()
   const isLoggedIn = useWizardIsLoggedIn()
+  const catalogueLoaded = useLibraryStore((s) => s.catalogueLoaded)
 
   // Kick off a folder scan, then hand off to the Library so its polished
   // "Setting up your library" progress screen takes over. scanning flips to true
@@ -92,6 +93,18 @@ export function Home(): JSX.Element {
       <GlobalControls />
     </div>
   )
+
+  // Wait for the on-disk catalogue before deciding new-user state — otherwise the
+  // onboarding steps below would flash on every restart (the store is empty until
+  // the umbrella-level load completes; see useCatalogueBootstrap).
+  if (!catalogueLoaded) {
+    return (
+      <div className="flex flex-col h-full text-gray-200 bg-surface-base">
+        {dragBar}
+        <div className="flex-1" />
+      </div>
+    )
+  }
 
   // Step 1: sign in to M4B — directive, but skippable.
   if (!isLoggedIn && !loginSkipped) {

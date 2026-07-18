@@ -136,6 +136,11 @@ interface LibraryState {
   /** Active tag filters (AND). Empty = no tag filter. */
   selectedTags: string[]
   scanning: boolean
+  /** True once the catalogue has been read from disk (or skipped in dev). Until
+   *  then, no surface should decide new-user state from empty in-memory data. */
+  catalogueLoaded: boolean
+  /** Set when the on-disk catalogue was recovered from a backup on last load. */
+  restoredFromBackup: boolean
   pendingMatches: Record<string, MfbMatch>
   userAccount: UserAccount | null
   showLoginModal: boolean
@@ -154,6 +159,8 @@ interface LibraryState {
   setPlaylistDetail: (detail: MfbPlaylistDetail | null) => void
   selectMissingTrack: (id: number | null) => void
   setPlaylistSession: (playlistId: number, filePath: string) => void
+  setCatalogueLoaded: (v: boolean) => void
+  setRestoredFromBackup: (v: boolean) => void
   loadCatalogue: (catalogue: Catalogue) => void
   addWatchedFolder: (folder: WatchedFolder) => void
   removeWatchedFolder: (id: string) => void
@@ -284,6 +291,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   selectedFolderId: null,
   selectedTags: [],
   scanning: false,
+  catalogueLoaded: false,
+  restoredFromBackup: false,
   pendingMatches: {},
   userAccount: null,
   showLoginModal: false,
@@ -300,6 +309,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   previewQueue: [],
   playlistTrackQuery: '',
 
+  setCatalogueLoaded: (v) => set({ catalogueLoaded: v }),
+  setRestoredFromBackup: (v) => set({ restoredFromBackup: v }),
   setUserAccount: (user) => set({ userAccount: user }),
   setShowLoginModal: (show) => set({ showLoginModal: show }),
   setPlaylists: (playlists) => set({ playlists }),
@@ -315,6 +326,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   })),
 
   loadCatalogue: (catalogue) => set({
+    catalogueLoaded: true,
     watchedFolders: catalogue.watchedFolders,
     files: catalogue.files.map(normalizeImportedFile),
     removedFiles: (catalogue.removedFiles ?? []).map(normalizeImportedFile),

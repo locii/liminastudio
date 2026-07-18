@@ -5,6 +5,7 @@ import { PlaylistsSurface } from './PlaylistsSurface'
 import { NavConfirmModal } from './NavConfirmModal'
 import { OverwriteModal } from './OverwriteModal'
 import { useUIStore } from './uiStore'
+import { useCatalogueBootstrap } from './useCatalogueBootstrap'
 
 /**
  * Limina Studio umbrella shell. Switches between the two ported apps — Mix and
@@ -13,6 +14,7 @@ import { useUIStore } from './uiStore'
  */
 export default function Root(): JSX.Element {
   const surface = useUIStore((s) => s.surface)
+  useCatalogueBootstrap()
 
   const view = ((): JSX.Element => {
     switch (surface) {

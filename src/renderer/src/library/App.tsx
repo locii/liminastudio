@@ -77,7 +77,6 @@ export default function App(): JSX.Element {
   const selectFile = useLibraryStore((s) => s.selectFile)
   const indexTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cancelledRef = useRef(false)
-  const catalogueLoadedRef = useRef(false)
   const hadUserRef = useRef(false)
 
   const BATCH_SIZE = 50
@@ -185,10 +184,13 @@ export default function App(): JSX.Element {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userAccount])
 
-  const [restoredFromBackup, setRestoredFromBackup] = useState(false)
+  // Loaded from disk at the umbrella level (see useCatalogueBootstrap), so these
+  // reflect the real library regardless of which surface mounted first.
+  const restoredFromBackup = useLibraryStore((s) => s.restoredFromBackup)
+  const setRestoredFromBackup = useLibraryStore((s) => s.setRestoredFromBackup)
+  const catalogueLoaded = useLibraryStore((s) => s.catalogueLoaded)
   const loginFlash = useLibraryStore((s) => s.loginFlash)
   const setLoginFlash = useLibraryStore((s) => s.setLoginFlash)
-  const [catalogueLoaded, setCatalogueLoaded] = useState(false)
 
   // Sync library to MFB once per session — fires when both auth and catalogue are ready.
   // Covers app open (session restore) and fresh login.
@@ -214,23 +216,8 @@ export default function App(): JSX.Element {
     if (!userAccount) syncReadyRef.current = false
   }, [userAccount])
 
-  const devSkipLoad = useUIStore((s) => s.devSkipLoad)
-
-  // Load catalogue on mount — mark loaded before subscribing to saves
-  useEffect(() => {
-    if (import.meta.env.DEV && devSkipLoad) {
-      // Dev reset mode — start with empty in-memory state, skip disk load
-      catalogueLoadedRef.current = true
-      setCatalogueLoaded(true)
-      return
-    }
-    window.electronAPI.loadCatalogue().then(({ data, restoredFromBackup: restored }) => {
-      if (data) loadCatalogue(data)
-      if (restored) setRestoredFromBackup(true)
-      catalogueLoadedRef.current = true
-      setCatalogueLoaded(true)
-    })
-  }, [loadCatalogue, devSkipLoad])
+  // Catalogue load + persistence now happen once at the umbrella level
+  // (useCatalogueBootstrap), so they run regardless of which surface mounts first.
 
   // Consume a pending "Show in Library" reveal (e.g. from a Collections
   // playlist) once the catalogue is loaded, so the file's folder resolves.
@@ -259,18 +246,6 @@ export default function App(): JSX.Element {
     const t = setTimeout(() => { runFeatureScan() }, 15000)
     return () => clearTimeout(t)
   }, [catalogueLoaded])
-
-  // Persist catalogue whenever state changes — debounced so rapid updates don't race
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null
-    return useLibraryStore.subscribe(() => {
-      if (!catalogueLoadedRef.current) return
-      if (timer) clearTimeout(timer)
-      timer = setTimeout(() => {
-        window.electronAPI.saveCatalogue(useLibraryStore.getState().toCatalogue())
-      }, 800)
-    })
-  }, [])
 
   const librarySetupOpen = useUIStore((s) => s.librarySetupOpen)
   const setLibrarySetupOpen = useUIStore((s) => s.setLibrarySetupOpen)
@@ -384,7 +359,6 @@ export default function App(): JSX.Element {
       const catalogue = await window.electronAPI.restoreCatalogueBackup(slot)
       if (catalogue) {
         loadCatalogue(catalogue)
-        catalogueLoadedRef.current = true
         setShowBackups(false)
       }
     } finally {

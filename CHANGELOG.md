@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.2
+
+- **Returning users no longer see the new-user setup on launch** — Limina Studio opens on Home, but your library and sign-in were only restored once you visited the Library screen. On restart that left Home briefly showing the "sign in / add music" onboarding steps even though a real library and login already existed. The catalogue and session are now loaded up front, so your library and account are recognised immediately on every launch.
+
 ## v1.0.1
 
 - **Collections — track details & find-on-disk** — Click any track in a playlist, template, or recorded session to open its details panel. A playlist track that isn't in your library yet opens a panel where you can search your disk and link the local file.
