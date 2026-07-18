@@ -323,6 +323,7 @@ export function FileList(): JSX.Element {
     }
   }, [])
 
+  const [queuedIds, setQueuedIds] = useState<Set<string>>(new Set())
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   // Re-render when on-demand feature analysis starts/finishes so per-row state updates.
   const [, forceAnalyzingTick] = useState(0)
@@ -368,6 +369,7 @@ export function FileList(): JSX.Element {
   const selectedMissingTrackId = useLibraryStore((s) => s.selectedMissingTrackId)
   const selectMissingTrack = useLibraryStore((s) => s.selectMissingTrack)
   const applyPendingMatch = useLibraryStore((s) => s.applyPendingMatch)
+  const addQueueTrack = useLibraryStore((s) => s.addQueueTrack)
 
   // Cmd+C copies the selected file to clipboard
   useEffect(() => {
@@ -575,7 +577,7 @@ export function FileList(): JSX.Element {
     }
 
     return (
-      <div className="flex overflow-hidden flex-col flex-1 min-w-0">
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <SearchBar query={query} onChange={setQuery} pendingOnly={pendingOnly} onTogglePending={() => setPendingOnly((v) => !v)} pendingCount={Object.keys(pendingMatches).length} duplicateOnly={duplicateOnly} onToggleDuplicate={() => setDuplicateOnly((v) => !v)} duplicateCount={duplicateIds.size} showRemoved={showRemoved} onToggleRemoved={() => setShowRemoved((v) => !v)} removedCount={removedFiles.length} unmatchedOnly={unmatchedOnly} onToggleUnmatched={() => setUnmatchedOnly((v) => !v)} unmatchedCount={unmatchedCount} />
         <div className="flex items-center px-3 h-7 border-b border-surface-border text-[10px] uppercase tracking-wider select-none shrink-0">
           <button type="button" onClick={() => toggleRemovedSort('name')} className={`flex items-center gap-0.5 flex-1 min-w-0 transition-colors ${removedSort === 'name' ? 'text-gray-300' : 'text-gray-600 hover:text-gray-400'}`}>
@@ -589,14 +591,14 @@ export function FileList(): JSX.Element {
           </button>
           <div className="w-14 shrink-0" />
         </div>
-        <div className="overflow-y-auto flex-1 min-h-0">
+        <div className="flex-1 min-h-0 overflow-y-auto">
           {filteredRemoved.length === 0 ? (
             <p className="px-4 py-4 text-[11px] text-gray-600">{q ? 'No results' : 'No removed files'}</p>
           ) : (
             filteredRemoved.map((f) => {
               const isPreviewing = previewFileId === f.id
               return (
-                <div key={f.id} className="flex gap-2 items-center px-3 border-b border-surface-border/50 group" style={{ height: ROW_HEIGHT }}>
+                <div key={f.id} className="flex items-center gap-2 px-3 border-b border-surface-border/50 group" style={{ height: ROW_HEIGHT }}>
                   <button
                     type="button"
                     onClick={() => isPreviewing ? setPreview(null, []) : setPreview(f.id, filteredRemoved.map((r) => r.id))}
@@ -635,9 +637,9 @@ export function FileList(): JSX.Element {
 
   if (scanning && files.length === 0) {
     return (
-      <div className="flex overflow-hidden flex-col flex-1 min-w-0">
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <SearchBar query={query} onChange={setQuery} pendingOnly={pendingOnly} onTogglePending={() => setPendingOnly((v) => !v)} pendingCount={Object.keys(pendingMatches).length} duplicateOnly={duplicateOnly} onToggleDuplicate={() => setDuplicateOnly((v) => !v)} duplicateCount={duplicateIds.size} showRemoved={showRemoved} onToggleRemoved={() => setShowRemoved((v) => !v)} removedCount={removedFiles.length} unmatchedOnly={unmatchedOnly} onToggleUnmatched={() => setUnmatchedOnly((v) => !v)} unmatchedCount={unmatchedCount} />
-        <div className="flex flex-1 justify-center items-center text-xs text-gray-600">
+        <div className="flex items-center justify-center flex-1 text-xs text-gray-600">
           Scanning…
         </div>
       </div>
@@ -645,13 +647,13 @@ export function FileList(): JSX.Element {
   }
 
   return (
-    <div className="flex overflow-hidden flex-col flex-1 min-w-0">
+    <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
       <SearchBar query={query} onChange={setQuery} pendingOnly={pendingOnly} onTogglePending={() => setPendingOnly((v) => !v)} pendingCount={Object.keys(pendingMatches).length} duplicateOnly={duplicateOnly} onToggleDuplicate={() => setDuplicateOnly((v) => !v)} duplicateCount={duplicateIds.size} showRemoved={showRemoved} onToggleRemoved={() => setShowRemoved((v) => !v)} removedCount={removedFiles.length} unmatchedOnly={unmatchedOnly} onToggleUnmatched={() => setUnmatchedOnly((v) => !v)} unmatchedCount={unmatchedCount} />
 
       {/* Scroll container — both axes; header is sticky inside so it scrolls with rows horizontally */}
       <div
         ref={scrollRef}
-        className="overflow-auto flex-1"
+        className="flex-1 overflow-auto"
         onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
       >
         <div style={{ minWidth: minTableWidth }}>
@@ -692,7 +694,7 @@ export function FileList(): JSX.Element {
         </div>
 
         {files.length === 0 ? (
-          <div className="flex justify-center items-center h-16 text-xs text-gray-600">
+          <div className="flex items-center justify-center h-16 text-xs text-gray-600">
             {q ? 'No results' : 'No files'}
           </div>
         ) : (() => {
@@ -761,8 +763,29 @@ export function FileList(): JSX.Element {
                     setRowTooltip(null)
                   }}
                 >
-                  <div className="flex overflow-hidden gap-2 items-center min-w-0 shrink-0" style={{ width: cw.name }}>
-                    <div className="overflow-hidden relative w-5 h-5 rounded shrink-0">
+                  <div className="flex items-center min-w-0 gap-2 overflow-hidden shrink-0" style={{ width: cw.name }}>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        addQueueTrack(file.id)
+                        setQueuedIds((prev) => new Set(prev).add(file.id))
+                        setTimeout(() => setQueuedIds((prev) => { const next = new Set(prev); next.delete(file.id); return next }), 1200)
+                      }}
+                      title="Add to queue"
+                      className={`shrink-0 w-4 h-4 flex items-center justify-center rounded transition-colors opacity-0 group-hover:opacity-100 ${queuedIds.has(file.id) ? 'text-accent' : 'text-gray-600 hover:text-accent'}`}
+                    >
+                      {queuedIds.has(file.id) ? (
+                        <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M2 6l3 3 5-5" />
+                        </svg>
+                      ) : (
+                        <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                          <path d="M6 2v8M2 6h8" />
+                        </svg>
+                      )}
+                    </button>
+                    <div className="relative w-5 h-5 overflow-hidden rounded shrink-0">
                       {file.albumImageUrl && (
                         <img src={file.albumImageUrl} alt="" className={`object-cover absolute inset-0 w-full h-full transition-opacity ${previewFileId === file.id ? 'opacity-60' : 'opacity-100 group-hover:opacity-60'}`} />
                       )}
@@ -869,7 +892,7 @@ export function FileList(): JSX.Element {
                     )
                   })()}
                   <GripSpacer />
-                  <div className="flex overflow-x-auto overflow-y-hidden gap-1 items-center px-1 hour-cell shrink-0" style={{ width: cw.hour, minWidth: 0 }}>
+                  <div className="flex items-center gap-1 px-1 overflow-x-auto overflow-y-hidden hour-cell shrink-0" style={{ width: cw.hour, minWidth: 0 }}>
                     {hourTagsForFile(file.tags).map((tag) => {
                       const color = phaseColorForTag(tag) ?? '#4b5563'
                       return (
@@ -928,7 +951,7 @@ export function FileList(): JSX.Element {
         {/* Missing playlist tracks — not in library */}
         {missingPlaylistTracks.length > 0 && (
           <>
-            <div className="flex gap-2 items-center px-3 h-6 border-t border-b select-none border-surface-border bg-surface-panel/50">
+            <div className="flex items-center h-6 gap-2 px-3 border-t border-b select-none border-surface-border bg-surface-panel/50">
               <span className="text-[10px] uppercase tracking-wider text-gray-500">Not in library</span>
               <span className="text-[10px] text-gray-500 tabular-nums">{missingPlaylistTracks.length}</span>
             </div>
@@ -947,7 +970,7 @@ export function FileList(): JSX.Element {
                   {track.album_image_url ? (
                     <img src={track.album_image_url} alt="" className="object-cover w-4 h-4 rounded opacity-60 shrink-0" />
                   ) : (
-                    <div className="flex justify-center items-center w-4 h-4 text-gray-600 rounded-full border border-gray-700 shrink-0">
+                    <div className="flex items-center justify-center w-4 h-4 text-gray-600 border border-gray-700 rounded-full shrink-0">
                       <svg className="w-2.5 h-2.5" viewBox="0 0 10 10" fill="currentColor">
                         <path d="M2 1.5l7 3.5-7 3.5V1.5z" />
                       </svg>
@@ -989,7 +1012,7 @@ export function FileList(): JSX.Element {
                     type="button"
                     onClick={(e) => { e.stopPropagation(); window.open(mfbTrackUrl(track.id, track.title)) }}
                     title="View on Music for Breathwork"
-                    className="flex justify-center items-center w-4 h-4 text-gray-600 opacity-0 transition-all group-hover:opacity-100 hover:text-accent"
+                    className="flex items-center justify-center w-4 h-4 text-gray-600 transition-all opacity-0 group-hover:opacity-100 hover:text-accent"
                   >
                     <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M5.5 2.5H3A1.5 1.5 0 0 0 1.5 4v5A1.5 1.5 0 0 0 3 10.5h5A1.5 1.5 0 0 0 9.5 9V6.5M7 1.5H10.5V5M10.5 1.5L5.5 6.5" />
@@ -1052,7 +1075,7 @@ export function FileList(): JSX.Element {
                     </button>
                   )
                 })()}
-                <div className="mx-2 my-1 h-px bg-surface-border" />
+                <div className="h-px mx-2 my-1 bg-surface-border" />
               </>
             )}
             <button
@@ -1107,12 +1130,12 @@ export function FileList(): JSX.Element {
               <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5">
                 {afFields.map(([label, val]) => (
                   val != null && Number.isFinite(val) ? (
-                    <div key={label} className="flex gap-1 items-center">
+                    <div key={label} className="flex items-center gap-1">
                       <span className="w-16 text-gray-600 shrink-0">{label}</span>
-                      <div className="overflow-hidden flex-1 h-1 rounded bg-white/10">
+                      <div className="flex-1 h-1 overflow-hidden rounded bg-white/10">
                         <div className="h-full rounded bg-accent/60" style={{ width: `${Math.min(100, Math.max(0, (val as number) * 100))}%` }} />
                       </div>
-                      <span className="tabular-nums text-gray-500">{(val as number).toFixed(2)}</span>
+                      <span className="text-gray-500 tabular-nums">{(val as number).toFixed(2)}</span>
                     </div>
                   ) : null
                 ))}
@@ -1228,7 +1251,7 @@ function SearchBar({ query, onChange, pendingOnly, onTogglePending, pendingCount
   removedCount: number
 }): JSX.Element {
   return (
-    <div data-tour="search-bar" className="flex gap-2 items-center px-3 h-8 border-b border-surface-border bg-surface-panel shrink-0">
+    <div data-tour="search-bar" className="flex items-center h-8 gap-2 px-3 border-b border-surface-border bg-surface-panel shrink-0">
       <svg className="w-3 h-3 text-gray-600 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="5" cy="5" r="3.5" />
         <path d="M8 8l2.5 2.5" />

@@ -4,6 +4,8 @@ import { join } from 'path'
 import type { Catalogue } from '../../shared/types'
 
 const BACKUP_COUNT = 5
+// Written once after a successful legacy migration so we never re-run it.
+const MIGRATION_FLAG = 'legacy-migrated.flag'
 
 function cataloguePath(): string {
   return join(app.getPath('userData'), 'catalogue.json')
@@ -13,54 +15,100 @@ function backupPath(n: number): string {
   return join(app.getPath('userData'), `catalogue.${n}.json`)
 }
 
+function migrationFlagPath(): string {
+  return join(app.getPath('userData'), MIGRATION_FLAG)
+}
+
+function fileCount(catalogue: Catalogue): number {
+  return catalogue.files?.length ?? 0
+}
+
+function hasContent(catalogue: Catalogue): boolean {
+  return (catalogue.watchedFolders?.length ?? 0) > 0 || fileCount(catalogue) > 0
+}
+
 async function rotateBackups(current: string): Promise<void> {
-  // Use readFile+writeFile (not copyFile) so each slot gets a fresh mtime
-  // Shift older backups down: 4→5, 3→4, 2→3, 1→2
   for (let i = BACKUP_COUNT - 1; i >= 1; i--) {
     try {
       const data = await fs.readFile(backupPath(i))
       await fs.writeFile(backupPath(i + 1), data)
-    } catch {
-      // older slot may not exist yet — that's fine
-    }
+    } catch { /* slot missing */ }
   }
-  // current → 1
   try {
     const data = await fs.readFile(current)
     await fs.writeFile(backupPath(1), data)
-  } catch {
-    // current may not exist on first run
-  }
+  } catch { /* current missing on first run */ }
 }
 
-function hasContent(catalogue: Catalogue): boolean {
-  return (catalogue.watchedFolders?.length ?? 0) > 0 || (catalogue.files?.length ?? 0) > 0
+/** Legacy app dirs that may hold a richer library catalogue. Ordered by priority
+ *  (first dir with content wins). Includes prior product names so that renaming
+ *  to "Limina Studio" (a new userData dir) still imports an existing library:
+ *  the standalone Library app, and the earlier "Limina Mix" builds. */
+const LEGACY_APP_DIRS = ['limina-library', 'Limina Library', 'Limina Mix', 'limina-mix']
+
+async function findLegacyCatalogue(): Promise<{ catalogue: Catalogue; path: string } | null> {
+  const appData = app.getPath('appData')
+  for (const dir of LEGACY_APP_DIRS) {
+    try {
+      const p = join(appData, dir, 'catalogue.json')
+      const json = await fs.readFile(p, 'utf-8')
+      const catalogue = JSON.parse(json) as Catalogue
+      if (hasContent(catalogue)) return { catalogue, path: p }
+    } catch { /* not found or corrupt */ }
+  }
+  return null
+}
+
+async function migrationAlreadyDone(): Promise<boolean> {
+  try { await fs.access(migrationFlagPath()); return true } catch { return false }
+}
+
+async function writeMigrationFlag(): Promise<void> {
+  await fs.writeFile(migrationFlagPath(), new Date().toISOString(), 'utf-8')
 }
 
 export function registerCatalogueHandlers(): void {
   ipcMain.handle('catalogue:load', async (): Promise<{ data: Catalogue | null; restoredFromBackup: boolean }> => {
     const path = cataloguePath()
 
-    // Try current catalogue first
+    // Read the current catalogue (may or may not have content).
+    let current: Catalogue | null = null
     try {
       const json = await fs.readFile(path, 'utf-8')
-      const catalogue = JSON.parse(json) as Catalogue
-      if (hasContent(catalogue)) {
-        rotateBackups(path).catch(() => {})
-        return { data: catalogue, restoredFromBackup: false }
+      const parsed = JSON.parse(json) as Catalogue
+      if (hasContent(parsed)) current = parsed
+    } catch { /* missing or corrupt */ }
+
+    // One-time migration: if the legacy Library app has more tracks than the
+    // current catalogue, import it. Skipped if the flag file exists (already done).
+    if (!(await migrationAlreadyDone())) {
+      const legacy = await findLegacyCatalogue()
+      if (legacy && fileCount(legacy.catalogue) > fileCount(current ?? {})) {
+        console.log(`[catalogue] migrating from ${legacy.path} (${fileCount(legacy.catalogue)} files vs current ${fileCount(current ?? {})} files)`)
+        // Back up the current catalogue before overwriting.
+        if (current) rotateBackups(path).catch(() => {})
+        const legacyJson = JSON.stringify(legacy.catalogue, null, 2)
+        await fs.writeFile(path, legacyJson, 'utf-8')
+        await writeMigrationFlag()
+        return { data: legacy.catalogue, restoredFromBackup: false }
       }
-      // File exists but is empty — fall through to backups
-    } catch {
-      // File missing or corrupt — fall through to backups
+      // No better legacy data found — still mark migration as done so we don't
+      // re-check on every launch.
+      await writeMigrationFlag()
     }
 
-    // Auto-restore from the most recent valid backup
+    // Use the current catalogue if it has content.
+    if (current) {
+      rotateBackups(path).catch(() => {})
+      return { data: current, restoredFromBackup: false }
+    }
+
+    // Try numbered backups.
     for (let i = 1; i <= BACKUP_COUNT; i++) {
       try {
         const json = await fs.readFile(backupPath(i), 'utf-8')
         const catalogue = JSON.parse(json) as Catalogue
         if (hasContent(catalogue)) {
-          // Write back as current so the next load is fast
           fs.writeFile(path, json, 'utf-8').catch(() => {})
           return { data: catalogue, restoredFromBackup: true }
         }
@@ -74,7 +122,6 @@ export function registerCatalogueHandlers(): void {
     const path = cataloguePath()
     const tmp = `${path}.${Date.now()}.tmp`
     await fs.mkdir(join(path, '..'), { recursive: true })
-    // Atomic write: unique tmp name per call prevents concurrent saves from colliding
     await fs.writeFile(tmp, JSON.stringify(catalogue, null, 2), 'utf-8')
     await fs.rename(tmp, path)
   })
@@ -97,5 +144,31 @@ export function registerCatalogueHandlers(): void {
     } catch {
       return null
     }
+  })
+
+  // Dev-only: stash all catalogue + auth files so the app boots as a new user.
+  // Call devRestoreLibrary to bring them back.
+  ipcMain.handle('dev:resetLibrary', async (): Promise<void> => {
+    const ud = app.getPath('userData')
+    const files = [
+      'catalogue.json',
+      ...Array.from({ length: BACKUP_COUNT }, (_, i) => `catalogue.${i + 1}.json`),
+      'auth.bin',
+    ]
+    await Promise.allSettled(
+      files.map((f) => fs.rename(join(ud, f), join(ud, f + '.devbak')).catch(() => {}))
+    )
+  })
+
+  ipcMain.handle('dev:restoreLibrary', async (): Promise<void> => {
+    const ud = app.getPath('userData')
+    const files = [
+      'catalogue.json',
+      ...Array.from({ length: BACKUP_COUNT }, (_, i) => `catalogue.${i + 1}.json`),
+      'auth.bin',
+    ]
+    await Promise.allSettled(
+      files.map((f) => fs.rename(join(ud, f + '.devbak'), join(ud, f)).catch(() => {}))
+    )
   })
 }

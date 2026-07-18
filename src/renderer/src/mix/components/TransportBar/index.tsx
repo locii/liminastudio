@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useSessionStore } from '../../store/sessionStore'
 import { useTransportStore } from '../../store/transportStore'
-import { useUpdaterStore } from '../../store/updaterStore'
 import { audioEngine } from '../../audio/audioEngine'
 import { KeyboardShortcuts } from '../KeyboardShortcuts'
 function formatTime(seconds: number): string {
@@ -32,14 +31,15 @@ interface Props {
   onFocusPlayhead: () => void
   onZoomIn: () => void
   onZoomOut: () => void
-  onStartTour: () => void
+  libraryOpen: boolean
+  onToggleLibrary: () => void
 }
 
 export function TransportBar({
   onAddTrack, onAddEmptyTrack, onOpenExportWav, onOpenExportMp3, onExportPDF,
   onNewSession, onOpen, onImport, onSave, onSaveAs, onCollect, onExportZip,
   onRebuildWaveforms, onExportWaveformData, onOpenRecent,
-  onFitToWindow, onFocusPlayhead, onZoomIn, onZoomOut, onStartTour,
+  onFitToWindow, onFocusPlayhead, onZoomIn, onZoomOut, libraryOpen, onToggleLibrary,
 }: Props): JSX.Element {
   const playing = useTransportStore((s) => s.playing)
   const looping = useTransportStore((s) => s.looping)
@@ -53,28 +53,6 @@ export function TransportBar({
   const currentFilePath = useSessionStore((s) => s.currentFilePath)
   const sessionLabel = useSessionStore((s) => s.sessionLabel)
   const setSessionLabel = useSessionStore((s) => s.setSessionLabel)
-
-  const { downloading, downloadPercent, readyVersion } = useUpdaterStore()
-  const [checkState, setCheckState] = useState<'idle' | 'checking' | 'upToDate'>('idle')
-  const handleCheckForUpdates = useCallback(async (): Promise<void> => {
-    if (checkState !== 'idle') return
-    setCheckState('checking')
-    try {
-      const [result] = await Promise.all([
-        window.electronAPI.checkForUpdates(),
-        new Promise<void>((r) => setTimeout(r, 800)),
-      ])
-      if (!result.hasUpdate) {
-        setCheckState('upToDate')
-        setTimeout(() => setCheckState('idle'), 3000)
-      } else {
-        setCheckState('idle')
-      }
-    } catch {
-      setCheckState('upToDate')
-      setTimeout(() => setCheckState('idle'), 3000)
-    }
-  }, [checkState])
 
   const [fileMenuOpen, setFileMenuOpen] = useState(false)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
@@ -160,30 +138,27 @@ export function TransportBar({
   }, [renameValue, setSessionLabel])
 
   return (
-    <div className="flex gap-3 items-center px-3 h-11 border-b bg-surface-panel border-surface-border shrink-0">
+    <div className="flex items-center gap-3 px-3 border-b h-11 bg-surface-panel border-surface-border shrink-0">
 
       {/* File + Add/?/Tour — tight left cluster, always closed outside the conditional */}
-      <div className="flex gap-1 items-center shrink-0">
+      <div className="flex items-center gap-1 shrink-0">
 
         {/* File dropdown */}
         <div className="relative" ref={fileMenuRef} data-tour="file-menu">
           <button
             onClick={() => setFileMenuOpen((v) => !v)}
-            className={`h-5 flex items-center gap-1 px-2 text-[12px] transition-colors leading-none ${
+            className={`h-6 flex items-center gap-1 px-2 text-[11px] transition-colors ${
               fileMenuOpen ? 'text-gray-200' : 'text-gray-400 hover:text-gray-200'
             }`}
           >
             File
-            {readyVersion && !fileMenuOpen && (
-              <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" title={`Update v${readyVersion} ready`} />
-            )}
-            <svg className="w-2.5 h-2.5 opacity-40" viewBox="0 0 10 6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg className="w-2 h-2 opacity-40" viewBox="0 0 10 6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M1 1l4 4 4-4" />
             </svg>
           </button>
 
           {fileMenuOpen && (
-            <div className="absolute left-0 top-full z-[200] py-1 mt-1 w-56 text-xs rounded border shadow-xl bg-surface-panel border-surface-border">
+            <div className="absolute left-0 top-full z-[200] py-1 mt-1 w-56 text-[11px] rounded border shadow-xl bg-surface-panel border-surface-border">
               <MenuItem label="New Session" onClick={menuAction(onNewSession)} />
               <Divider />
               <MenuItem label="Open Session…" shortcut="⌘O" onClick={menuAction(onOpen)} />
@@ -194,14 +169,14 @@ export function TransportBar({
                 onMouseEnter={() => setRecentOpen(true)}
                 onMouseLeave={() => setRecentOpen(false)}
               >
-                <button className="w-full flex items-center justify-between px-3 py-1.5 text-gray-300 hover:bg-surface-hover transition-colors text-left">
+                <button className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] text-gray-300 hover:bg-surface-hover transition-colors text-left">
                   <span>Open Recent</span>
                   <svg className="w-3 h-3 text-gray-500" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M3 2l4 3-4 3" />
                   </svg>
                 </button>
                 {recentOpen && (
-                  <div className="absolute left-full top-0 z-[210] py-1 w-64 rounded border shadow-xl bg-surface-panel border-surface-border">
+                  <div className="absolute left-full top-0 z-[210] py-1 w-64 max-h-80 overflow-y-auto rounded border shadow-xl bg-surface-panel border-surface-border text-[11px]">
                     {recentSessions.length > 0 ? recentSessions.map((filePath) => {
                       const name = filePath.split(/[\\/]/).pop()?.replace(/\.limina$/, '') ?? filePath
                       return (
@@ -242,30 +217,6 @@ export function TransportBar({
               <Divider />
               <MenuItem label="Rebuild Waveforms" onClick={menuAction(onRebuildWaveforms)} />
               <MenuItem label="Export Waveform Data…" onClick={menuAction(onExportWaveformData)} />
-              <Divider />
-              {readyVersion ? (
-                <button
-                  onClick={() => { setFileMenuOpen(false); window.electronAPI.quitAndInstall() }}
-                  className="w-full flex items-center justify-between px-3 py-1.5 text-accent hover:bg-surface-hover transition-colors text-left"
-                >
-                  <span>Restart to Install v{readyVersion}</span>
-                </button>
-              ) : downloading ? (
-                <div className="px-3 py-1.5 text-gray-500 flex items-center gap-2">
-                  <svg className="w-3 h-3 animate-spin text-accent shrink-0" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                  </svg>
-                  <span>Downloading update{downloadPercent > 0 ? ` ${downloadPercent}%` : '…'}</span>
-                </div>
-              ) : checkState === 'checking' ? (
-                <div className="px-3 py-1.5 text-gray-500">Checking…</div>
-              ) : checkState === 'upToDate' ? (
-                <div className="px-3 py-1.5 text-gray-500">Up to date</div>
-              ) : (
-                <MenuItem label="Check for Updates" onClick={menuAction(handleCheckForUpdates)} />
-              )}
-              <div className="px-3 py-1 text-[10px] text-gray-700">v{__APP_VERSION__}</div>
             </div>
           )}
         </div>
@@ -275,7 +226,7 @@ export function TransportBar({
           <div className="relative" ref={addMenuRef} data-tour="add-track">
             <button
               onClick={() => setAddMenuOpen((v) => !v)}
-              className="h-5 flex items-center gap-1 px-2 text-[12px] text-gray-400 hover:text-gray-200 transition-colors leading-none"
+              className="h-6 flex items-center gap-1 px-2 text-[11px] text-gray-400 hover:text-gray-200 transition-colors"
               title="Add track"
             >
               Add
@@ -284,7 +235,7 @@ export function TransportBar({
               </svg>
             </button>
             {addMenuOpen && (
-              <div className="absolute left-0 top-full z-[200] py-1 mt-1 w-44 text-xs rounded border shadow-xl bg-surface-panel border-surface-border">
+              <div className="absolute left-0 top-full z-[200] py-1 mt-1 w-44 text-[11px] rounded border shadow-xl bg-surface-panel border-surface-border">
                 <MenuItem label="Import Track…" onClick={addMenuAction(onAddTrack)} />
                 <MenuItem label="Add Empty Row" onClick={addMenuAction(onAddEmptyTrack)} />
               </div>
@@ -309,13 +260,13 @@ export function TransportBar({
               if (e.key === 'Enter') commitRename()
               if (e.key === 'Escape') setRenamingSession(false)
             }}
-            className="px-1 w-40 h-6 text-sm text-gray-200 rounded border outline-none bg-surface-base border-accent shrink-0"
+            className="w-40 h-6 px-1.5 text-[11px] text-gray-200 border rounded outline-none bg-surface-base border-accent shrink-0"
             placeholder="Session name"
           />
         ) : (
-          <span className="flex gap-1 items-center shrink-0">
+          <span className="flex items-center gap-1 shrink-0">
             <span
-              className="text-xs text-gray-400 truncate cursor-default select-none"
+              className="text-[11px] text-gray-400 truncate cursor-default select-none"
               onDoubleClick={startRename}
               title="Double-click to rename"
             >
@@ -337,10 +288,10 @@ export function TransportBar({
         <div className="flex-1" />
 
         {/* Zoom — centred */}
-        <div className="flex gap-2 items-center shrink-0" data-tour="zoom">
+        <div className="flex items-center gap-2 shrink-0" data-tour="zoom">
           <button
             onClick={onZoomOut}
-            className="w-5 h-5 flex items-center justify-center text-[12px] text-gray-400 hover:text-gray-200 bg-surface-hover hover:bg-surface-border border border-surface-border rounded transition-colors leading-none"
+            className="w-6 h-6 flex items-center justify-center text-[11px] text-gray-400 hover:text-gray-200 bg-surface-hover hover:bg-surface-border border border-surface-border rounded transition-colors"
             title="Zoom out"
           >−</button>
           <input
@@ -349,36 +300,40 @@ export function TransportBar({
             value={Math.log(zoom / 0.1) / Math.log(2000) * 100}
             onChange={(e) => setZoom(0.1 * Math.pow(2000, Number(e.target.value) / 100))}
             onMouseUp={(e) => (e.target as HTMLInputElement).blur()}
-            className="w-60 h-1 rounded-full appearance-none bg-surface-hover cursor-ew-resize accent-accent"
+            className="h-1 rounded-full appearance-none w-60 bg-surface-hover cursor-ew-resize accent-accent"
             title={`Zoom: ${zoom.toFixed(0)}`}
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           />
           <button
             onClick={onZoomIn}
-            className="w-5 h-5 flex items-center justify-center text-[12px] text-gray-400 hover:text-gray-200 bg-surface-hover hover:bg-surface-border border border-surface-border rounded transition-colors leading-none"
+            className="w-6 h-6 flex items-center justify-center text-[11px] text-gray-400 hover:text-gray-200 bg-surface-hover hover:bg-surface-border border border-surface-border rounded transition-colors"
             title="Zoom in"
           >+</button>
           <button
             onClick={onFitToWindow}
-            className="h-5 flex items-center justify-center text-[12px] text-gray-400 hover:text-gray-200 px-2 bg-surface-hover hover:bg-surface-border border border-surface-border rounded transition-colors leading-none"
+            className="h-6 flex items-center justify-center text-[11px] text-gray-400 hover:text-gray-200 px-2 bg-surface-hover hover:bg-surface-border border border-surface-border rounded transition-colors"
             title="Fit project to window"
           >fit</button>
           <button
             onClick={onFocusPlayhead}
-            className="h-5 flex items-center justify-center text-[12px] text-gray-400 hover:text-gray-200 px-2 bg-surface-hover hover:bg-surface-border border border-surface-border rounded transition-colors leading-none"
+            className="h-6 flex items-center justify-center text-[11px] text-gray-400 hover:text-gray-200 px-2 bg-surface-hover hover:bg-surface-border border border-surface-border rounded transition-colors"
             title="Focus on playhead"
           >focus</button>
           <div className="w-px h-4 bg-surface-border" />
           <button
             onClick={() => setShortcutsOpen(true)}
-            className="h-5 flex items-center justify-center text-[12px] text-gray-400 hover:text-gray-200 px-2 bg-surface-hover hover:bg-surface-border border border-surface-border rounded transition-colors leading-none"
+            className="h-6 flex items-center justify-center text-[11px] text-gray-400 hover:text-gray-200 px-2 bg-surface-hover hover:bg-surface-border border border-surface-border rounded transition-colors"
             title="Keyboard shortcuts (?)"
-          >?</button>
+          >shortcuts</button>
           <button
-            onClick={onStartTour}
-            className="h-5 flex items-center justify-center text-[12px] text-gray-400 hover:text-gray-200 px-2 bg-surface-hover hover:bg-surface-border border border-surface-border rounded transition-colors leading-none"
-            title="Start guided tour"
-          >Tour</button>
+            onClick={onToggleLibrary}
+            className={`h-6 flex items-center justify-center text-[11px] px-2 border rounded transition-colors ${
+              libraryOpen
+                ? 'text-accent bg-accent/10 border-accent/30 hover:bg-accent/20'
+                : 'text-gray-400 hover:text-gray-200 bg-surface-hover hover:bg-surface-border border-surface-border'
+            }`}
+            title={libraryOpen ? 'Hide library' : 'Show library'}
+          >library</button>
         </div>
 
       </>)}
@@ -394,7 +349,7 @@ function MenuItem({ label, shortcut, onClick, highlight }: {
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center justify-between px-3 py-1.5 hover:bg-surface-hover transition-colors text-left ${
+      className={`w-full flex items-center justify-between px-3 py-1.5 text-[11px] hover:bg-surface-hover transition-colors text-left ${
         highlight ? 'text-accent' : 'text-gray-300'
       }`}
     >
@@ -405,5 +360,5 @@ function MenuItem({ label, shortcut, onClick, highlight }: {
 }
 
 function Divider(): JSX.Element {
-  return <div className="my-1 h-px bg-surface-border" />
+  return <div className="h-px my-1 bg-surface-border" />
 }

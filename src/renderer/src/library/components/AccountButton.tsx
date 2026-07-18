@@ -1,5 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useLibraryStore } from '../store/libraryStore'
+import { useUpdaterStore } from '../../updaterStore'
+import { useUIStore } from '../../uiStore'
 
 export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
   menuItems?: React.ReactNode
@@ -11,12 +13,38 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
   const setLoginFlash = useLibraryStore((s) => s.setLoginFlash)
   const showModal = useLibraryStore((s) => s.showLoginModal)
   const setShowModal = useLibraryStore((s) => s.setShowLoginModal)
+  const { downloading, downloadPercent, readyVersion } = useUpdaterStore()
+  const devForceEmpty = useUIStore((s) => s.devForceEmpty)
+  const toggleDevForceEmpty = useUIStore((s) => s.toggleDevForceEmpty)
+  const devSkipLoad = useUIStore((s) => s.devSkipLoad)
+  const setDevSkipLoad = useUIStore((s) => s.setDevSkipLoad)
+  const [checkState, setCheckState] = useState<'idle' | 'checking' | 'upToDate'>('idle')
   const [showMenu, setShowMenu] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  const handleCheckForUpdates = useCallback(async (): Promise<void> => {
+    if (checkState !== 'idle') return
+    setCheckState('checking')
+    try {
+      const [result] = await Promise.all([
+        window.electronAPI.checkForUpdates(),
+        new Promise<void>((r) => setTimeout(r, 800)),
+      ])
+      if (!result.hasUpdate) {
+        setCheckState('upToDate')
+        setTimeout(() => setCheckState('idle'), 3000)
+      } else {
+        setCheckState('idle')
+      }
+    } catch {
+      setCheckState('upToDate')
+      setTimeout(() => setCheckState('idle'), 3000)
+    }
+  }, [checkState])
 
   // Restore session on mount (no sync — server already has current state)
   useEffect(() => {
@@ -73,6 +101,9 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
             {userAccount.name.charAt(0).toUpperCase()}
           </span>
           <span className="max-w-[100px] truncate">{userAccount.name}</span>
+          {readyVersion && !pendingCount && (
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" title={`Update v${readyVersion} ready`} />
+          )}
           {pendingCount > 0 && (
             <span
               className="absolute -top-1.5 -right-1.5 min-w-[15px] h-[15px] px-1 rounded-full bg-accent text-white text-[8px] font-semibold leading-none flex items-center justify-center ring-2 ring-surface-panel"
@@ -113,6 +144,38 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
             >
               Account settings ↗
             </button>
+            <div className="border-t border-surface-border" />
+            {readyVersion ? (
+              <button
+                type="button"
+                onClick={() => { setShowMenu(false); window.electronAPI.quitAndInstall() }}
+                className="w-full text-left flex items-center gap-2 px-3 py-1.5 text-green-400 hover:bg-surface-hover transition-colors"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+                Restart to install v{readyVersion}
+              </button>
+            ) : downloading ? (
+              <div className="px-3 py-1.5 text-gray-500 flex items-center gap-2">
+                <svg className="w-3 h-3 animate-spin text-accent shrink-0" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                </svg>
+                Downloading{downloadPercent > 0 ? ` ${downloadPercent}%` : '…'}
+              </div>
+            ) : checkState === 'checking' ? (
+              <div className="px-3 py-1.5 text-gray-600 text-[11px]">Checking for updates…</div>
+            ) : checkState === 'upToDate' ? (
+              <div className="px-3 py-1.5 text-gray-600 text-[11px]">Up to date · v{__APP_VERSION__}</div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleCheckForUpdates}
+                className="w-full text-left px-3 py-1.5 text-gray-400 hover:bg-surface-hover hover:text-gray-200 transition-colors"
+              >
+                Check for updates · v{__APP_VERSION__}
+              </button>
+            )}
+            <div className="border-t border-surface-border" />
             <button
               type="button"
               onClick={handleLogout}
@@ -120,6 +183,40 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
             >
               Sign out
             </button>
+            {import.meta.env.DEV && (<>
+              <div className="border-t border-surface-border" />
+              <button
+                type="button"
+                onClick={() => { toggleDevForceEmpty(); setShowMenu(false) }}
+                className={`w-full text-left flex items-center gap-2 px-3 py-1.5 transition-colors ${devForceEmpty ? 'text-orange-400 hover:bg-surface-hover' : 'text-gray-600 hover:bg-surface-hover hover:text-gray-400'}`}
+              >
+                <span className="font-mono text-[12px] leading-none">∅</span>
+                {devForceEmpty ? 'Exit onboarding preview' : 'Preview onboarding (new user)'}
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (devSkipLoad) {
+                    await window.electronAPI.devRestoreLibrary()
+                    setDevSkipLoad(false)
+                    setShowMenu(false)
+                    window.location.reload()
+                    return
+                  }
+                  await window.electronAPI.devResetLibrary()
+                  useLibraryStore.setState({ watchedFolders: [], files: [], userAccount: null, pendingMatches: {}, selectedFileId: null, selectedFolderId: null })
+                  setDevSkipLoad(true)
+                  try { ['limina-login-skipped', 'limina-tried-session', 'limina-tried-mix', 'limina-nextsteps-dismissed'].forEach((k) => localStorage.removeItem(k)) } catch {}
+                  useUIStore.getState().setSurface('home')
+                  setShowMenu(false)
+                  window.location.reload()
+                }}
+                className={`w-full text-left flex items-center gap-2 px-3 py-1.5 transition-colors ${devSkipLoad ? 'text-orange-400 hover:bg-surface-hover' : 'text-red-500 hover:bg-surface-hover'}`}
+              >
+                <span className="font-mono text-[12px] leading-none">↺</span>
+                {devSkipLoad ? 'Restore my library' : 'Reset to new user'}
+              </button>
+            </>)}
           </div>
         )}
       </div>
@@ -128,13 +225,48 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setShowModal(true)}
-        className="flex items-center gap-1.5 h-6 px-3 text-[11px] text-gray-500 hover:text-gray-300 bg-surface-hover border border-surface-border rounded transition-colors"
-      >
-        Sign in
-      </button>
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => setShowModal(true)}
+          className="flex items-center gap-1.5 h-6 px-3 text-[11px] text-gray-500 hover:text-gray-300 bg-surface-hover border border-surface-border rounded transition-colors"
+        >
+          Sign in
+        </button>
+        {import.meta.env.DEV && (
+          <>
+            <button
+              type="button"
+              onClick={toggleDevForceEmpty}
+              title={devForceEmpty ? 'Exit onboarding preview' : 'Preview onboarding (new user)'}
+              className={`flex items-center justify-center h-6 w-6 font-mono text-[12px] border rounded transition-colors ${devForceEmpty ? 'text-orange-400 border-orange-400/40 bg-orange-400/10' : 'text-gray-600 border-surface-border bg-surface-hover hover:text-gray-400'}`}
+            >
+              ∅
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                if (devSkipLoad) {
+                  await window.electronAPI.devRestoreLibrary()
+                  setDevSkipLoad(false)
+                  window.location.reload()
+                  return
+                }
+                await window.electronAPI.devResetLibrary()
+                useLibraryStore.setState({ watchedFolders: [], files: [], userAccount: null, pendingMatches: {}, selectedFileId: null, selectedFolderId: null })
+                setDevSkipLoad(true)
+                try { localStorage.removeItem('limina-onboarding-dismissed'); localStorage.removeItem('limina-onboarding-step') } catch {}
+                useUIStore.getState().setSurface('home')
+                window.location.reload()
+              }}
+              title={devSkipLoad ? 'Restore my library (click to exit new-user mode)' : 'Reset to new user'}
+              className={`flex items-center justify-center h-6 w-6 font-mono text-[12px] border rounded transition-colors ${devSkipLoad ? 'text-orange-400 border-orange-400/40 bg-orange-400/10' : 'text-red-600 border-red-600/30 bg-surface-hover hover:text-red-400'}`}
+            >
+              ↺
+            </button>
+          </>
+        )}
+      </div>
 
       {showModal && (
         <div className="flex fixed inset-0 z-50 justify-center items-center bg-black/70 backdrop-blur-sm">

@@ -165,6 +165,8 @@ export interface ElectronAPI {
   saveCatalogue: (catalogue: Catalogue) => Promise<void>
   listCatalogueBackups: () => Promise<{ slot: number; mtime: string; size: number }[]>
   restoreCatalogueBackup: (slot: number) => Promise<Catalogue | null>
+  devResetLibrary: () => Promise<void>
+  devRestoreLibrary: () => Promise<void>
 
   // ── Library: audio analysis ────────────────────────────────────────────────
   getLibraryPeaks: (filePath: string, numPeaks?: number) => Promise<number[]>

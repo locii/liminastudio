@@ -243,7 +243,7 @@ export function FolderPanel({ onAddFolder, onRescan }: Props): JSX.Element {
   return (
     <div
       data-tour="folder-panel"
-      className={`relative flex flex-col w-96 shrink-0 border-r border-surface-border bg-surface-panel transition-colors ${isDragOver ? 'bg-accent/10' : ''}`}
+      className={`relative flex flex-col w-64 shrink-0 border-r border-surface-border bg-surface-panel transition-colors ${isDragOver ? 'bg-accent/10' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}

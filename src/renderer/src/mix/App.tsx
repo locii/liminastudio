@@ -25,6 +25,7 @@ import { useAutoSave } from './hooks/useAutoSave'
 import type { Track, Clip } from './types'
 import { parseSesxSession } from './utils/importers/sesxImporter'
 import { parseAudacitySession } from './utils/importers/audacityImporter'
+import { markTriedMix } from '../OnboardingWizard'
 
 const TARGET_PEAK_LINEAR = Math.pow(10, -0.5 / 20) // -0.5 dBFS
 
@@ -40,7 +41,19 @@ export default function App(): JSX.Element {
   const [importOpen, setImportOpen] = useState(false)
   const [tourOpen, setTourOpen] = useState(false)
   const [whatsNewOpen, setWhatsNewOpen] = useState(false)
+  const mixOpenLibraryOnMount = useUIStore((s) => s.mixOpenLibraryOnMount)
+  const setMixOpenLibraryOnMount = useUIStore((s) => s.setMixOpenLibraryOnMount)
   const [libraryDockOpen, setLibraryDockOpen] = useState(false)
+
+  // Entering Mix Mode (any path) retires the "try these next" card.
+  useEffect(() => { markTriedMix() }, [])
+
+  useEffect(() => {
+    if (mixOpenLibraryOnMount) {
+      setLibraryDockOpen(true)
+      setMixOpenLibraryOnMount(false)
+    }
+  }, [mixOpenLibraryOnMount, setMixOpenLibraryOnMount])
   const [autosave, setAutosave] = useState<{ json: string; savedAt: string } | null>(null)
   const [warmup, setWarmup] = useState<{ done: number; total: number } | null>(null)
   const fitToWindowRef = useRef<(() => void) | null>(null)
@@ -694,7 +707,7 @@ export default function App(): JSX.Element {
         <div className="flex items-center gap-2" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           <button
             type="button"
-            onClick={() => requestNavigate(() => setSurface('home'))}
+            onClick={() => requestNavigate(() => setSurface('home'), 'home')}
             title="Back to Home"
             className="flex items-center justify-center w-6 h-6 text-gray-400 rounded border transition-colors bg-surface-hover hover:bg-surface-border border-surface-border"
           >
@@ -702,7 +715,6 @@ export default function App(): JSX.Element {
               <path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" />
             </svg>
           </button>
-          <span className="text-gray-600 select-none">›</span>
           <WorkspaceSwitcher />
         </div>
         <GlobalControls />
@@ -728,7 +740,8 @@ export default function App(): JSX.Element {
         onFocusPlayhead={() => focusPlayheadRef.current?.()}
         onZoomIn={() => zoomByRef.current?.(1.25)}
         onZoomOut={() => zoomByRef.current?.(1 / 1.25)}
-        onStartTour={() => setTourOpen(true)}
+        libraryOpen={libraryDockOpen}
+        onToggleLibrary={() => setLibraryDockOpen((v) => !v)}
       />
 
       {/* Warmup progress bar — full width strip below transport bar */}

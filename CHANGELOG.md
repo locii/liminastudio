@@ -1,5 +1,32 @@
 # Changelog
 
+## v1.0.0
+
+**Limina Studio 1.0 — your library, session player, and multitrack mixer, unified.**
+
+Limina Mix is now part of **Limina Studio**: one app that takes you from an unorganised folder of audio files all the way to a finished breathwork set. Your existing library and sessions carry over automatically on first launch — nothing to re-scan or re-match.
+
+### One app, four workspaces
+
+- **Library** — Point Limina at your music folders and it scans, organises, and matches your tracks against the Music for Breathwork catalogue, unlocking phase tags, colour coding, and audio features. Drop a folder in, and matching runs in the background.
+- **Session Mode** — Run a live, tag-driven set with automatic equal-power crossfades. Steer the mix by tags and feel, skip and reshape on the fly, and record what you play to replay or refine later.
+- **Mix Mode** — Everything the standalone Limina Mix did, now under the same roof: arrange tracks on a timeline, set crossfades, and export a single finished audio file.
+- **Collections** — Your Music for Breathwork playlists, session templates, recorded sessions, and saved mixes, all in one place.
+
+### Guided onboarding
+
+- New users are eased in step by step: connect a Music for Breathwork account (optional — you can skip it), add a music folder by drag-and-drop, apply catalogue matches, then try Session and Mix Mode.
+
+### Moving over from Limina Mix or Limina Library
+
+- On first launch, Limina Studio automatically imports your existing library from the previous app. Your folders, matches, tags, and recorded sessions come with you.
+
+### Also in this release
+
+- Recorded sessions now live in Collections with full session timelines, tracklist export, and "save as template".
+- Collections remembers the last playlist, template, or session you were viewing.
+- Plus the accumulated fixes and refinements from the 0.9.x line.
+
 ## v0.9.5
 
 - **Windows audio playback fixed** — Clip playback and preview produced no sound on Windows because the internal audio stream URL was built assuming a Unix-style file path, so the drive letter fused onto the server port and backslashes corrupted the path. Windows paths are now normalised correctly. macOS is unaffected.

@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback, memo } from 'react'
 import { useLibraryStore } from '../store/libraryStore'
+import { useUIStore } from '../../uiStore'
 import { MixCueEditorModal } from './MixCueEditorModal'
-import { SessionsModal } from './SessionsModal'
-import { SaveSessionModal } from './SaveSessionModal'
 import { PropertiesPanel } from './PropertiesPanel'
 import { GuidedTour } from './GuidedTour'
 import { SESSION_STEPS, PRO_TOUR_STEP_IDS } from './sessionTourSteps'
@@ -13,8 +12,9 @@ import type { MixEngine } from '../lib/mixEngine'
 import type { LibraryFile } from '../types'
 import type { MixQueueItem } from '../store/libraryStore'
 import { openInMix } from '../../openInMix'
-import { buildMixSessionFromFiles } from '../../buildMixSession'
 import { requestOpen } from '../../openGuard'
+import { buildTwoTrackMix, buildTwoTrackMixFromRecording, type MixItem } from '../../buildLiminaMix'
+import { markTriedSession } from '../../OnboardingWizard'
 
 // Where the Pro upsell (locked Session Mode features) sends free users.
 const PRO_UPSELL_URL = 'https://musicforbreathwork.com/pricing'
@@ -82,9 +82,11 @@ export function MixPanel(): JSX.Element {
   const systemPresets = useLibraryStore((s) => s.systemPresets)
   const loadSystemPresets = useLibraryStore((s) => s.loadSystemPresets)
   const recording = useLibraryStore((s) => s.recording)
+  const justLoaded = useLibraryStore((s) => s.justLoaded)
   const mixSessions = useLibraryStore((s) => s.mixSessions)
   const loadSession = useLibraryStore((s) => s.loadSession)
   const deleteMixSession = useLibraryStore((s) => s.deleteMixSession)
+  const renameMixSession = useLibraryStore((s) => s.renameMixSession)
   const playlists = useLibraryStore((s) => s.playlists)
   const setPlaylists = useLibraryStore((s) => s.setPlaylists)
   const userAccount = useLibraryStore((s) => s.userAccount)
@@ -273,6 +275,8 @@ export function MixPanel(): JSX.Element {
     consumeFromUpcoming(itemId, f.id)
     engineRef.current?.fadeTo(f)
   }, [consumeFromUpcoming])
+
+
   // Inline name entry for saving (Electron blocks window.prompt).
   const [savingName, setSavingName] = useState<string | null>(null)
   const confirmSave = useCallback(() => {
@@ -316,6 +320,7 @@ export function MixPanel(): JSX.Element {
   const [tourOpen, setTourOpen] = useState(false)
   // Pro upsell prompt (shown when a free user taps a locked feature).
   const [upsellOpen, setUpsellOpen] = useState(false)
+  const devEmpty = useUIStore((s) => s.devForceEmpty)
   useEffect(() => {
     try {
       if (!localStorage.getItem('session-tour-completed')) setTourOpen(true)
@@ -333,37 +338,119 @@ export function MixPanel(): JSX.Element {
     try { localStorage.setItem('session-tour-completed', '1') } catch { /* noop */ }
   }, [])
 
-  // Open the whole session as an editable timeline in Mix: explicit queue tracks
-  // in order, plus each tag generator materialised into steered tracks up to its
-  // allocated duration (or a default chunk when it has no duration cap).
-  const handleOpenInMix = useCallback(() => {
-    const byId = new Map(files.map((f) => [f.id, f]))
-    const list: LibraryFile[] = []
+  // Keyboard shortcuts: Space = play/pause, ArrowRight = next track.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent): void => {
+      const tag = (e.target as HTMLElement).tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable) return
+      if (e.key === ' ') { e.preventDefault(); engineRef.current?.toggle() }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); engineRef.current?.next() }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  // Preview-while-playing guard: confirm before previewing a pool track while
+  // session playback is active (two audio sources would collide).
+  const [previewPending, setPreviewPending] = useState<{ fileId: string; queue: string[] } | null>(null)
+
+  const handlePreviewRequest = useCallback((fileId: string | null, queue: string[]): void => {
+    if (fileId && state.playing) {
+      setPreviewPending({ fileId, queue })
+    } else {
+      setPreview(fileId, queue)
+    }
+  }, [state.playing, setPreview])
+
+  const confirmPreview = useCallback((): void => {
+    if (!previewPending) return
+    engineRef.current?.stop()
+    setPreview(previewPending.fileId, previewPending.queue)
+    setPreviewPending(null)
+  }, [previewPending, setPreview])
+
+  // Open the freshly-loaded set (template / preset / recording) as an editable
+  // timeline in Mix: explicit tracks in order, plus each tag generator materialised
+  // to its allocated duration. Only offered while `justLoaded` (nothing consumed
+  // yet), so the whole set is still intact. Uses the two-track crossfade builder.
+  const [openingMix, setOpeningMix] = useState(false)
+  const openMixCancelledRef = useRef(false)
+  // Ref so handleOpenInMix (declared before loadSel) can read the current value.
+  const loadSelRef = useRef('')
+
+  const handleOpenInMix = useCallback(async () => {
+    const st = useLibraryStore.getState()
+    const byId = new Map(st.files.map((f) => [f.id, f]))
+
+    // If a recorded session is loaded, use its exact timing data (fades, durations,
+    // crossfade positions) rather than re-analysing the audio files.
+    const loadedSesId = loadSelRef.current.startsWith('ses:') ? loadSelRef.current.slice(4) : null
+    const loadedSes = loadedSesId ? st.mixSessions.find((s) => s.id === loadedSesId) ?? null : null
+
+    if (loadedSes && loadedSes.played.length > 0) {
+      const pairs = loadedSes.played
+        .map((p) => ({ p, f: byId.get(p.fileId) ?? null }))
+        .filter((x): x is { p: typeof x.p; f: NonNullable<typeof x.f> } => x.f !== null)
+      const items: MixItem[] = pairs.map(({ p, f }) => ({ file: f, title: p.title, artist: p.artist }))
+      const played = pairs.map(({ p }) => p)
+      if (items.length === 0) return
+      openMixCancelledRef.current = false
+      setOpeningMix(true)
+      try {
+        const built = await buildTwoTrackMixFromRecording(items, played)
+        if (!openMixCancelledRef.current) requestOpen('mix', () => openInMix(JSON.stringify(built)))
+      } finally {
+        setOpeningMix(false)
+      }
+      return
+    }
+
+    // Otherwise build from the current queue with audio analysis.
+    const items: MixItem[] = []
     const used = new Set<string>()
-    for (const item of mixQueue) {
+    for (const item of st.mixQueue) {
       if (item.kind === 'track') {
         const f = byId.get(item.fileId)
-        if (f?.filePath && !used.has(f.id)) { list.push(f); used.add(f.id) }
+        if (f?.filePath && !used.has(f.id)) { items.push({ file: f }); used.add(f.id) }
       } else {
-        const ids = materializeGroup(item.tags, item.matchMode, item.feel, item.durationMin != null ? 300 : 15, used)
+        const sourceIds = item.upcoming.length > 0
+          ? item.upcoming
+          : materializeGroup(item.tags, item.matchMode, item.feel, item.durationMin != null ? 300 : 15, used)
         const targetMs = (item.durationMin ?? 0) * 60000
         let accMs = 0
-        for (const id of ids) {
+        for (const id of sourceIds) {
           if (item.durationMin != null && accMs >= targetMs) break
           const f = byId.get(id)
           if (!f?.filePath || used.has(f.id)) continue
-          list.push(f); used.add(f.id); accMs += (f.duration || 0) * 1000
+          items.push({ file: f }); used.add(f.id); accMs += (f.duration || 0) * 1000
         }
       }
     }
-    if (list.length === 0) return
-    requestOpen('mix', () => openInMix(buildMixSessionFromFiles(list)))
-  }, [files, mixQueue])
+    if (items.length === 0) return
+    openMixCancelledRef.current = false
+    setOpeningMix(true)
+    try {
+      const built = await buildTwoTrackMix(items)
+      if (!openMixCancelledRef.current) requestOpen('mix', () => openInMix(JSON.stringify(built)))
+    } finally {
+      setOpeningMix(false)
+    }
+  }, [])
 
-  // Session recording: save-prompt modal, sessions viewer, and a 1s elapsed tick.
+  const cancelOpenInMix = useCallback(() => {
+    openMixCancelledRef.current = true
+    setOpeningMix(false)
+  }, [])
+
+  // Session recording: name-first flow, save-confirm, sessions viewer, and a 1s elapsed tick.
+  const [namingSession, setNamingSession] = useState(false)
+  const [preRecordName, setPreRecordName] = useState('')
   const [savePromptOpen, setSavePromptOpen] = useState(false)
-  const [sessionsOpen, setSessionsOpen] = useState(false)
-  const [sessionsInitialId, setSessionsInitialId] = useState<string | null>(null)
+  const [sessionSaveName, setSessionSaveName] = useState('')
+  const [renamingSession, setRenamingSession] = useState(false)
+  const [renameValue, setRenameValue] = useState('')
+  // After a recording is saved, show a persistent chip linking to it in Collections.
+  const [savedSession, setSavedSession] = useState<{ id: string; name: string } | null>(null)
   const [, setRecTick] = useState(0)
 
   // Ellipsis menu (export tracklist / open recorded sessions).
@@ -406,20 +493,29 @@ export function MixPanel(): JSX.Element {
     const id = window.setInterval(() => setRecTick((t) => t + 1), 1000)
     return () => window.clearInterval(id)
   }, [recording])
-  // Finish recording: persist the session, then reveal it in the sessions modal.
+  // Entering Session Mode (any path) retires the "try these next" card.
+  useEffect(() => { markTriedSession() }, [])
+  // Jump to the Collections workspace with a recorded session selected.
+  const viewInCollections = useCallback((sessionId: string) => {
+    useUIStore.getState().setCollectionsPendingSessionId(sessionId)
+    useUIStore.getState().setSurface('playlists')
+  }, [])
+  // Finish recording: persist the session, then surface it as a chip that links
+  // to Collections (where recorded sessions live).
   const handleSaveSession = useCallback((name: string) => {
     const saved = stopRecording(name)
     setSavePromptOpen(false)
-    if (saved) { setSessionsInitialId(saved.id); setSessionsOpen(true) }
+    if (saved) setSavedSession({ id: saved.id, name: saved.name })
   }, [])
   const handleDiscardSession = useCallback(() => {
     cancelRecording()
     setSavePromptOpen(false)
   }, [])
+  // "Recorded sessions" now lives in Collections — jump there, newest selected.
   const openRecordedSessions = useCallback(() => {
-    setSessionsInitialId(null)
-    setSessionsOpen(true)
-  }, [])
+    const latest = useLibraryStore.getState().mixSessions[0]
+    viewInCollections(latest?.id ?? '')
+  }, [viewInCollections])
   // Double-click a tag in the picker: add it as a generator at the front and fade in.
   const startTagNow = useCallback((tag: string) => {
     const st = useLibraryStore.getState()
@@ -521,6 +617,7 @@ export function MixPanel(): JSX.Element {
   const [addingPlaylist, setAddingPlaylist] = useState(false)
   // Combined "Load…" selection — a template ("tpl:<id>") or a recorded session ("ses:<id>").
   const [loadSel, setLoadSel] = useState<string>('')
+  loadSelRef.current = loadSel
   const handleLoadSelection = useCallback((value: string) => {
     setLoadSel(value)
     // Templates ("tpl:") and system presets ("sys:") both resolve via loadMix.
@@ -574,20 +671,157 @@ export function MixPanel(): JSX.Element {
 
   return (
     <div className="flex flex-col flex-1 min-w-0 bg-surface-base">
-      {/* Header — tour "?" now lives in the standard top-right toolbar */}
-      <div className="flex items-center h-10 gap-4 px-4 border-b shrink-0 bg-surface-panel border-surface-border">
+      {/* Header */}
+      <div className="flex items-center px-4 border-b h-11 shrink-0 bg-surface-panel border-surface-border">
+        {/* LEFT: session name (always visible) / inline save form when saving */}
+        <div className="flex items-center flex-1 min-w-0 gap-2">
+          {namingSession ? (
+            /* Step 1: name before recording starts */
+            <span className="flex items-center gap-2">
+              <input
+                autoFocus
+                value={preRecordName}
+                onChange={(e) => setPreRecordName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { startRecording(); setNamingSession(false) }
+                  if (e.key === 'Escape') setNamingSession(false)
+                }}
+                placeholder="Session name…"
+                className="w-44 h-6 px-1.5 text-xs text-gray-200 border rounded outline-none bg-surface-base border-accent shrink-0"
+              />
+              <button type="button"
+                onClick={() => { startRecording(); setNamingSession(false) }}
+                className="text-[10px] text-accent hover:text-accent/80 transition-colors">
+                Start
+              </button>
+              <button type="button" onClick={() => setNamingSession(false)}
+                className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors">
+                Cancel
+              </button>
+            </span>
+          ) : recording && !savePromptOpen ? (
+            /* Step 2: actively recording — show name + elapsed */
+            <span className="flex items-center gap-2">
+              <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse shrink-0" />
+              <span className="text-xs text-gray-300 truncate max-w-[160px]">{preRecordName || 'Recording…'}</span>
+              <span className="text-[10px] text-gray-600 tabular-nums shrink-0">{fmt((Date.now() - recording.startedAt) / 1000)}</span>
+            </span>
+          ) : savePromptOpen ? (
+            /* Step 3: confirm save after stopping */
+            <span className="flex items-center gap-2">
+              <span className="w-2 h-2 bg-red-500 rounded-full shrink-0" />
+              <span className="text-xs text-gray-300 truncate max-w-[160px]">{preRecordName || 'Recording'}</span>
+              <span className="text-[10px] text-gray-600">—</span>
+              <button type="button"
+                disabled={!recording?.trackCount}
+                onClick={() => { handleSaveSession(preRecordName.trim()); setSessionSaveName('') }}
+                className="text-[10px] text-accent hover:text-accent/80 disabled:opacity-40 transition-colors">
+                Save
+              </button>
+              <button type="button" onClick={() => setSavePromptOpen(false)}
+                className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors">
+                Keep recording
+              </button>
+              <button type="button" onClick={handleDiscardSession}
+                className="text-[10px] text-gray-600 hover:text-red-400 transition-colors">
+                Discard
+              </button>
+            </span>
+          ) : savedSession ? (
+            /* Just saved a recording — persistent chip linking to Collections */
+            <span className="flex items-center gap-2 min-w-0">
+              <span className="w-2 h-2 rounded-full bg-accent shrink-0" />
+              <span className="text-xs text-gray-300 truncate">
+                Saved <span className="text-gray-400">&lsquo;{savedSession.name}&rsquo;</span>
+              </span>
+              <button type="button" onClick={() => viewInCollections(savedSession.id)}
+                className="text-[10px] text-accent hover:text-accent/80 transition-colors shrink-0 whitespace-nowrap">
+                View in Collections →
+              </button>
+              <button type="button" onClick={() => setSavedSession(null)} title="Dismiss"
+                className="text-gray-600 hover:text-gray-400 transition-colors shrink-0">
+                <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 2l8 8M10 2l-8 8" /></svg>
+              </button>
+            </span>
+          ) : (() => {
+            const loadedSes = loadSel.startsWith('ses:') ? mixSessions.find((s) => s.id === loadSel.slice(4)) ?? null : null
+            const loadedTpl = loadSel.startsWith('tpl:') ? savedMixes.find((m) => m.id === loadSel.slice(4)) ?? null : null
+            const loadedSys = loadSel.startsWith('sys:') ? systemPresets.find((m) => m.id === loadSel.slice(4)) ?? null : null
+            const displayName = loadedSes?.name ?? loadedTpl?.name ?? loadedSys?.name ?? null
+            const canRename = loadedSes !== null
+
+            if (renamingSession && canRename) {
+              return (
+                <input
+                  autoFocus
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onBlur={() => { const t = renameValue.trim(); if (t && loadedSes) renameMixSession(loadedSes.id, t); setRenamingSession(false) }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { const t = renameValue.trim(); if (t && loadedSes) renameMixSession(loadedSes.id, t); setRenamingSession(false) }
+                    if (e.key === 'Escape') setRenamingSession(false)
+                  }}
+                  className="w-44 h-6 px-1.5 text-xs text-gray-200 border rounded outline-none bg-surface-base border-accent shrink-0"
+                  placeholder="Session name"
+                />
+              )
+            }
+
+            return (
+              <span className="flex items-center gap-1.5 shrink-0">
+                <span
+                  className={`text-xs truncate cursor-default select-none ${displayName ? 'text-gray-400' : 'text-gray-600'}`}
+                  onDoubleClick={() => { if (canRename && displayName) { setRenameValue(displayName); setRenamingSession(true) } }}
+                  title={canRename ? 'Double-click to rename' : undefined}
+                >
+                  <span className="text-gray-600">Session:</span>{' '}
+                  {displayName ?? 'Untitled'}
+                </span>
+                {canRename && (
+                  <button
+                    type="button"
+                    onClick={() => { if (displayName) { setRenameValue(displayName); setRenamingSession(true) } }}
+                    className="text-gray-600 transition-colors hover:text-gray-300"
+                    title="Rename session"
+                  >
+                    <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M8.5 1.5l2 2L3 11H1V9L8.5 1.5z" />
+                    </svg>
+                  </button>
+                )}
+              </span>
+            )
+          })()}
+        </div>
+
+        {/* RIGHT: all controls */}
         <div className="flex items-center gap-3">
-          <button
-            type="button"
-            disabled={mixQueue.length === 0}
-            onClick={handleOpenInMix}
-            title="Open the whole session as an editable timeline in Mix"
-            className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded border border-accent/50 text-accent hover:bg-accent/10 transition-colors disabled:opacity-40 disabled:pointer-events-none"
-          >
-            Open in Mix
-          </button>
+          {justLoaded && (
+            openingMix ? (
+              <span className="flex items-center gap-1.5">
+                <span className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded border border-accent/30 text-accent/60">
+                  <svg className="w-2.5 h-2.5 animate-spin shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M6 1v2M6 9v2M1 6h2M9 6h2" /></svg>
+                  Opening…
+                </span>
+                <button type="button" onClick={cancelOpenInMix}
+                  className="px-2 py-0.5 text-[10px] rounded border border-surface-border text-gray-400 hover:text-gray-200 hover:bg-surface-hover transition-colors">
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                disabled={mixQueue.length === 0}
+                onClick={handleOpenInMix}
+                title="Open the whole loaded set as an editable timeline in Mix"
+                className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded border border-accent/50 text-accent hover:bg-accent/10 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+              >
+                <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M1 3h10M1 6h10M1 9h6" /></svg>
+                Open in Mix
+              </button>
+            )
+          )}
           {!isPro ? (
-            /* Free tier: locked Load — opens the Pro upsell instead of loading. */
             <button type="button" onClick={() => setUpsellOpen(true)} title="Loading templates & sessions is a Pro feature"
               className="flex items-center gap-1 bg-surface-panel border border-surface-border rounded px-2 py-0.5 text-[10px] text-gray-500 hover:text-accent hover:border-accent/50 transition-colors">
               Load…
@@ -601,7 +835,7 @@ export function MixPanel(): JSX.Element {
                 <option value="">Load…</option>
                 {systemPresets.length > 0 && (
                   <optgroup label="System Presets">
-                    {systemPresets.map((m) => <option key={m.id} value={`sys:${m.id}`}>{m.name}</option>)}
+                    {systemPresets.map((m) => <option key={m.id} value={`sys:${m.id}`}>{m.name} (system preset)</option>)}
                   </optgroup>
                 )}
                 {savedMixes.length > 0 && (
@@ -625,7 +859,7 @@ export function MixPanel(): JSX.Element {
             </span>
           ) : null}
           {isPro && (<>
-          {/* Ellipsis menu — export / recorded-session actions */}
+          {/* Ellipsis menu — export / recorded-session / save actions */}
           <div data-tour="session-export" className="relative" ref={exportMenuRef}>
             <button type="button" onClick={() => setExportMenuOpen((v) => !v)} title="Session options"
               className={`flex items-center justify-center w-6 h-6 rounded border transition-colors ${exportMenuOpen ? 'border-accent/50 bg-accent/10 text-accent' : 'border-surface-border text-gray-400 hover:text-gray-200 hover:bg-surface-hover'}`}>
@@ -640,51 +874,52 @@ export function MixPanel(): JSX.Element {
                 </button>
                 <button type="button" onClick={openRecordedSessions} disabled={mixSessions.length === 0}
                   className="w-full text-left px-3 py-1.5 text-gray-300 hover:bg-surface-hover hover:text-gray-100 disabled:opacity-40 transition-colors">
-                  Recorded sessions{mixSessions.length > 0 ? ` · ${mixSessions.length}` : ''}…
+                  Recorded sessions{mixSessions.length > 0 ? ` · ${mixSessions.length}` : ''} →
                 </button>
+                <div className="my-1 border-t border-surface-border" />
+                <span data-tour="session-save-template">
+                  {savingName !== null ? (
+                    <div className="flex items-center gap-1 px-3 py-1.5" onClick={(e) => e.stopPropagation()}>
+                      <input autoFocus value={savingName} onChange={(e) => setSavingName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') confirmSave(); else if (e.key === 'Escape') setSavingName(null) }}
+                        onBlur={() => setSavingName(null)} placeholder="Template name…"
+                        className="w-32 bg-surface-panel border border-surface-border rounded px-1.5 py-0.5 text-[10px] text-gray-200 placeholder-gray-700 outline-none focus:border-accent/50" />
+                      <button type="button" onMouseDown={(e) => { e.preventDefault(); confirmSave() }} className="text-[10px] text-accent hover:text-accent/80 transition-colors">Save</button>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setSavingName('') }}
+                      className="w-full text-left px-3 py-1.5 text-gray-300 hover:bg-surface-hover hover:text-gray-100 transition-colors">
+                      Save as Template
+                    </button>
+                  )}
+                </span>
+                {isAdmin && (
+                  savingPresetName !== null ? (
+                    <div className="flex items-center gap-1 px-3 py-1.5" onClick={(e) => e.stopPropagation()}>
+                      <input autoFocus value={savingPresetName} onChange={(e) => setSavingPresetName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') void confirmSavePreset(); else if (e.key === 'Escape') setSavingPresetName(null) }}
+                        onBlur={() => setSavingPresetName(null)} placeholder="System preset name…"
+                        className="w-36 bg-surface-panel border border-surface-border rounded px-1.5 py-0.5 text-[10px] text-gray-200 placeholder-gray-700 outline-none focus:border-accent/50" />
+                      <button type="button" onMouseDown={(e) => { e.preventDefault(); void confirmSavePreset() }} className="text-[10px] text-accent hover:text-accent/80 transition-colors">Publish</button>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setSavingPresetName('') }}
+                      disabled={presetSaving || mixQueue.filter((q) => q.kind === 'tags').length === 0}
+                      className="w-full text-left px-3 py-1.5 text-gray-300 hover:bg-surface-hover hover:text-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      title={mixQueue.filter((q) => q.kind === 'tags').length === 0
+                        ? 'Add a tag generator to the queue first — presets only store tag generators (not individual tracks)'
+                        : "Publish this queue's tag generators as a system preset for all users (admin)"}>
+                      {presetSaving ? 'Publishing…' : 'Save as System Preset'}
+                    </button>
+                  )
+                )}
               </div>
             )}
           </div>
-
-          <span data-tour="session-save-template" className="flex items-center">
-            {savingName !== null ? (
-              <span className="flex items-center gap-1">
-                <input autoFocus value={savingName} onChange={(e) => setSavingName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') confirmSave(); else if (e.key === 'Escape') setSavingName(null) }}
-                  onBlur={() => setSavingName(null)} placeholder="Template name…"
-                  className="w-28 bg-surface-panel border border-surface-border rounded px-1.5 py-0.5 text-[10px] text-gray-200 placeholder-gray-700 outline-none focus:border-accent/50" />
-                <button type="button" onMouseDown={(e) => { e.preventDefault(); confirmSave() }} className="text-[10px] text-accent hover:text-accent/80 transition-colors">Save</button>
-              </span>
-            ) : (
-              <button type="button" onClick={() => setSavingName('')} className="text-[10px] text-gray-400 hover:text-accent transition-colors" title="Save this queue as a session template">Save as Template</button>
-            )}
-          </span>
-
-          {/* Admin (user 1): publish this queue as a system preset for all users. */}
-          {isAdmin && (
-            <span className="flex items-center">
-              {savingPresetName !== null ? (
-                <span className="flex items-center gap-1">
-                  <input autoFocus value={savingPresetName} onChange={(e) => setSavingPresetName(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') void confirmSavePreset(); else if (e.key === 'Escape') setSavingPresetName(null) }}
-                    onBlur={() => setSavingPresetName(null)} placeholder="System preset name…"
-                    className="w-32 bg-surface-panel border border-surface-border rounded px-1.5 py-0.5 text-[10px] text-gray-200 placeholder-gray-700 outline-none focus:border-accent/50" />
-                  <button type="button" onMouseDown={(e) => { e.preventDefault(); void confirmSavePreset() }} className="text-[10px] text-accent hover:text-accent/80 transition-colors">Publish</button>
-                </span>
-              ) : (
-                <button type="button" onClick={() => setSavingPresetName('')} disabled={presetSaving || mixQueue.filter((q) => q.kind === 'tags').length === 0}
-                  className="text-[10px] text-accent/80 hover:text-accent disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  title={mixQueue.filter((q) => q.kind === 'tags').length === 0
-                    ? 'Add a tag generator to the queue first — presets only store tag generators (not individual tracks)'
-                    : 'Publish this queue’s tag generators as a system preset for all users (admin)'}>
-                  {presetSaving ? 'Publishing…' : 'Save as System Preset'}
-                </button>
-              )}
-            </span>
-          )}
-          </>)}
+</>)}
         </div>
       </div>
+
 
       <div className="flex flex-1 min-h-0">
         {/* LEFT: now playing + up next */}
@@ -694,7 +929,7 @@ export function MixPanel(): JSX.Element {
             onDragOver={(e) => { if (e.dataTransfer.types.includes(MIX_TRACK_DND_TYPE)) { e.preventDefault(); setNpDragOver(true) } }}
             onDragLeave={() => setNpDragOver(false)}
             onDrop={onNowPlayingDrop}
-            className={`p-5 border-b shrink-0 border-surface-border transition-colors ${npDragOver ? 'bg-accent/10 ring-1 ring-inset ring-accent/40' : ''}`}
+            className={`p-2 border-b shrink-0 border-surface-border transition-colors ${npDragOver ? 'bg-accent/10 ring-1 ring-inset ring-accent/40' : ''}`}
           >
             
 
@@ -720,114 +955,67 @@ export function MixPanel(): JSX.Element {
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-3 mt-2">
-              {cur?.albumImageUrl ? (
-                <img src={cur.albumImageUrl} alt="" className="object-cover rounded w-11 h-11 shrink-0" />
-              ) : (
-                <div className="flex items-center justify-center rounded w-11 h-11 shrink-0 bg-surface-hover">
-                  <svg className="w-4 h-4 text-gray-600" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55A4 4 0 1014 17V7h4V3h-6z" /></svg>
-                </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <div className="text-[15px] text-gray-100 truncate">
-                  {cur ? (cur.trackTitle || cur.fileName) : <span className="text-gray-600">—</span>}
-                </div>
-                {cur?.artist && <div className="text-[12px] text-gray-500 truncate mt-0.5">{cur.artist}</div>}
+            {(!cur || devEmpty) ? (
+              <div
+                className="flex flex-col items-center justify-center gap-2 py-8 m-2 mt-2 mb-4 transition-colors border-2 border-dashed rounded-lg"
+                style={{ borderColor: npDragOver ? '#6366f1' : '#2a2a3a', background: npDragOver ? 'rgba(99,102,241,0.06)' : 'transparent' }}
+              >
+                <svg className="text-gray-700 w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 19V6l12-3v13" /><circle cx="6" cy="19" r="3" /><circle cx="18" cy="16" r="3" />
+                </svg>
+                <span className="text-[11px] text-gray-600">
+                  {npDragOver ? 'Drop to start playing' : 'Drag a track here to start'}
+                </span>
               </div>
-              {cur && (
-                <button type="button" onClick={() => setSelectedId(cur.id)}
-                  className="flex items-center justify-center w-5 h-5 text-gray-500 transition-colors rounded shrink-0 hover:text-accent hover:bg-accent/10"
-                  title="View this track's fade points and curves">
-                  <svg className="w-3 h-3" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
-                    <path d="M1 7h1.5M11.5 7H13M4 4v6M6 2.5v9M8 4.5v5M10 3.5v7" />
-                  </svg>
-                </button>
-              )}
-              {cur && (
-                <button type="button" onClick={() => eng()?.stop()}
-                  className="flex items-center justify-center w-5 h-5 text-gray-500 transition-colors rounded shrink-0 hover:text-red-400 hover:bg-red-500/10"
-                  title="Clear the current track">
-                  <svg className="w-3 h-3" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 2l6 6M8 2l-6 6" /></svg>
-                </button>
-              )}
-            </div>
-
-            <canvas
-              ref={canvasRef}
-              className="w-full h-24 mt-3 cursor-pointer"
-              title="Click to cue and crossfade to this point"
-              onClick={(e) => {
-                if (!cur || !cur.duration) return
-                const rect = e.currentTarget.getBoundingClientRect()
-                const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-                engineRef.current?.seekFadeTo(frac * cur.duration)
-              }}
-            />
-            {/* crossfade progress bar */}
-            <div className="h-0.5 mt-1 bg-surface-border rounded overflow-hidden">
-              {state.fading && <div className="h-full bg-accent transition-[width] duration-100" style={{ width: `${fadeProgress * 100}%` }} />}
-            </div>
-            <div className="flex items-center justify-between mt-1 font-mono text-[10px] tabular-nums text-gray-600">
-              <span>{fmt(state.currentTime)}</span>
-              <span className="text-gray-500">−{fmt(Math.max(0, state.duration - state.currentTime))} left</span>
-              <span>{fmt(state.duration)}</span>
-            </div>
-
-            {/* transport + crossfade length on one line */}
-            <div data-tour="session-transport" className="flex items-center gap-2 mt-4">
-              <button type="button" disabled={!canPlay} onClick={() => eng()?.toggle()}
-                className="flex items-center justify-center w-10 h-10 text-gray-200 transition-colors border rounded-full border-surface-border bg-surface-hover hover:text-white hover:border-accent/50 hover:bg-accent/20 disabled:opacity-30"
-                title={state.playing ? 'Pause' : 'Play'}>
-                {state.playing
-                  ? <svg className="w-4 h-4" viewBox="0 0 10 10" fill="currentColor"><rect x="1.5" y="1" width="2.5" height="8" rx="0.5" /><rect x="6" y="1" width="2.5" height="8" rx="0.5" /></svg>
-                  : <svg className="w-4 h-4" viewBox="0 0 10 10" fill="currentColor"><path d="M2 1.5l7 3.5-7 3.5V1.5z" /></svg>}
-              </button>
-
-              {/* Record — captures the blow-by-blow of this session (Pro) */}
-              {isPro ? (
-              <span data-tour="session-record" className="flex items-center shrink-0">
-                {recording ? (
-                  <button type="button" onClick={() => setSavePromptOpen(true)} title="Stop recording & save this session"
-                    className="flex items-center gap-1.5 h-9 px-3 rounded-full border border-red-500/50 text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors shrink-0">
-                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
-                    <span className="text-[11px] tabular-nums">{fmt((Date.now() - recording.startedAt) / 1000)}</span>
-                    <span className="text-[10px] text-gray-500">· {recording.trackCount}</span>
+            ) : (
+              <>
+                <div className="flex items-center gap-3 mt-2">
+                  {cur.albumImageUrl ? (
+                    <img src={cur.albumImageUrl} alt="" className="object-cover rounded w-11 h-11 shrink-0" />
+                  ) : (
+                    <div className="flex items-center justify-center rounded w-11 h-11 shrink-0 bg-surface-hover">
+                      <svg className="w-4 h-4 text-gray-600" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55A4 4 0 1014 17V7h4V3h-6z" /></svg>
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[15px] text-gray-100 truncate">{cur.trackTitle || cur.fileName}</div>
+                    {cur.artist && <div className="text-[12px] text-gray-500 truncate mt-0.5">{cur.artist}</div>}
+                  </div>
+                  <button type="button" onClick={() => setSelectedId(cur.id)}
+                    className="flex items-center justify-center w-5 h-5 text-gray-500 transition-colors rounded shrink-0 hover:text-accent hover:bg-accent/10"
+                    title="View this track's fade points and curves">
+                    <svg className="w-3 h-3" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
+                      <path d="M1 7h1.5M11.5 7H13M4 4v6M6 2.5v9M8 4.5v5M10 3.5v7" />
+                    </svg>
                   </button>
-                ) : (
-                  <button type="button" disabled={!canPlay} onClick={() => startRecording()} title="Record this session (tracklist + edits)"
-                    className="flex items-center justify-center text-gray-400 transition-colors border rounded-full w-9 h-9 border-surface-border hover:text-red-400 hover:border-red-500/50 hover:bg-red-500/10 disabled:opacity-30 shrink-0">
-                    <span className="w-3 h-3 rounded-full bg-red-500/80" />
+                  <button type="button" onClick={() => eng()?.stop()}
+                    className="flex items-center justify-center w-5 h-5 text-gray-500 transition-colors rounded shrink-0 hover:text-red-400 hover:bg-red-500/10"
+                    title="Clear the current track">
+                    <svg className="w-3 h-3" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 2l6 6M8 2l-6 6" /></svg>
                   </button>
-                )}
-              </span>
-              ) : (
-                /* Free tier: locked Record — clicking opens the Pro upsell. */
-                <button type="button" onClick={() => setUpsellOpen(true)} title="Recording is a Pro feature"
-                  className="relative flex items-center justify-center text-gray-600 transition-colors border rounded-full w-9 h-9 border-surface-border hover:text-accent hover:border-accent/50 hover:bg-accent/10 shrink-0">
-                  <span className="w-3 h-3 bg-gray-600 rounded-full" />
-                  <svg className="absolute -top-1 -right-1 w-3.5 h-3.5 text-accent bg-surface-panel rounded-full p-px" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="2.5" y="5.5" width="7" height="5" rx="1" /><path d="M4 5.5V4a2 2 0 014 0v1.5" />
-                  </svg>
-                </button>
-              )}
+                </div>
 
-              <button type="button" disabled={!canPlay} onClick={() => eng()?.next()}
-                className="flex items-center justify-center text-gray-300 transition-colors border rounded-full w-9 h-9 border-surface-border hover:text-white hover:border-accent/50 hover:bg-accent/10 disabled:opacity-30"
-                title="Skip to next">
-                <svg className="w-3.5 h-3.5" viewBox="0 0 12 12" fill="currentColor"><path d="M10 2h-1.5v8H10zM1.5 2l6 4-6 4V2z" /></svg>
-              </button>
-              <button type="button" disabled={!canPlay} onClick={() => eng()?.fadeInNextNow()}
-                className="h-9 px-3 rounded-full border border-surface-border text-[11px] text-gray-300 hover:text-white hover:border-accent/50 hover:bg-accent/10 transition-colors disabled:opacity-30 shrink-0"
-                title="Start the crossfade into the next track now">Fade next</button>
-
-              <div className="flex items-center flex-1 min-w-0 gap-2 ml-1">
-                <span className="text-[9px] uppercase tracking-widest text-gray-600 shrink-0">Xfade</span>
-                <input type="range" min={2000} max={40000} step={1000} value={mixFadeMs}
-                  onChange={(e) => setMixFadeMs(Number(e.target.value))}
-                  className="flex-1 min-w-0 h-1 accent-[#f2a65a] cursor-pointer" title="Crossfade length" />
-                <span className="text-[10px] text-gray-300 tabular-nums shrink-0 w-7 text-right">{Math.round(mixFadeMs / 1000)}s</span>
-              </div>
-            </div>
+                <canvas
+                  ref={canvasRef}
+                  className="w-full h-24 mt-3 cursor-pointer"
+                  title="Click to cue and crossfade to this point"
+                  onClick={(e) => {
+                    if (!cur.duration) return
+                    const rect = e.currentTarget.getBoundingClientRect()
+                    const frac = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+                    engineRef.current?.seekFadeTo(frac * cur.duration)
+                  }}
+                />
+                <div className="h-0.5 mt-1 bg-surface-border rounded overflow-hidden">
+                  {state.fading && <div className="h-full bg-accent transition-[width] duration-100" style={{ width: `${fadeProgress * 100}%` }} />}
+                </div>
+                <div className="flex items-center justify-between mt-1 font-mono text-[10px] tabular-nums text-gray-600">
+                  <span>{fmt(state.currentTime)}</span>
+                  <span className="text-gray-500">−{fmt(Math.max(0, state.duration - state.currentTime))} left</span>
+                  <span>{fmt(state.duration)}</span>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Up next queue */}
@@ -835,7 +1023,32 @@ export function MixPanel(): JSX.Element {
             <span className="text-[9px] uppercase tracking-widest text-gray-600">
               Up Next {mixQueue.length > 0 && <span className="tracking-normal text-gray-700 normal-case">· {mixQueue.length}</span>}
             </span>
-            {mixQueue.length > 0 && <button type="button" onClick={() => clearQueue()} className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors">Clear</button>}
+            <div className="flex items-center gap-2">
+              {mixQueue.length > 0 && (
+                openingMix ? (
+                  <button type="button" onClick={cancelOpenInMix}
+                    className="flex items-center gap-1 text-[10px] text-gray-600 hover:text-gray-400 transition-colors">
+                    <svg className="w-2.5 h-2.5 animate-spin" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M6 1v2M6 9v2M1 6h2M9 6h2" /></svg>
+                    Cancel
+                  </button>
+                ) : (
+                  <button type="button" onClick={handleOpenInMix}
+                    title="Open the current queue as an editable timeline in Mix"
+                    className="flex items-center gap-1 text-[10px] text-gray-600 hover:text-gray-300 transition-colors">
+                    <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1 3h10M1 6h10M1 9h6" />
+                    </svg>
+                    Open queue in Mix
+                  </button>
+                )
+              )}
+              {mixQueue.length > 0 && (
+                <>
+                  <span className="w-px h-3 bg-gray-700 shrink-0" />
+                  <button type="button" onClick={() => clearQueue()} className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors">Clear</button>
+                </>
+              )}
+            </div>
           </div>
           <div
             className={`flex-1 min-h-0 overflow-y-auto transition-colors ${queueDragOver ? 'bg-accent/5 ring-1 ring-inset ring-accent/40' : ''}`}
@@ -843,11 +1056,19 @@ export function MixPanel(): JSX.Element {
             onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setQueueDragOver(false) }}
             onDrop={onQueueDrop}
           >
-            {mixQueue.length === 0 ? (
-              <p className="px-4 py-4 text-[11px] text-gray-600 leading-relaxed">
-                Queue is empty — playing random tracks from the pool ({pool.length}).<br />
-                Drag or add tracks from the pool on the right, drop in tag generators, or load a playlist.
-              </p>
+            {(mixQueue.length === 0 || devEmpty) ? (
+              <div
+                className="m-4 flex flex-col items-center justify-center py-6 border-2 border-dashed rounded-lg gap-1.5 transition-colors"
+                style={{ borderColor: queueDragOver ? '#6366f1' : '#2a2a3a', background: queueDragOver ? 'rgba(99,102,241,0.06)' : 'transparent' }}
+              >
+                <svg className="w-6 h-6 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M8 6h13M8 12h13M8 18h13" /><path d="M3 6h.01M3 12h.01M3 18h.01" />
+                </svg>
+                <span className="text-[11px] text-gray-600 text-center">
+                  {queueDragOver ? 'Drop to add to queue' : 'Drag tracks here to queue them'}
+                </span>
+                <span className="text-[10px] text-gray-700">Playing randomly from pool ({pool.length})</span>
+              </div>
             ) : (
               <QueueList items={mixQueue} fileById={fileById} tagPreviews={tagPreviews} selectedId={selectedId}
                 onMove={moveQueueItem} onRemove={removeQueueItem} onSelect={setSelectedId} onPlay={playQueueItem}
@@ -863,11 +1084,11 @@ export function MixPanel(): JSX.Element {
         {/* RIGHT: available pool — swapped for the track properties panel while
             inspecting a track (info icon on a pool row), so it stays two columns. */}
         {selectedFileId ? (
-          <div className="flex flex-col min-h-0 w-96 shrink-0">
+          <div className="flex flex-col min-h-0 w-96 shrink-0 bg-surface-panel">
             <PropertiesPanel />
           </div>
         ) : (
-        <div className="flex flex-col min-h-0 border-l w-96 shrink-0 border-surface-border">
+        <div className="flex flex-col min-h-0 border-l w-96 shrink-0 border-surface-border bg-surface-panel">
           {/* Tag + feel + playlist controls */}
           <div data-tour="session-tags" className="px-3 py-3 border-b shrink-0 border-surface-border">
             <div
@@ -1008,11 +1229,74 @@ export function MixPanel(): JSX.Element {
             {filteredPool.length === 0 ? (
               <p className="px-4 py-6 text-[11px] text-gray-600 text-center">{pool.length === 0 ? 'No tracks match these tags.' : `No tracks match “${poolQuery}”.`}</p>
             ) : (
-              <PoolList items={visiblePool} selectedId={selectedId} infoId={selectedFileId} previewFileId={previewFileId} onAdd={addQueueTrack} onSelect={setSelectedId} onInfo={selectFile} onPreview={setPreview} poolIds={poolIds} />
+              <PoolList items={visiblePool} selectedId={selectedId} infoId={selectedFileId} previewFileId={previewFileId} onAdd={addQueueTrack} onSelect={setSelectedId} onInfo={selectFile} onPreview={handlePreviewRequest} poolIds={poolIds} />
             )}
           </div>
         </div>
         )}
+      </div>
+
+      {/* Bottom transport bar */}
+      <div data-tour="session-transport" className="flex items-center px-4 border-t shrink-0 border-surface-border bg-surface-panel" style={{ height: 52 }}>
+
+        {/* Left — xfade slider */}
+        <div className="flex items-center flex-1 min-w-0 gap-2">
+          <span className="text-[9px] font-bold tracking-widest uppercase text-accent/70 shrink-0">Xfade</span>
+          <input
+            type="range" min={2000} max={40000} step={1000} value={mixFadeMs}
+            onChange={(e) => setMixFadeMs(Number(e.target.value))}
+            onMouseUp={(e) => (e.target as HTMLInputElement).blur()}
+            className="w-24 h-1 rounded-full appearance-none cursor-ew-resize bg-surface-hover accent-[#f2a65a]"
+            title="Crossfade length"
+          />
+          <span className="text-[9px] font-mono tabular-nums text-gray-400 w-7 text-right shrink-0">{Math.round(mixFadeMs / 1000)}s</span>
+        </div>
+
+        {/* Centre — transport buttons */}
+        <div className="flex items-center gap-1 shrink-0">
+          <button type="button" disabled={!canPlay} onClick={() => eng()?.toggle()}
+            className={`flex items-center justify-center w-9 h-9 mx-1 rounded-full transition-colors ${!canPlay ? 'text-gray-600 cursor-not-allowed bg-surface-hover' : state.playing ? 'text-white bg-accent hover:bg-accent/80' : 'text-gray-300 bg-surface-hover hover:bg-accent hover:text-white'}`}
+            title={state.playing ? 'Pause' : 'Play'}>
+            {state.playing
+              ? <svg className="w-3.5 h-3.5" viewBox="0 0 10 10" fill="currentColor"><rect x="1.5" y="1" width="2.5" height="8" rx="0.5" /><rect x="6" y="1" width="2.5" height="8" rx="0.5" /></svg>
+              : <svg className="w-3.5 h-3.5" viewBox="0 0 10 10" fill="currentColor"><path d="M2 1.5l7 3.5-7 3.5V1.5z" /></svg>}
+          </button>
+
+          {isPro ? (
+            <span data-tour="session-record" className="flex items-center shrink-0">
+              {recording ? (
+                <button type="button" onClick={() => setSavePromptOpen(true)} title="Stop recording"
+                  className="flex items-center justify-center w-8 h-8 text-red-400 transition-colors border rounded-full border-red-500/50 hover:text-red-300 hover:bg-red-500/10 shrink-0">
+                  <svg className="w-3 h-3" viewBox="0 0 12 12" fill="currentColor"><rect x="2" y="2" width="8" height="8" rx="1" /></svg>
+                </button>
+              ) : (
+                <button type="button" disabled={!canPlay || namingSession}
+                  onClick={() => { const d = new Date(); const name = d.toLocaleDateString(undefined, { month: 'long', day: 'numeric' }) + ' Session'; setPreRecordName(name); setNamingSession(true); setSavedSession(null) }}
+                  title="Record this session (tracklist + edits)"
+                  className={`flex items-center justify-center transition-colors border rounded-full w-8 h-8 disabled:opacity-30 shrink-0 ${namingSession ? 'border-red-500/50 text-red-400 bg-red-500/10' : 'text-gray-500 border-surface-border hover:text-red-400 hover:border-red-500/50 hover:bg-red-500/10'}`}>
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-500/80" />
+                </button>
+              )}
+            </span>
+          ) : (
+            <button type="button" onClick={() => setUpsellOpen(true)} title="Recording is a Pro feature"
+              className="relative flex items-center justify-center w-8 h-8 text-gray-600 transition-colors border rounded-full border-surface-border hover:text-accent hover:border-accent/50 hover:bg-accent/10 shrink-0">
+              <span className="w-2.5 h-2.5 bg-gray-600 rounded-full" />
+              <svg className="absolute -top-1 -right-1 w-3.5 h-3.5 text-accent bg-surface-panel rounded-full p-px" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2.5" y="5.5" width="7" height="5" rx="1" /><path d="M4 5.5V4a2 2 0 014 0v1.5" />
+              </svg>
+            </button>
+          )}
+
+          <button type="button" disabled={!canPlay} onClick={() => eng()?.next()}
+            className="flex items-center justify-center w-8 h-8 text-gray-500 transition-colors border rounded-full border-surface-border hover:text-white hover:border-accent/50 hover:bg-accent/10 disabled:opacity-30"
+            title="Fade to next track">
+            <svg className="w-3.5 h-3.5" viewBox="0 0 12 12" fill="currentColor"><path d="M10 2h-1.5v8H10zM1.5 2l6 4-6 4V2z" /></svg>
+          </button>
+        </div>
+
+        {/* Right — spacer to mirror left */}
+        <div className="flex-1" />
       </div>
 
       {selected && (
@@ -1024,16 +1308,31 @@ export function MixPanel(): JSX.Element {
         />
       )}
 
-
-      {savePromptOpen && (
-        <SaveSessionModal
-          onSave={handleSaveSession}
-          onCancel={() => setSavePromptOpen(false)}
-          onDiscard={handleDiscardSession}
-        />
+      {/* Confirm: preview a track while session is playing */}
+      {previewPending && (
+        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/60" onClick={() => setPreviewPending(null)}>
+          <div className="flex flex-col gap-4 p-5 border rounded-lg shadow-xl w-80 border-surface-border bg-surface-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="flex flex-col gap-1">
+              <h2 className="text-sm font-semibold text-gray-100">Preview while playing?</h2>
+              <p className="text-[12px] leading-relaxed text-gray-400">
+                This will stop the current session and preview the selected track.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setPreviewPending(null)}
+                className="px-3 py-1.5 text-[11px] text-gray-300 rounded border transition-colors border-surface-border hover:bg-surface-hover">
+                Cancel
+              </button>
+              <button type="button" onClick={confirmPreview}
+                className="px-3 py-1.5 text-[11px] font-medium text-white rounded transition-colors bg-accent hover:bg-accent/80">
+                Preview
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
-      {sessionsOpen && <SessionsModal initialSessionId={sessionsInitialId} onClose={() => setSessionsOpen(false)} />}
+
 
       {tourOpen && <GuidedTour steps={tourSteps} onClose={closeTour} />}
 
@@ -1100,20 +1399,31 @@ const PoolList = memo(function PoolList({ items, selectedId, infoId, previewFile
   onPreview: (fileId: string | null, queue: string[]) => void
   poolIds: string[]
 }): JSX.Element {
+  const [queuedIds, setQueuedIds] = useState<Set<string>>(new Set())
   return (
     <>
       {items.map(({ file: f, feel }) => {
         const isPreviewing = previewFileId === f.id
         const isInfo = infoId === f.id
+        const justQueued = queuedIds.has(f.id)
         return (
         <div key={f.id} draggable
           onDoubleClick={() => onAdd(f.id)}
           onDragStart={(e) => { e.dataTransfer.effectAllowed = 'copy'; e.dataTransfer.setData(MIX_TRACK_DND_TYPE, f.id) }}
           className={`group flex items-center gap-2 px-3 py-1.5 text-[11px] transition-colors ${selectedId === f.id || isInfo ? 'bg-accent/10 text-gray-200' : 'text-gray-400 hover:bg-surface-hover'}`}
           title="Double-click to add to queue">
-          <button type="button" onClick={(e) => { e.stopPropagation(); onAdd(f.id) }}
-            className="flex items-center justify-center w-4 h-4 text-gray-600 transition-colors rounded shrink-0 hover:text-accent hover:bg-accent/10" title="Add to queue">
-            <svg className="w-2.5 h-2.5" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M5 1v8M1 5h8" /></svg>
+          <button type="button" onClick={(e) => {
+            e.stopPropagation()
+            onAdd(f.id)
+            setQueuedIds((prev) => new Set(prev).add(f.id))
+            setTimeout(() => setQueuedIds((prev) => { const next = new Set(prev); next.delete(f.id); return next }), 1200)
+          }}
+            className={`flex items-center justify-center w-4 h-4 transition-colors rounded shrink-0 ${justQueued ? 'text-accent' : 'text-gray-600 hover:text-accent hover:bg-accent/10'}`} title="Add to queue">
+            {justQueued ? (
+              <svg className="w-2.5 h-2.5" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M1.5 5.5l2.5 2.5 4.5-5" /></svg>
+            ) : (
+              <svg className="w-2.5 h-2.5" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M5 1v8M1 5h8" /></svg>
+            )}
           </button>
           <button type="button" onClick={(e) => { e.stopPropagation(); isPreviewing ? onPreview(null, []) : onPreview(f.id, poolIds) }}
             className={`flex items-center justify-center w-4 h-4 rounded-full border transition-colors shrink-0 ${isPreviewing ? 'opacity-100 border-accent text-accent' : 'text-gray-600 border-gray-600 opacity-0 group-hover:opacity-100 hover:border-accent hover:text-accent'}`}

@@ -13,7 +13,7 @@ export interface TourStep {
 const LIBRARY_STEPS: TourStep[] = [
   {
     id: 'welcome',
-    title: 'Welcome to Limina Library',
+    title: 'Welcome to Library',
     body: 'This quick tour covers the key features. Click Next or press → to step through, or Skip to jump straight in.',
     placement: 'center',
   },
@@ -149,7 +149,7 @@ function TooltipBox({
   return (
     <div
       style={{ ...style, zIndex: 10001 }}
-      className="bg-surface-panel border border-accent/60 rounded-lg shadow-2xl p-4 flex flex-col gap-3"
+      className="flex flex-col gap-3 p-4 border rounded-lg shadow-2xl bg-surface-panel border-accent/60"
     >
       <div className="flex items-center justify-between">
         <span className="text-[10px] text-gray-500 font-mono tabular-nums">{stepIndex + 1} / {total}</span>
@@ -169,16 +169,16 @@ function TooltipBox({
       </div>
 
       <div>
-        <h3 className="text-sm font-semibold text-gray-100 mb-1">{step.title}</h3>
-        <p className="text-xs text-gray-400 leading-relaxed">{step.body}</p>
+        <h3 className="mb-1 text-sm font-semibold text-gray-100">{step.title}</h3>
+        <p className="text-xs leading-relaxed text-gray-400">{step.body}</p>
       </div>
 
-      <div className="flex gap-2 justify-end">
+      <div className="flex justify-end gap-2">
         {!isFirst && (
           <button
             type="button"
             onClick={onPrev}
-            className="px-3 h-7 text-xs text-gray-400 hover:text-gray-200 bg-surface-hover rounded transition-colors"
+            className="px-3 text-xs text-gray-400 transition-colors rounded h-7 hover:text-gray-200 bg-surface-hover"
           >
             Back
           </button>
@@ -186,7 +186,7 @@ function TooltipBox({
         <button
           type="button"
           onClick={onNext}
-          className="px-4 h-7 text-xs font-medium text-white bg-accent hover:bg-accent/80 rounded transition-colors"
+          className="px-4 text-xs font-medium text-white transition-colors rounded h-7 bg-accent hover:bg-accent/80"
         >
           {isLast ? 'Done' : 'Next →'}
         </button>

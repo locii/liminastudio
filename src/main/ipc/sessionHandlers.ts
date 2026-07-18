@@ -9,7 +9,7 @@ const execFileAsync = promisify(execFile)
 
 const RECENT_FILE = join(app.getPath('userData'), 'recent-sessions.json')
 const AUTOSAVE_FILE = join(app.getPath('userData'), 'autosave.limina')
-const MAX_RECENT = 5
+const MAX_RECENT = 20
 
 export async function getRecent(): Promise<string[]> {
   try {
@@ -167,12 +167,18 @@ async function collectFiles(sessionJson: string, sessionFilePath: string): Promi
     const name = basename(src)
     let dest = join(filesDir, name)
     let i = 1
+    let alreadyThere = false
     while (true) {
-      try { await fs.access(dest) } catch { break } // no file at dest — use it
-      const ext = extname(name)
-      dest = join(filesDir, `${basename(name, ext)}_${i++}${ext}`)
+      try {
+        await fs.access(dest)
+        // dest exists — if sizes match, assume it's the same file from a prior collect
+        const [srcStat, destStat] = await Promise.all([fs.stat(src), fs.stat(dest)])
+        if (srcStat.size === destStat.size) { alreadyThere = true; break }
+        const ext = extname(name)
+        dest = join(filesDir, `${basename(name, ext)}_${i++}${ext}`)
+      } catch { break }
     }
-    await fs.copyFile(src, dest)
+    if (!alreadyThere) await fs.copyFile(src, dest)
     pathMap.set(src, dest)
   }
 

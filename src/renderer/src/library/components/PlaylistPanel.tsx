@@ -1,15 +1,12 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useLibraryStore } from '../store/libraryStore'
 import type { LibraryFile, MfbPlaylistDetail, MfbPlaylistTrack } from '../types'
 import { appleMusicDeepLink } from '../types'
 import { useUIStore } from '../../uiStore'
 import { openInMix } from '../../openInMix'
 import { requestOpen } from '../../openGuard'
-
-const SEGMENT_COLORS = [
-  '#6366f1', '#3b82f6', '#14b8a6', '#22c55e',
-  '#f59e0b', '#ef4444', '#a855f7', '#ec4899',
-]
+import { requestNavigate } from '../../navigate'
+import { buildTwoTrackMix, type MixItem, type SegmentSpan } from '../../buildLiminaMix'
 
 function formatDuration(seconds: number): string {
   if (!seconds) return '—'
@@ -20,249 +17,32 @@ function formatDuration(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
-const ANALYSIS_WINDOW_S = 0.5
-const FADE_OUT_THRESHOLD = 0.025   // ~-32 dBFS: below = silence tail
-const CONTENT_THRESHOLD_RATIO = 0.25  // main content starts when RMS exceeds 25% of track peak
-const MAX_FADEOUT_S = 20
-const MAX_FADEIN_S = 30
-const MIN_FADE_S = 0.5
-const ANALYZE_TIMEOUT_MS = 15_000
-const NON_CUE_FADEIN_BUFFER_S = 3  // extra fade-in time beyond detected content start for tracks without manual cue points
-
-function windowRMS(data: Float32Array, startSample: number, windowSamples: number): number {
-  let sum = 0
-  const end = Math.min(startSample + windowSamples, data.length)
-  for (let i = startSample; i < end; i++) sum += data[i] * data[i]
-  return Math.sqrt(sum / (end - startSample))
-}
-
-async function analyzeTransitions(filePath: string, sampleRate: number, port: number): Promise<{ fadeIn: number; fadeOut: number }> {
-  const defaults = { fadeIn: 3, fadeOut: 8 }
-  const work = async (): Promise<{ fadeIn: number; fadeOut: number }> => {
-    const res = await fetch(`http://127.0.0.1:${port}${encodeURI(filePath)}?sr=${sampleRate}`)
-    const arrayBuffer = await res.arrayBuffer()
-    const ctx = new AudioContext()
-    const audio = await ctx.decodeAudioData(arrayBuffer)
-    ctx.close()
-
-    const sr = audio.sampleRate
-    const winSamples = Math.floor(ANALYSIS_WINDOW_S * sr)
-
-    // Mix to mono
-    const mono = new Float32Array(audio.length)
-    for (let ch = 0; ch < audio.numberOfChannels; ch++) {
-      const chData = audio.getChannelData(ch)
-      for (let i = 0; i < audio.length; i++) mono[i] += chData[i] / audio.numberOfChannels
-    }
-
-    // Find peak RMS of the track body (skip first/last 5% to avoid artifacts)
-    const bodyStart = Math.floor(mono.length * 0.05)
-    const bodyEnd = Math.floor(mono.length * 0.95)
-    let peakRms = 0
-    for (let i = bodyStart; i < bodyEnd; i += winSamples) {
-      const rms = windowRMS(mono, i, winSamples)
-      if (rms > peakRms) peakRms = rms
-    }
-    // Main content threshold: relative to the track's own peak level
-    const contentThreshold = Math.max(peakRms * CONTENT_THRESHOLD_RATIO, FADE_OUT_THRESHOLD)
-
-    // Scan from end backwards — find last window with signal above silence threshold
-    let fadeOut = MAX_FADEOUT_S
-    const outScanStart = Math.max(0, mono.length - Math.floor(MAX_FADEOUT_S * sr))
-    for (let i = mono.length - winSamples; i >= outScanStart; i -= winSamples) {
-      if (windowRMS(mono, i, winSamples) > FADE_OUT_THRESHOLD) {
-        fadeOut = (mono.length - i) / sr
-        break
-      }
-    }
-
-    // Find main content start — first window that clears the relative threshold
-    let fadeIn: number
-    const inScanEnd = Math.min(mono.length, Math.floor(MAX_FADEIN_S * sr))
-    if (windowRMS(mono, 0, winSamples) >= contentThreshold) {
-      fadeIn = MIN_FADE_S  // track opens at full content immediately
-    } else {
-      fadeIn = MAX_FADEIN_S
-      for (let i = winSamples; i < inScanEnd; i += winSamples) {
-        if (windowRMS(mono, i, winSamples) >= contentThreshold) {
-          fadeIn = i / sr
-          break
-        }
-      }
-    }
-
-    const name = filePath.split('/').pop() ?? filePath
-    // Log first 30s of RMS values to diagnose detection
-    const diagWindows = Math.floor(30 / ANALYSIS_WINDOW_S)
-    const diagRms = Array.from({ length: diagWindows }, (_, i) =>
-      +windowRMS(mono, i * winSamples, winSamples).toFixed(4)
-    )
-    console.log('[analyzeTransitions]', name, {
-      sampleRate: sr,
-      durationS: +(mono.length / sr).toFixed(1),
-      peakRms: +peakRms.toFixed(4),
-      contentThreshold: +contentThreshold.toFixed(4),
-      fadeIn: +fadeIn.toFixed(2),
-      fadeOut: +fadeOut.toFixed(2),
-      rmsFirst30s: diagRms,
-    })
-
-    return { fadeIn, fadeOut }
-  }
-
-  const timeout = new Promise<{ fadeIn: number; fadeOut: number }>((resolve) =>
-    setTimeout(() => resolve(defaults), ANALYZE_TIMEOUT_MS)
-  )
-  return Promise.race([work().catch(() => defaults), timeout])
-}
-
+// Map an MFB playlist detail onto the shared two-track Mix builder: matched files
+// in playlist order (segments preserved as named markers), with the playlist's
+// authoritative title/artist/artwork carried through.
 async function buildLiminaSession(detail: MfbPlaylistDetail, files: LibraryFile[]): Promise<object> {
   const fileByMfbId = new Map(
     files.filter((f) => f.mfbTrackId !== null).map((f) => [f.mfbTrackId!, f])
   )
-
-  // Collect matched files in playlist order and analyze all in parallel
-  const orderedFiles = detail.segments
-    .flatMap((s) => s.tracks)
-    .map((t) => fileByMfbId.get(t.id))
-    .filter((f): f is LibraryFile => f !== undefined)
-
-  const port = await window.electronAPI.getAudioServerPort()
-
-  // Get true durations via ffmpeg for all files — bypasses wrong WAV RIFF header sizes.
-  // Run in parallel with waveform analyses.
-  const [trueDurations, analyses] = await Promise.all([
-    Promise.all(orderedFiles.map((f) =>
-      window.electronAPI.getFileDuration(f.filePath).then((d) => d > 0 ? d : f.duration)
-    )),
-    Promise.all(
-      orderedFiles.map((f) => {
-        if (f.introEndMs != null && f.outroStartMs != null) {
-          const clipStartMs = f.clipStartMs ?? 0
-          const clipEndMs = f.clipEndMs ?? Math.round(f.duration * 1000)
-          return Promise.resolve({
-            fadeIn: (f.introEndMs - clipStartMs) / 1000,
-            fadeOut: (clipEndMs - f.outroStartMs) / 1000,
-          })
-        }
-        return analyzeTransitions(f.filePath, f.sampleRate, port)
-      })
-    ),
-  ])
-
-  const trackAId = crypto.randomUUID()
-  const trackBId = crypto.randomUUID()
-
-  const tracks = [
-    { id: trackAId, name: 'Track A', color: '#75f264', volume: 1, muted: false, solo: false, order: 0 },
-    { id: trackBId, name: 'Track B', color: '#4946ec', volume: 1, muted: false, solo: false, order: 1 },
-  ]
-
-  let clipIndex = 0
-  let cursor = 0
-
-  const clips: object[] = []
-  const segments: object[] = []
-
-  detail.segments.forEach((segment, segIdx) => {
-    const segStart = cursor
-    let segLastClipEnd = segStart
-
+  const items: MixItem[] = []
+  const spans: SegmentSpan[] = []
+  for (const segment of detail.segments) {
+    let count = 0
     for (const track of segment.tracks) {
       const file = fileByMfbId.get(track.id)
       if (!file) continue
-      const analysis = analyses[clipIndex] ?? { fadeIn: 3, fadeOut: 8 }
-      // ffmpeg-measured duration is authoritative — catalogue duration can be wrong for some WAV formats
-      const trueDuration = trueDurations[clipIndex] ?? file.duration
-
-      // Clip trim bounds clamped to true audio duration
-      const clipStartMs = file.clipStartMs ?? 0
-      const clipEndMs = file.clipEndMs ?? Math.round(trueDuration * 1000)
-      const clipStartS = Math.min(clipStartMs / 1000, trueDuration)
-      const clipEndS = Math.min(clipEndMs / 1000, trueDuration)
-      const effectiveDuration = Math.max(0.1, clipEndS - clipStartS)
-
-      // Manual cues take priority over waveform analysis (relative to clip bounds)
-      const rawFadeIn = file.introEndMs != null
-        ? Math.max(0, (file.introEndMs - clipStartMs) / 1000)
-        : analysis.fadeIn + NON_CUE_FADEIN_BUFFER_S
-      const rawFadeOut = file.outroStartMs != null
-        ? Math.max(0, (clipEndMs - file.outroStartMs) / 1000)
-        : analysis.fadeOut
-
-      const fadeOut = Math.min(rawFadeOut, effectiveDuration * 0.5)
-      const fadeIn = Math.min(rawFadeIn, effectiveDuration * 0.5)
-
-      const nextFile = orderedFiles[clipIndex + 1] ?? null
-      const nextAnalysis = nextFile ? (analyses[clipIndex + 1] ?? null) : null
-      const nextTrueDuration = (trueDurations[clipIndex + 1] ?? nextFile?.duration) ?? 0
-      const nextClipStartMs = nextFile?.clipStartMs ?? 0
-      const nextClipEndMs = nextFile
-        ? Math.min(nextFile.clipEndMs ?? Math.round(nextTrueDuration * 1000), Math.round(nextTrueDuration * 1000))
-        : 0
-      const nextRawFadeIn = nextFile?.introEndMs != null
-        ? Math.max(0, (nextFile.introEndMs - nextClipStartMs) / 1000)
-        : (nextAnalysis?.fadeIn ?? 0) + NON_CUE_FADEIN_BUFFER_S
-      const nextEffectiveDuration = nextFile
-        ? Math.max(0.1, (nextClipEndMs - nextClipStartMs) / 1000)
-        : 0
-      // Cap nextFadeIn against both the next clip's duration and this clip's remaining playable time
-      const nextFadeIn = nextFile
-        ? Math.min(nextRawFadeIn, nextEffectiveDuration * 0.5, effectiveDuration * 0.5)
-        : 0
-
-      const fadeInCurveVal = file.fadeInCurve
-      const fadeOutCurveVal = file.fadeOutCurve
-
-      const startTime = cursor
-      segLastClipEnd = startTime + effectiveDuration
-      clips.push({
-        id: crypto.randomUUID(),
-        trackId: clipIndex % 2 === 0 ? trackAId : trackBId,
-        filePath: file.filePath,
-        fileName: file.fileName.replace(/\.[^.]+$/, ''),
-        startTime,
-        duration: trueDuration,
-        trimStart: clipStartS,
-        trimEnd: trueDuration - clipEndS,
-        fadeIn,
-        fadeOut,
-        fadeInCurve: fadeInCurveVal,
-        fadeOutCurve: fadeOutCurveVal,
-        crossfadeIn: 0,
-        crossfadeOut: 0,
-        volume: 1,
-        automation: [],
-        // MFB metadata — used by Limina Mix for the Now Playing overlay and clip properties
+      items.push({
+        file,
         mfbTrackId: track.id,
-        mfbTrackTitle: track.title,
-        mfbArtist: track.artist,
-        mfbAlbumImageUrl: track.album_image_url || file.albumImageUrl || null,
-        mfbTags: file.tags.length > 0 ? file.tags : [],
-        mfbBreathworkPhase: file.breathworkPhase ?? null,
+        title: track.title,
+        artist: track.artist,
+        albumImageUrl: track.album_image_url || file.albumImageUrl || null,
       })
-
-      // With cue points: next clip's fade-in ends exactly when this clip ends.
-      // Without cue points: next clip's fade-in ends exactly when this clip begins to fade out.
-      const hasCuePoints = file.introEndMs != null || file.outroStartMs != null
-      cursor = hasCuePoints
-        ? startTime + effectiveDuration - nextFadeIn
-        : startTime + effectiveDuration - fadeOut - nextFadeIn
-      clipIndex++
+      count++
     }
-
-    if (segLastClipEnd > segStart) {
-      segments.push({
-        id: crypto.randomUUID(),
-        name: segment.name,
-        startTime: segStart,
-        endTime: segLastClipEnd,
-        color: SEGMENT_COLORS[segIdx % SEGMENT_COLORS.length],
-      })
-    }
-  })
-
-  return { tracks, clips, segments, sessionLabel: '', trackHeights: {}, laneHeights: {} }
+    spans.push({ name: segment.name, count })
+  }
+  return buildTwoTrackMix(items, spans)
 }
 
 function flatTracks(detail: MfbPlaylistDetail): MfbPlaylistTrack[] {
@@ -290,11 +70,15 @@ export function PlaylistPanel(): JSX.Element {
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [saving, setSaving] = useState(false)
   const [opening, setOpening] = useState(false)
+  const openCancelledRef = useRef(false)
   const addQueueTrack = useLibraryStore((s) => s.addQueueTrack)
   const clearQueue = useLibraryStore((s) => s.clearQueue)
   const enterMixMode = useLibraryStore((s) => s.enterMixMode)
   const setSurface = useUIStore((s) => s.setSurface)
   const [contextMenu, setContextMenu] = useState<{ filePath: string; fileId: string; x: number; y: number } | null>(null)
+  const [ellipsisOpen, setEllipsisOpen] = useState(false)
+  const [ellipsisBusy, setEllipsisBusy] = useState(false)
+  const ellipsisRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!contextMenu) return
@@ -302,6 +86,15 @@ export function PlaylistPanel(): JSX.Element {
     window.addEventListener('mousedown', close)
     return () => window.removeEventListener('mousedown', close)
   }, [contextMenu])
+
+  useEffect(() => {
+    if (!ellipsisOpen) return
+    function closeMenu(e: MouseEvent): void {
+      if (ellipsisRef.current && !ellipsisRef.current.contains(e.target as Node)) setEllipsisOpen(false)
+    }
+    window.addEventListener('mousedown', closeMenu)
+    return () => window.removeEventListener('mousedown', closeMenu)
+  }, [ellipsisOpen])
 
   const playlist = selectedPlaylistId !== null
     ? playlists.find((p) => p.id === selectedPlaylistId) ?? null
@@ -372,23 +165,113 @@ export function PlaylistPanel(): JSX.Element {
 
   // Open the playlist as an editable timeline in the Mix workspace (in-app).
   async function handleOpenInMix(): Promise<void> {
+    openCancelledRef.current = false
     setOpening(true)
     try {
       const session = await buildLiminaSession(detail!, allFiles)
-      requestOpen('mix', () => openInMix(JSON.stringify(session)))
+      if (!openCancelledRef.current) {
+        requestOpen('mix', () => openInMix(JSON.stringify(session)))
+      }
     } finally {
       setOpening(false)
     }
   }
 
+  function cancelOpenInMix(): void {
+    openCancelledRef.current = true
+    setOpening(false)
+  }
+
   // Open the playlist's matched tracks as an Auto-Mix queue in Session mode.
   function handleOpenInSession(): void {
-    requestOpen('session', () => {
-      clearQueue()
-      for (const fileId of matchedQueue) addQueueTrack(fileId)
-      enterMixMode()
-      setSurface('library')
-    })
+    requestNavigate(() => {
+      requestOpen('session', () => {
+        clearQueue()
+        for (const fileId of matchedQueue) addQueueTrack(fileId)
+        enterMixMode()
+        setSurface('library')
+      })
+    }, 'session')
+  }
+
+  function buildPlaylistHTML(): string {
+    const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    let counter = 0
+    const groupBlocks = detail!.segments.map((segment) => {
+      const segHeader = `<tr class="seg-header"><td colspan="4"><span class="seg-name">${segment.name}</span></td></tr>`
+      const rows = segment.tracks.map((track) => {
+        counter++
+        const file = fileByMfbId.get(track.id) ?? null
+        const title = file?.trackTitle || track.title
+        const artist = file?.artist || track.artist
+        const dur = file ? formatDuration(file.duration) : (track.duration ? formatDuration(track.duration / 1000) : '—')
+        return `<tr><td class="num">${counter}</td><td class="name">${title}</td><td class="artist">${artist}</td><td class="dur">${dur}</td></tr>`
+      }).join('')
+      return segHeader + rows
+    }).join('')
+    const total = allTracks.length
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+      *{box-sizing:border-box;margin:0;padding:0}body{font-family:'Helvetica Neue',Arial,sans-serif;color:#111;padding:48px 56px;font-size:13px}
+      h1{font-size:26px;font-weight:700;letter-spacing:-0.02em;margin-bottom:4px}.session-date{color:#999;font-size:12px;margin-bottom:32px}
+      table{width:100%;border-collapse:collapse;margin-bottom:32px}thead th{text-align:left;border-bottom:2px solid #222;padding:6px 10px 8px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#444}
+      tbody td{padding:9px 10px;border-bottom:1px solid #e8e8e8;vertical-align:top}tbody tr:last-child td{border-bottom:none}
+      tr.seg-header td{padding:14px 10px 6px;border-bottom:1px solid #ccc}.seg-name{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#222}
+      .num{color:#aaa;width:32px}.name{font-weight:500}.artist{color:#555;width:160px}.dur{font-family:'Courier New',monospace;color:#888;width:64px}
+      .footer{font-size:10px;color:#bbb;border-top:1px solid #e8e8e8;padding-top:12px}
+    </style></head><body>
+      <h1>${detail!.title}</h1><div class="session-date">${date}</div>
+      <table><thead><tr><th>#</th><th>Title</th><th>Artist</th><th>Duration</th></tr></thead><tbody>${groupBlocks}</tbody></table>
+      <div class="totals" style="font-size:12px;color:#666;border-top:1px solid #ccc;padding-top:16px;margin-bottom:24px">${total} track${total !== 1 ? 's' : ''}</div>
+      <div class="footer">Generated by Limina Studio</div>
+    </body></html>`
+  }
+
+  async function handleExportPDF(): Promise<void> {
+    setEllipsisOpen(false)
+    setEllipsisBusy(true)
+    try {
+      const html = buildPlaylistHTML()
+      await window.electronAPI.exportTracklistPDF(html)
+    } finally {
+      setEllipsisBusy(false)
+    }
+  }
+
+  // Ensure a .limina file exists for this playlist (auto-save if needed).
+  // Returns the file path on success, null if the user cancelled the save dialog.
+  async function ensureSaved(sessionJson: string): Promise<string | null> {
+    if (savedPath) return savedPath
+    const path = await window.electronAPI.studioSaveSession(sessionJson, detail!.title)
+    if (path) setPlaylistSession(detail!.id, path)
+    return path
+  }
+
+  async function handleCollect(): Promise<void> {
+    setEllipsisOpen(false)
+    setEllipsisBusy(true)
+    try {
+      const session = await buildLiminaSession(detail!, allFiles)
+      const json = JSON.stringify(session, null, 2)
+      const path = await ensureSaved(json)
+      if (!path) return
+      await window.electronAPI.collectProject(json, path)
+    } finally {
+      setEllipsisBusy(false)
+    }
+  }
+
+  async function handleExportZip(): Promise<void> {
+    setEllipsisOpen(false)
+    setEllipsisBusy(true)
+    try {
+      const session = await buildLiminaSession(detail!, allFiles)
+      const json = JSON.stringify(session, null, 2)
+      const path = await ensureSaved(json)
+      if (!path) return
+      await window.electronAPI.exportProjectZip(json, path)
+    } finally {
+      setEllipsisBusy(false)
+    }
   }
 
   let trackIndex = 0
@@ -445,9 +328,13 @@ export function PlaylistPanel(): JSX.Element {
                 href="#"
                 onClick={(e) => { e.preventDefault(); window.open(`https://musicforbreathwork.com/dashboard/playlists/edit/${detail.id}`) }}
                 title="Edit on Music for Breathwork"
-                className="shrink-0 text-[10px] text-gray-600 hover:text-gray-300 transition-colors"
+                className="shrink-0 flex items-center gap-1 text-[10px] text-gray-600 hover:text-gray-300 transition-colors"
               >
-                Edit
+                Edit on m4b.com
+                <svg className="w-2.5 h-2.5 opacity-60" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 2H2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1V6" />
+                  <path d="M6.5 1h2.5v2.5M9 1L5.5 4.5" />
+                </svg>
               </a>
             </div>
             <div className="flex items-center gap-3">
@@ -458,26 +345,36 @@ export function PlaylistPanel(): JSX.Element {
               <span className="text-[10px] text-gray-600 tabular-nums">{formatDuration(totalDuration)}</span>
             )}
             {missingCount > 0 && (
-              <span className="text-[10px] text-gray-600 tabular-nums">{missingCount} missing</span>
+              <span className="text-[10px] text-gray-600 tabular-nums">{missingCount} tracks missing</span>
             )}
           </div>
             
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              type="button"
-              disabled={matchedCount === 0 || opening}
-              onClick={handleOpenInMix}
-              title="Open this playlist as an editable timeline in Mix"
-              className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] rounded border border-accent/50 text-accent hover:bg-accent/10 transition-colors disabled:opacity-40 disabled:pointer-events-none"
-            >
-              {opening && (
-                <svg className="w-2.5 h-2.5 animate-spin shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                  <path d="M6 1v2M6 9v2M1 6h2M9 6h2" />
-                </svg>
-              )}
-              {opening ? 'Opening…' : 'Open in Mix'}
-            </button>
+            {opening ? (
+              <span className="flex items-center gap-1.5">
+                <span className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] rounded border border-accent/30 text-accent/60">
+                  <svg className="w-2.5 h-2.5 animate-spin shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                    <path d="M6 1v2M6 9v2M1 6h2M9 6h2" />
+                  </svg>
+                  Opening…
+                </span>
+                <button type="button" onClick={cancelOpenInMix}
+                  className="px-2 py-0.5 text-[10px] rounded border border-surface-border text-gray-400 hover:text-gray-200 hover:bg-surface-hover transition-colors">
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                disabled={matchedCount === 0}
+                onClick={handleOpenInMix}
+                title="Open this playlist as an editable timeline in Mix"
+                className="flex items-center gap-1.5 px-2 py-0.5 text-[10px] rounded border border-accent/50 text-accent hover:bg-accent/10 transition-colors disabled:opacity-40 disabled:pointer-events-none"
+              >
+                Open in Mix
+              </button>
+            )}
             <button
               type="button"
               disabled={matchedCount === 0}
@@ -487,15 +384,55 @@ export function PlaylistPanel(): JSX.Element {
             >
               Open in Session
             </button>
-            <button
-              type="button"
-              disabled={matchedCount === 0 || saving}
-              onClick={handleCreateSession}
-              title="Save a .limina session file to disk"
-              className="px-2 py-0.5 text-[10px] rounded border border-surface-border text-gray-400 hover:text-gray-200 hover:bg-surface-border transition-colors disabled:opacity-40 disabled:pointer-events-none"
-            >
-              {saving ? 'Saving…' : savedPath ? 'Save new .limina…' : 'Save .limina…'}
-            </button>
+            {/* Ellipsis dropdown: Save + export actions */}
+            <div className="relative" ref={ellipsisRef}>
+              <button
+                type="button"
+                disabled={matchedCount === 0 || ellipsisBusy}
+                onClick={() => setEllipsisOpen((v) => !v)}
+                title="More actions"
+                className="flex items-center justify-center w-6 h-6 text-[12px] rounded border border-surface-border text-gray-400 hover:text-gray-200 hover:bg-surface-border transition-colors disabled:opacity-40 disabled:pointer-events-none"
+              >
+                {ellipsisBusy ? (
+                  <svg className="w-2.5 h-2.5 animate-spin" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M6 1v2M6 9v2M1 6h2M9 6h2" /></svg>
+                ) : '⋯'}
+              </button>
+              {ellipsisOpen && (
+                <div className="absolute right-0 top-full z-50 mt-1 py-1 w-52 rounded border border-surface-border bg-surface-panel shadow-xl text-[11px]">
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => { setEllipsisOpen(false); handleCreateSession() }}
+                    className="w-full text-left px-3 py-1.5 text-gray-300 hover:bg-surface-hover transition-colors disabled:opacity-40"
+                  >
+                    {saving ? 'Saving…' : savedPath ? 'Save new .limina…' : 'Save .limina…'}
+                  </button>
+                  <div className="h-px my-1 bg-surface-border" />
+                  <button
+                    type="button"
+                    onClick={handleExportPDF}
+                    className="w-full text-left px-3 py-1.5 text-gray-300 hover:bg-surface-hover transition-colors"
+                  >
+                    Export track listing PDF…
+                  </button>
+                  <div className="h-px my-1 bg-surface-border" />
+                  <button
+                    type="button"
+                    onClick={handleCollect}
+                    className="w-full text-left px-3 py-1.5 text-gray-300 hover:bg-surface-hover transition-colors"
+                  >
+                    Collect project files
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportZip}
+                    className="w-full text-left px-3 py-1.5 text-gray-300 hover:bg-surface-hover transition-colors"
+                  >
+                    Export project as ZIP…
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
           

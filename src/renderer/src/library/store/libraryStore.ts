@@ -246,10 +246,18 @@ interface LibraryState {
   mixSessions: MixSession[]
   addMixSession: (session: MixSession) => void
   deleteMixSession: (id: string) => void
+  renameMixSession: (id: string, name: string) => void
   /** Turn a recorded session's realized tracklist into a reusable session template. */
   saveSessionAsTemplate: (id: string, name: string) => void
   /** Load a session's exact played tracklist into the queue to replay it. */
   loadSession: (id: string) => void
+  /**
+   * True right after a template/preset/recording is loaded and before any of it
+   * has been consumed by playback — while set, the whole loaded set is still
+   * intact so it's safe to "Open in Mix". Cleared as soon as playback advances.
+   */
+  justLoaded: boolean
+  setJustLoaded: (v: boolean) => void
   /** Live recording status (null = not recording); mirrored from the session recorder. */
   recording: { startedAt: number; trackCount: number } | null
   setRecording: (r: { startedAt: number; trackCount: number } | null) => void
@@ -476,14 +484,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     q.splice(to, 0, m)
     return { mixQueue: q }
   }),
-  clearQueue: () => set({ mixQueue: [], playedIds: new Set() }),
-  dequeueFront: () => set((s) => ({ mixQueue: s.mixQueue.slice(1) })),
+  clearQueue: () => set({ mixQueue: [], playedIds: new Set(), justLoaded: false }),
+  dequeueFront: () => set((s) => ({ mixQueue: s.mixQueue.slice(1), justLoaded: false })),
   playedIds: new Set(),
   markPlayed: (id) => set((s) => (s.playedIds.has(id) ? {} : { playedIds: new Set(s.playedIds).add(id) })),
   resetPlayed: () => set({ playedIds: new Set() }),
   dropQueueBefore: (id) => set((s) => {
     const i = s.mixQueue.findIndex((q) => q.id === id)
-    return i > 0 ? { mixQueue: s.mixQueue.slice(i) } : {}
+    return i > 0 ? { mixQueue: s.mixQueue.slice(i), justLoaded: false } : {}
   }),
   mixTailTags: null,
   setMixTailTags: (tags) => set({ mixTailTags: tags }),
@@ -511,7 +519,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     return {
       mixQueue: queue, mixTags: m.mixTags, mixMatchMode: m.mixMatchMode,
       mixFeatureTargets: m.mixFeatureTargets, mixFadeMs: m.mixFadeMs, mixTailTags: m.mixTailTags,
-      playedIds: new Set<string>(),
+      playedIds: new Set<string>(), justLoaded: true,
     }
   }),
   deleteMix: (id) => set((s) => ({ savedMixes: s.savedMixes.filter((x) => x.id !== id) })),
@@ -539,6 +547,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   mixSessions: [],
   addMixSession: (session) => set((s) => ({ mixSessions: [session, ...s.mixSessions] })),
   deleteMixSession: (id) => set((s) => ({ mixSessions: s.mixSessions.filter((x) => x.id !== id) })),
+  renameMixSession: (id, name) => set((s) => ({ mixSessions: s.mixSessions.map((x) => x.id === id ? { ...x, name } : x) })),
   saveSessionAsTemplate: (id, name) => set((s) => {
     const sess = s.mixSessions.find((x) => x.id === id)
     if (!sess) return {}
@@ -572,8 +581,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       // transition — the final track (ended by stopping) should ride out.
       holdMs: (p.ended === 'crossfade' || p.ended === 'skip') ? (p.playedMs || undefined) : undefined,
     }))
-    return { mixQueue: queue, mixFadeMs: sess.skeleton.mixFadeMs, mixTailTags: null, playedIds: new Set<string>() }
+    return { mixQueue: queue, mixFadeMs: sess.skeleton.mixFadeMs, mixTailTags: null, playedIds: new Set<string>(), justLoaded: true }
   }),
+  justLoaded: false,
+  setJustLoaded: (v) => set({ justLoaded: v }),
   recording: null,
   setRecording: (r) => set({ recording: r }),
   cueScan: { running: false, done: 0, total: 0 },

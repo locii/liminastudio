@@ -13,7 +13,7 @@ import { PlaylistTrackSearch } from './components/PlaylistTrackSearch'
 import { MixPanel } from './components/MixPanel'
 import { GuidedTour } from './components/GuidedTour'
 import { PlayerBar } from './components/PlayerBar'
-import { MixMiniPlayer } from './components/MixMiniPlayer'
+import { SessionTransportBar } from '../SessionTransportBar'
 import { SettingsPanel } from './components/SettingsPanel'
 import { ReindexDialog } from './components/ReindexDialog'
 import { WhatsNewModal } from './components/WhatsNewModal'
@@ -27,6 +27,8 @@ import { useUpdaterStore } from './store/updaterStore'
 import { useUIStore } from '../uiStore'
 import { WorkspaceSwitcher } from '../WorkspaceSwitcher'
 import { requestNavigate } from '../navigate'
+import { MatchBanner, NextStepsCard } from '../OnboardingWizard'
+import { addFolder } from './lib/addFolder'
 
 
 // The umbrella mounts/unmounts this app when switching surfaces. Guard once-per-run
@@ -36,6 +38,7 @@ let whatsNewChecked = false
 export default function App(): JSX.Element {
   const { setDownloading, setReady } = useUpdaterStore()
   const goHome = useUIStore((s) => s.setSurface)
+  const devForceEmpty = useUIStore((s) => s.devForceEmpty)
 
   useEffect(() => {
     return window.electronAPI.onUpdateDownloading((percent) => setDownloading(percent))
@@ -55,7 +58,6 @@ export default function App(): JSX.Element {
   const addWatchedFolder = useLibraryStore((s) => s.addWatchedFolder)
   const addFiles = useLibraryStore((s) => s.addFiles)
   const setScanning = useLibraryStore((s) => s.setScanning)
-  const selectFolder = useLibraryStore((s) => s.selectFolder)
 
   const pendingMatches = useLibraryStore((s) => s.pendingMatches)
   const pendingCount = Object.keys(pendingMatches).length
@@ -212,15 +214,23 @@ export default function App(): JSX.Element {
     if (!userAccount) syncReadyRef.current = false
   }, [userAccount])
 
+  const devSkipLoad = useUIStore((s) => s.devSkipLoad)
+
   // Load catalogue on mount — mark loaded before subscribing to saves
   useEffect(() => {
+    if (import.meta.env.DEV && devSkipLoad) {
+      // Dev reset mode — start with empty in-memory state, skip disk load
+      catalogueLoadedRef.current = true
+      setCatalogueLoaded(true)
+      return
+    }
     window.electronAPI.loadCatalogue().then(({ data, restoredFromBackup: restored }) => {
       if (data) loadCatalogue(data)
       if (restored) setRestoredFromBackup(true)
       catalogueLoadedRef.current = true
       setCatalogueLoaded(true)
     })
-  }, [loadCatalogue])
+  }, [loadCatalogue, devSkipLoad])
 
   // Kick off the Auto-Mix cue scan once the library is loaded (low priority).
   useEffect(() => {
@@ -249,31 +259,19 @@ export default function App(): JSX.Element {
     })
   }, [])
 
+  const librarySetupOpen = useUIStore((s) => s.librarySetupOpen)
+  const setLibrarySetupOpen = useUIStore((s) => s.setLibrarySetupOpen)
+
   const handleAddFolder = useCallback(async (droppedPath?: string) => {
     // Guard: some onClick handlers pass the click event as the arg — ignore
     // anything that isn't a real dropped path string.
     const dropped = typeof droppedPath === 'string' ? droppedPath : undefined
     const folderPath = dropped ?? await window.electronAPI.libraryPickFolder()
     if (!folderPath) return
-
-    setScanning(true)
-    try {
-      const [folder, result] = await Promise.all([
-        window.electronAPI.buildWatchedFolder(folderPath),
-        window.electronAPI.scanFolder(folderPath),
-      ])
-      addWatchedFolder(folder)
-      addFiles(result.files)
-      selectFolder(null)
-      if (result.errors.length > 0) {
-        console.warn('[scan] errors', result.errors)
-      }
-    } catch (err) {
-      console.error('[scan] failed to add folder', folderPath, err)
-    } finally {
-      setScanning(false)
-    }
-  }, [addWatchedFolder, addFiles, setScanning, selectFolder])
+    // addFolder opens the setup screen (scan → index → apply matches) and keeps
+    // it up until the user chooses to open the library.
+    await addFolder(folderPath)
+  }, [])
 
   const scanning = useLibraryStore((s) => s.scanning)
 
@@ -302,9 +300,7 @@ export default function App(): JSX.Element {
     }
   }, [addWatchedFolder, addFiles, setScanning])
 
-  const hasContent = watchedFolders.length > 0
-
-  const [showWelcome, setShowWelcome] = useState(false)
+  const hasContent = watchedFolders.length > 0 && !(import.meta.env.DEV && devForceEmpty)
   const [showSettings, setShowSettings] = useState(false)
   const [settings, setSettings] = useState<AppSettings>(loadSettings)
 
@@ -318,6 +314,10 @@ export default function App(): JSX.Element {
   useEffect(() => {
     if (whatsNewChecked) return
     whatsNewChecked = true
+    // In the new-user preview / reset states, behave like a fresh download —
+    // never surface "What's New" (there's nothing new to a first-time user).
+    const ui = useUIStore.getState()
+    if (ui.devForceEmpty || ui.devSkipLoad) return
     if (import.meta.env.DEV) { setWhatsNewOpen(true); return }
     try {
       const key = 'limina-library-last-seen-version'
@@ -501,7 +501,7 @@ export default function App(): JSX.Element {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => requestNavigate(() => goHome('home'))}
+            onClick={() => requestNavigate(() => goHome('home'), 'home')}
             title="Back to Home"
             className="flex items-center justify-center w-6 h-6 text-gray-400 transition-colors border rounded bg-surface-hover hover:bg-surface-border border-surface-border"
           >
@@ -509,11 +509,9 @@ export default function App(): JSX.Element {
               <path d="M3 11l9-8 9 8" /><path d="M5 10v10h14V10" />
             </svg>
           </button>
-          <span className="text-gray-600 select-none">›</span>
           <WorkspaceSwitcher />
         </div>
         <div className="flex items-center gap-2">
-          <MixMiniPlayer />
           {indexing && (
             <div className="flex items-center gap-1.5">
               <button
@@ -687,8 +685,10 @@ export default function App(): JSX.Element {
         />
       )}
 
-      {!catalogueLoaded ? null : hasContent && !showWelcome ? (
+      {!catalogueLoaded ? null : hasContent && !librarySetupOpen ? (
         <div className="flex flex-col flex-1 min-h-0">
+          {!mixMode && <MatchBanner />}
+          {!mixMode && <NextStepsCard />}
           <div className="flex flex-1 min-h-0">
             {!mixMode && <FolderPanel onAddFolder={handleAddFolder} onRescan={handleRescan} />}
             <div className="flex flex-1 min-w-0 min-h-0">
@@ -701,12 +701,14 @@ export default function App(): JSX.Element {
             </div>
           </div>
           <PlayerBar />
+          <SessionTransportBar />
         </div>
       ) : (
         <WelcomeScreen
           onAddFolder={handleAddFolder}
           hasContent={hasContent}
-          onClose={hasContent ? () => setShowWelcome(false) : undefined}
+          onClose={() => setLibrarySetupOpen(false)}
+          indexing={indexing}
         />
       )}
 
@@ -734,6 +736,7 @@ export default function App(): JSX.Element {
           setWhatsNewOpen(false)
         }}
       />
+
     </div>
   )
 }
@@ -756,112 +759,209 @@ function LoginFlash({ name, onDismiss }: { name: string; onDismiss: () => void }
   )
 }
 
-function WelcomeScreen({ onAddFolder, hasContent, onClose }: {
-  onAddFolder: () => void
+function ProgressLine({ done, active, text }: { done: boolean; active: boolean; text: string }): JSX.Element {
+  return (
+    <div className="flex items-center gap-3">
+      {done ? (
+        <svg className="w-4 h-4 text-green-400 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 8.5l3 3 7-7" />
+        </svg>
+      ) : active ? (
+        <svg className="w-4 h-4 text-accent shrink-0 animate-spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+          <path d="M8 2a6 6 0 016 6" />
+        </svg>
+      ) : (
+        <span className="w-4 h-4 shrink-0" />
+      )}
+      <span className={`text-[13px] ${done ? 'text-gray-500' : active ? 'text-gray-200' : 'text-gray-600'}`}>
+        {text}
+      </span>
+    </div>
+  )
+}
+
+function WelcomeScreen({ onAddFolder, hasContent, onClose, indexing }: {
+  onAddFolder: (path?: string) => void
   hasContent: boolean
   onClose?: () => void
+  indexing: boolean
 }): JSX.Element {
-  const features = [
-    {
-      icon: <path d="M3 7a2 2 0 012-2h3l2 2h9a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />,
-      label: 'Local Library',
-      desc: 'Scan folders on disk and catalogue every audio file automatically.',
-    },
-    {
-      icon: <><circle cx="12" cy="12" r="3" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M17.66 6.34l-1.41 1.41M6.34 17.66l-1.41 1.41" /></>,
-      label: 'Catalogue Matching',
-      desc: 'Automatically matches files to the Music for Breathwork catalogue and enriches them with artist info, audio features, and breathwork tags.',
-    },
-    {
-      icon: <><path d="M9 19V6l12-3v13" /><circle cx="6" cy="19" r="3" /><circle cx="18" cy="16" r="3" /></>,
-      label: 'Playlists',
-      desc: 'Sign in to sync your Music for Breathwork playlists and see which tracks you own.',
-    },
-    {
-      icon: <><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" /></>,
-      label: 'Drag to Studio',
-      desc: 'Drag any track directly into Limina Studio to add it to a mix.',
-    },
-  ]
+  const [isDragOver, setIsDragOver] = useState(false)
+  const dragCounterRef = useRef(0)
+  const scanning = useLibraryStore((s) => s.scanning)
+  const fileCount = useLibraryStore((s) => s.files.length)
+  const folderAdded = useLibraryStore((s) => s.watchedFolders.length > 0)
+  const pendingCount = useLibraryStore((s) => Object.keys(s.pendingMatches).length)
+  const applyAll = useLibraryStore((s) => s.applyAllPendingMatches)
 
+  const onDragEnter = (e: React.DragEvent) => {
+    e.preventDefault()
+    dragCounterRef.current++
+    setIsDragOver(true)
+  }
+
+  const onDragOver = (e: React.DragEvent) => { e.preventDefault() }
+
+  const onDragLeave = () => {
+    dragCounterRef.current--
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0
+      setIsDragOver(false)
+    }
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    dragCounterRef.current = 0
+    setIsDragOver(false)
+    const file = e.dataTransfer.files[0]
+    if (file) {
+      const path = (file as File & { path?: string }).path
+      if (path) onAddFolder(path)
+    }
+  }
+
+  // Show progress once scanning starts or a folder has been added
+  if (folderAdded || scanning) {
+    const scanDone = !scanning && fileCount > 0
+    // Scan has finished (folder registered, no longer scanning) — always offer a
+    // way forward from here, even if the folder held no audio.
+    const scanFinished = folderAdded && !scanning
+    const isWorking = scanning || indexing
+
+    return (
+      <div className="flex items-center flex-1 overflow-y-auto">
+        <div className="flex flex-col items-center w-full max-w-lg gap-8 px-8 py-16 mx-auto">
+          <div className="text-center">
+            <h2 className="text-lg font-semibold text-gray-100">Setting up your library</h2>
+          </div>
+
+          <div className="flex flex-col w-full gap-4">
+            <ProgressLine
+              active={scanning}
+              done={scanDone}
+              text={scanning ? 'Scanning folder…' : `Found ${fileCount.toLocaleString()} file${fileCount === 1 ? '' : 's'}`}
+            />
+            <ProgressLine
+              active={scanDone && indexing}
+              done={scanDone && !indexing}
+              text={
+                !scanDone ? 'Matching with Music for Breathwork database'
+                : indexing ? 'Matching with Music for Breathwork database…'
+                : 'Matched with Music for Breathwork database'
+              }
+            />
+          </div>
+
+          {scanFinished && (
+            <p className="text-[12px] text-center max-w-sm leading-relaxed">
+              {pendingCount > 0 ? (
+                <span className="text-gray-400">
+                  <span className="font-semibold text-accent">{pendingCount.toLocaleString()} track{pendingCount === 1 ? '' : 's'}</span> matched with Music for Breathwork — apply to sync phase tags &amp; audio features to your library.
+                </span>
+              ) : fileCount === 0 ? (
+                <span className="text-gray-500">No audio files found in that folder — try another.</span>
+              ) : (
+                <span className="text-gray-600">
+                  {isWorking ? 'Matching with Music for Breathwork…' : 'Your library is ready.'}
+                </span>
+              )}
+            </p>
+          )}
+
+          {scanFinished && (
+            <div className="flex flex-col items-center gap-3">
+              {pendingCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => { applyAll(); syncLibraryToMfb(); onClose?.() }}
+                  className="flex items-center gap-2 px-5 py-2 text-[13px] font-medium text-white bg-accent hover:bg-accent/80 rounded-lg transition-colors"
+                >
+                  Apply {pendingCount.toLocaleString()} match{pendingCount === 1 ? '' : 'es'} &amp; open Library
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M2 6h8M6 2l4 4-4 4" />
+                  </svg>
+                </button>
+              )}
+              {onClose && (pendingCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="text-[12px] text-gray-500 hover:text-gray-300 transition-colors"
+                >
+                  Skip for now
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="flex items-center gap-2 px-5 py-2 text-[13px] font-medium text-white bg-accent hover:bg-accent/80 rounded-lg transition-colors"
+                >
+                  Continue to Library
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M2 6h8M6 2l4 4-4 4" />
+                  </svg>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // Initial state — drop zone
   return (
-    <div className="flex flex-col flex-1 overflow-y-auto">
-      <div className="flex flex-col items-center w-full max-w-xl gap-8 px-8 py-12 mx-auto">
+    <div className="flex items-center flex-1 overflow-y-auto">
+      <div className="flex flex-col items-center w-full max-w-lg gap-8 px-8 py-12 mx-auto">
 
-        {/* Close button when shown as overlay */}
-        {onClose && (
+        {onClose && hasContent && (
           <div className="self-end">
-            <button
-              type="button"
-              onClick={onClose}
-              className="text-[11px] text-gray-500 hover:text-gray-300 transition-colors"
-            >
+            <button type="button" onClick={onClose} className="text-[11px] text-gray-500 hover:text-gray-300 transition-colors">
               ← Back to library
             </button>
           </div>
         )}
 
-        {/* Identity */}
-        <div className="flex flex-col items-center gap-3 text-center">
-          <img src={libraryLogo} alt="Limina Library" className="object-contain w-40 h-40 rounded-2xl" />
-          <div>
-            <h1 className="text-base font-semibold tracking-wide text-gray-100">Limina Library</h1>
-            <p className="text-[11px] text-gray-500 mt-0.5">v{__APP_VERSION__} · Companion app for Music for Breathwork</p>
-          </div>
-          <p className="max-w-sm text-xs leading-relaxed text-gray-400">
-            Organise your local audio files, match them to the Music for Breathwork catalogue,
-            and prepare sessions for Limina Studio. <br />All in one place.
-          </p>
-        </div>
-
-        {/* Features */}
-        <div className="flex flex-col w-full gap-3">
-          {features.map((f) => (
-            <div key={f.label} className="flex flex-col gap-1.5 p-3 rounded-lg border border-surface-border bg-surface-panel">
-              <div className="flex items-center gap-2">
-                <svg className="w-3.5 h-3.5 text-accent shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  {f.icon}
-                </svg>
-                <span className="text-[11px] font-medium text-gray-200">{f.label}</span>
-              </div>
-              <p className="text-[10px] text-gray-500 leading-relaxed">{f.desc}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* CTA */}
         {!hasContent && (
-          <button
-            onClick={onAddFolder}
-            className="flex items-center gap-2 px-5 py-2 text-xs font-medium text-white transition-colors rounded bg-accent hover:bg-accent/80"
-          >
-            <svg className="w-3.5 h-3.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-              <path d="M6 2v8M2 6h8" />
-            </svg>
-            Add your first folder
-          </button>
-        )}
+          <>
+            <div className="text-center">
+              <h2 className="text-lg font-semibold text-gray-100">Build your intelligent music library.</h2>
+              <p className="text-[13px] text-gray-500 mt-1.5 leading-relaxed">
+                Limina scans your folders, organises your tracks, and connects with Music for Breathwork to unlock powerful tagging and categorisation.
+              </p>
+            </div>
 
-        {/* Footer */}
-        <div className="flex flex-col items-center w-full gap-2 pt-6 text-center border-t border-surface-border">
-          <div className="flex gap-4">
             <button
               type="button"
-              onClick={() => window.open('https://musicforbreathwork.com', '_blank')}
-              className="text-[10px] text-gray-500 hover:text-accent transition-colors"
+              onClick={() => onAddFolder()}
+              onDragEnter={onDragEnter}
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              onDrop={handleDrop}
+              className={`w-full flex flex-col items-center gap-4 py-14 px-8 rounded-xl border-2 border-dashed transition-all cursor-pointer ${
+                isDragOver
+                  ? 'border-accent bg-accent/5 text-accent'
+                  : 'border-surface-border bg-surface-panel hover:border-accent/40 hover:bg-surface-hover text-gray-500 hover:text-gray-400'
+              }`}
             >
-              musicforbreathwork.com
+              <svg className="w-10 h-10 pointer-events-none" viewBox="0 0 40 40" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 15a3 3 0 013-3h6l3 3h16a3 3 0 013 3v11a3 3 0 01-3 3H9a3 3 0 01-3-3V15z" />
+                <path d="M20 21v7M17 24l3-3 3 3" />
+              </svg>
+              <div className="text-center pointer-events-none">
+                <p className="text-[14px] font-medium text-gray-200">
+                  {isDragOver ? 'Drop to add folder' : 'Drop a folder here'}
+                </p>
+                <p className="text-[12px] text-gray-600 mt-1">or click to browse</p>
+              </div>
             </button>
-            <button
-              type="button"
-              onClick={() => window.open('https://getliminastudio.com', '_blank')}
-              className="text-[10px] text-gray-500 hover:text-accent transition-colors"
-            >
-              getliminastudio.com
-            </button>
-          </div>
-          <p className="text-[10px] text-gray-600">© {new Date().getFullYear()} Limina · All rights reserved</p>
-        </div>
+
+            <p className="text-[11px] text-gray-700 tracking-wide">
+              WAV · MP3 · AIFF · FLAC · M4A · OGG
+            </p>
+          </>
+        )}
       </div>
     </div>
   )

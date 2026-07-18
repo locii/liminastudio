@@ -473,6 +473,7 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
 function TrackViewButtons({ headerRef }: { headerRef: React.RefObject<HTMLDivElement> }): JSX.Element {
   const tracks = useSessionStore((s) => s.tracks)
   const laneHeights = useSessionStore((s) => s.laneHeights)
+  const trackHeights = useSessionStore((s) => s.trackHeights)
   const setTrackHeight = useSessionStore((s) => s.setTrackHeight)
   const segmentLaneCollapsed = useSessionStore((s) => s.segmentLaneCollapsed)
   const setSegmentLaneCollapsed = useSessionStore((s) => s.setSegmentLaneCollapsed)
@@ -484,6 +485,22 @@ function TrackViewButtons({ headerRef }: { headerRef: React.RefObject<HTMLDivEle
     const targetH = Math.max(MIN_TRACK_HEIGHT, Math.min(MAX_TRACK_HEIGHT, Math.floor(availH / tracks.length)))
     tracks.forEach((t) => setTrackHeight(t.id, targetH))
   }, [headerRef, tracks, laneHeights, setTrackHeight])
+
+  // Auto-fit on first load when no custom heights have been saved for these tracks.
+  // Runs after the DOM is painted so clientHeight is accurate.
+  const autoFitDoneRef = useRef(false)
+  useEffect(() => {
+    if (tracks.length === 0) { autoFitDoneRef.current = false; return }
+    if (autoFitDoneRef.current) return
+    const hasCustomHeights = tracks.some((t) => t.id in trackHeights)
+    if (!hasCustomHeights) {
+      autoFitDoneRef.current = true
+      requestAnimationFrame(() => handleFit())
+    } else {
+      autoFitDoneRef.current = true
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tracks.length])
 
   const handleReset = useCallback(() => {
     tracks.forEach((t) => setTrackHeight(t.id, TRACK_HEIGHT))

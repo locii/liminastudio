@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useLibraryStore } from '../../../library/store/libraryStore'
 import type { LibraryFile } from '../../../library/types'
+import { useSessionStore } from '../../store/sessionStore'
+import { useTransportStore } from '../../store/transportStore'
+import { useToastStore } from '../../store/toastStore'
 
 // Ensure the catalogue is loaded once per app run, even if the user opens Mix
 // before ever visiting Library (Library's App loads it on its own mount).
@@ -32,12 +35,73 @@ function displayTitle(f: LibraryFile): string {
  * tag-filterable list of catalogue tracks you can drag onto the timeline.
  * (Mix's TimelineTrack already ingests the native file drag + MFB enrichment.)
  */
-export function LibraryDock({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }): JSX.Element {
+const TARGET_PEAK_LINEAR = Math.pow(10, -0.5 / 20)
+function peaksForClip(duration: number, zoom: number): number {
+  return Math.min(Math.ceil(duration * zoom), 50_000)
+}
+
+export function LibraryDock({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }): JSX.Element | null {
   const [query, setQuery] = useState('')
   // Local filter state — independent of Library's own browse filter.
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [pickerOpen, setPickerOpen] = useState(false)
   const [tagQuery, setTagQuery] = useState('')
+  const [addedIds, setAddedIds] = useState<Set<string>>(new Set())
+
+  const addToABTracks = useSessionStore((s) => s.addToABTracks)
+  const setWaveform = useSessionStore((s) => s.setWaveform)
+  const updateClip = useSessionStore((s) => s.updateClip)
+  const updateClipSilent = useSessionStore((s) => s.updateClipSilent)
+  const toast = useToastStore((s) => s.add)
+
+  const handleAdd = useCallback(async (f: LibraryFile) => {
+    const zoom = useTransportStore.getState().zoom
+    const name = (f.trackTitle || f.fileName).replace(/\.[^.]+$/, '')
+
+    // Compute cue points upfront so fadeIn can inform the placement startTime
+    const hasCues = f.clipStartMs != null || f.clipEndMs != null || f.introEndMs != null || f.outroStartMs != null
+    const clipStartSec = (f.clipStartMs ?? 0) / 1000
+    const clipEndSec = f.clipEndMs != null ? f.clipEndMs / 1000 : f.duration
+    const fadeIn = hasCues && f.introEndMs != null ? Math.max(0, f.introEndMs / 1000 - clipStartSec) : 0
+
+    const { clip } = addToABTracks({ name, filePath: f.filePath, duration: f.duration, fadeIn })
+
+    if (hasCues) {
+      updateClipSilent(clip.id, {
+        trimStart: clipStartSec,
+        trimEnd: Math.max(0, f.duration - clipEndSec),
+        fadeIn,
+        fadeOut: f.outroStartMs != null ? Math.max(0, clipEndSec - f.outroStartMs / 1000) : 0,
+        fadeInCurve: f.fadeInCurve,
+        fadeOutCurve: f.fadeOutCurve,
+      })
+    }
+
+    setAddedIds((prev) => new Set(prev).add(f.id))
+    setTimeout(() => setAddedIds((prev) => { const next = new Set(prev); next.delete(f.id); return next }), 1200)
+    window.electronAPI
+      .getWaveformPeaks(f.filePath, peaksForClip(f.duration, zoom))
+      .then((peaks) => setWaveform(f.filePath, { peaks, loading: false }))
+      .catch(() => setWaveform(f.filePath, { peaks: [], loading: false }))
+    window.electronAPI
+      .getPeakLevel(f.filePath)
+      .then((peak) => { if (peak > 0) updateClip(clip.id, { volume: Math.min(2, TARGET_PEAK_LINEAR / peak) }) })
+      .catch(() => {})
+    window.electronAPI
+      .lookupLibraryFile(f.filePath)
+      .then((data) => {
+        if (data) updateClip(clip.id, {
+          mfbTrackId: data.mfbTrackId,
+          mfbTrackTitle: data.trackTitle || undefined,
+          mfbArtist: data.artist || undefined,
+          mfbAlbumImageUrl: data.albumImageUrl ?? undefined,
+          mfbTags: data.tags,
+          mfbBreathworkPhase: data.breathworkPhase,
+        })
+      })
+      .catch(() => {})
+    toast(`Added "${f.trackTitle || f.fileName}"`, 'success', 2000)
+  }, [addToABTracks, setWaveform, updateClip, updateClipSilent, toast])
   // Cap the number of rendered rows (lazy-loaded on scroll). Rendering the whole
   // catalogue at once makes a huge sibling chain that overflows React Fast
   // Refresh's recursive fiber walk on hot-reload.
@@ -69,22 +133,7 @@ export function LibraryDock({ open, onOpenChange }: { open: boolean; onOpenChang
     })
   }, [files, selectedTags, query])
 
-  if (!open) {
-    return (
-      <div className="flex flex-col items-center w-8 py-2 border-l shrink-0 bg-surface-panel border-surface-border">
-        <button
-          type="button"
-          onClick={() => onOpenChange(true)}
-          title="Show library"
-          className="flex items-center justify-center w-6 h-6 text-gray-400 transition-colors rounded hover:text-gray-100 hover:bg-surface-hover"
-        >
-          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M4 5h11l3 3v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" /><path d="M7 9h7M7 12h7M7 15h4" />
-          </svg>
-        </button>
-      </div>
-    )
-  }
+  if (!open) return null
 
   return (
     <div className="flex flex-col w-64 min-h-0 border-l shrink-0 bg-surface-panel border-surface-border">
@@ -108,7 +157,7 @@ export function LibraryDock({ open, onOpenChange }: { open: boolean; onOpenChang
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search title or artist…"
-          className="w-full px-2 py-1 text-[11px] text-gray-200 rounded border bg-surface-base border-surface-border placeholder:text-gray-600 focus:outline-none focus:border-accent/50"
+          className="w-full px-2 py-1 text-[11px] text-gray-200 rounded border bg-surface-border border-surface-border placeholder:text-gray-600 focus:outline-none focus:border-accent/50"
         />
       </div>
 
@@ -177,18 +226,39 @@ export function LibraryDock({ open, onOpenChange }: { open: boolean; onOpenChang
         ) : visible.length === 0 ? (
           <p className="p-3 text-[10px] text-gray-600 text-center">No tracks match.</p>
         ) : (
-          visible.slice(0, visibleCount).map((f) => (
+          visible.slice(0, visibleCount).map((f) => {
+            const justAdded = addedIds.has(f.id)
+            return (
             <div
               key={f.id}
               draggable
               onDragStart={(e) => { e.preventDefault(); window.electronAPI.startDrag(f.filePath) }}
               title={`Drag onto a track\n${f.filePath}`}
-              className="flex flex-col gap-0.5 px-2.5 py-1.5 border-b cursor-grab border-surface-border/40 hover:bg-surface-hover active:cursor-grabbing"
+              className="group flex items-center gap-1.5 px-2 py-1.5 border-b cursor-grab border-surface-border/40 hover:bg-surface-hover active:cursor-grabbing"
             >
-              <span className="text-[10px] text-gray-200 truncate">{displayTitle(f)}</span>
-              <span className="text-[10px] text-gray-500 truncate">{f.artist || '—'} · {fmtDuration(f.duration)}</span>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); void handleAdd(f) }}
+                title="Add as new track"
+                className={`shrink-0 w-4 h-4 flex items-center justify-center rounded transition-colors ${justAdded ? 'text-accent' : 'text-gray-600 hover:text-accent'}`}
+              >
+                {justAdded ? (
+                  <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M2 6l3 3 5-5" />
+                  </svg>
+                ) : (
+                  <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                    <path d="M6 2v8M2 6h8" />
+                  </svg>
+                )}
+              </button>
+              <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                <span className="text-[10px] text-gray-200 truncate">{displayTitle(f)}</span>
+                <span className="text-[10px] text-gray-500 truncate">{f.artist || '—'} · {fmtDuration(f.duration)}</span>
+              </div>
             </div>
-          ))
+            )
+          })
         )}
       </div>
 

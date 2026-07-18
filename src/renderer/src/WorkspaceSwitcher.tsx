@@ -1,79 +1,76 @@
-import { useEffect, useRef, useState } from 'react'
 import { useUIStore } from './uiStore'
 import { useLibraryStore } from './library/store/libraryStore'
+import { useTransportStore } from './mix/store/transportStore'
 import { requestNavigate } from './navigate'
 
 type Workspace = 'library' | 'playlists' | 'session' | 'mix'
 
-const LABELS: Record<Workspace, string> = { library: 'Library', playlists: 'Playlists', session: 'Session Mode', mix: 'Mix Mode' }
+const LABELS: Record<Workspace, string> = {
+  library: 'Library',
+  playlists: 'Collections',
+  session: 'Session Mode',
+  mix: 'Mix Mode',
+}
 const ORDER: Workspace[] = ['library', 'playlists', 'session', 'mix']
 
+function NowPlayingBars(): JSX.Element {
+  return (
+    <span className="inline-flex items-end gap-0.5 mb-px ml-1" aria-hidden>
+      <span className="w-px h-1.5 bg-accent rounded-full animate-pulse" style={{ animationDelay: '0ms', animationDuration: '900ms' }} />
+      <span className="w-px h-2.5 bg-accent rounded-full animate-pulse" style={{ animationDelay: '300ms', animationDuration: '900ms' }} />
+      <span className="w-px h-1.5 bg-accent rounded-full animate-pulse" style={{ animationDelay: '600ms', animationDuration: '900ms' }} />
+      <span className="w-px h-2 rounded-full bg-accent animate-pulse" style={{ animationDelay: '900ms', animationDuration: '900ms' }} />
+    </span>
+  )
+}
+
 /**
- * Toolbar workspace switcher (sits next to the Home icon in both apps' toolbars).
- * Moves between the three workspaces: Library (browse), Session (Library's
- * Auto-Mix mode), and Mix (the timeline).
+ * Horizontal tab-style workspace switcher shown in the toolbar of every workspace.
  */
 export function WorkspaceSwitcher(): JSX.Element {
   const surface = useUIStore((s) => s.surface)
   const setSurface = useUIStore((s) => s.setSurface)
   const mixMode = useLibraryStore((s) => s.mixMode)
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const mixPlaying = useTransportStore((s) => s.playing)
+  const sessionPlaying = useLibraryStore((s) => s.mixPlayback.playing)
 
   const current: Workspace =
     surface === 'mix' ? 'mix' : surface === 'playlists' ? 'playlists' : mixMode ? 'session' : 'library'
 
+  // Which workspace tab should show the now-playing indicator
+  const playingWorkspace: Workspace | null = mixPlaying ? 'mix' : sessionPlaying ? 'session' : null
+
   const goTo = (w: Workspace): void => {
-    setOpen(false)
     if (w === current) return
     const lib = useLibraryStore.getState()
     requestNavigate(() => {
       if (w === 'library') { lib.exitMixMode(); setSurface('library') }
       else if (w === 'session') { lib.enterMixMode(); setSurface('library') }
-      else if (w === 'playlists') setSurface('playlists')
+      else if (w === 'playlists') { lib.exitMixMode(); setSurface('playlists') }
       else setSurface('mix')
-    })
+    }, w)
   }
 
-  useEffect(() => {
-    if (!open) return
-    const onDown = (e: MouseEvent): void => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    window.addEventListener('mousedown', onDown)
-    return () => window.removeEventListener('mousedown', onDown)
-  }, [open])
-
   return (
-    <div className="relative" ref={ref} style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        title="Switch workspace"
-        className="flex items-center gap-1 text-xs font-semibold tracking-widest text-gray-300 uppercase transition-colors select-none hover:text-white"
-      >
-        {LABELS[current]}
-        <svg className="w-2.5 h-2.5 text-gray-500" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-          <path d="M2 3.5l3 3 3-3" />
-        </svg>
-      </button>
-      {open && (
-        <div className="absolute left-0 top-full z-[200] mt-1.5 min-w-[145px] rounded border border-surface-border bg-surface-panel shadow-lg py-1">
-          {ORDER.map((w) => (
-            <button
-              key={w}
-              type="button"
-              onClick={() => goTo(w)}
-              className={`w-full flex items-center justify-between text-left px-3 py-1.5 text-[11px] tracking-widest uppercase transition-colors ${current === w ? 'text-accent' : 'text-gray-300 hover:bg-surface-hover hover:text-white'}`}
-            >
-              {LABELS[w]}
-              {current === w && (
-                <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M2.5 6.5l2.5 2.5 4.5-5" /></svg>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
+    <div
+      className="flex items-center gap-1.5"
+      style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+    >
+      {ORDER.map((w) => (
+        <button
+          key={w}
+          type="button"
+          onClick={() => goTo(w)}
+          className={`flex items-center px-2.5 py-1 text-[10px] font-semibold tracking-widest uppercase rounded transition-colors select-none ${
+            current === w
+              ? 'text-accent bg-accent/10'
+              : 'text-gray-500 hover:text-gray-200 hover:bg-surface-hover'
+          }`}
+        >
+          {LABELS[w]}
+          {w === playingWorkspace && <NowPlayingBars />}
+        </button>
+      ))}
     </div>
   )
 }

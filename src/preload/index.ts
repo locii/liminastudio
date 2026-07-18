@@ -105,6 +105,8 @@ const api: ElectronAPI = {
   saveCatalogue: (catalogue) => ipcRenderer.invoke('catalogue:save', catalogue),
   listCatalogueBackups: () => ipcRenderer.invoke('catalogue:listBackups'),
   restoreCatalogueBackup: (slot) => ipcRenderer.invoke('catalogue:restoreBackup', slot),
+  devResetLibrary: () => ipcRenderer.invoke('dev:resetLibrary'),
+  devRestoreLibrary: () => ipcRenderer.invoke('dev:restoreLibrary'),
 
   // ── Library: audio analysis (peaks on a distinct channel from Mix's) ───────
   getLibraryPeaks: (filePath, numPeaks) => ipcRenderer.invoke('library:getWaveformPeaks', filePath, numPeaks),

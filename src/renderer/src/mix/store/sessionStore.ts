@@ -72,6 +72,10 @@ interface SessionState {
   }
   addClipToTrack: (p: { trackId: string; name: string; filePath: string; duration: number; startTime?: number }) => Clip
   addEmptyTrack: () => Track
+  /** Add a clip to Track A or Track B (the first two tracks), creating them as needed.
+   *  Places the clip on whichever of the two tracks ends soonest.
+   *  `fadeIn` offsets the startTime back so the clip's fade-in overlaps with the other track's fade-out. */
+  addToABTracks: (p: { name: string; filePath: string; duration: number; fadeIn?: number }) => { clip: Clip; newTrack: Track | null }
   removeTrack: (trackId: string) => void
   updateTrack: (trackId: string, patch: Partial<Track>) => void
   updateClip: (clipId: string, patch: Partial<Clip>) => void
@@ -230,6 +234,69 @@ export const useSessionStore = create<SessionState>((set, get) => {
         ...historyPush(snap),
       }))
       return track
+    },
+
+    addToABTracks: ({ name, filePath, duration, fadeIn: newFadeIn = 0 }) => {
+      const snap = snapshot()
+      const { tracks, clips } = get()
+
+      // Sort by order so index 0 = Track A, index 1 = Track B
+      const sorted = [...tracks].sort((a, b) => a.order - b.order)
+
+      function trackEnd(trackId: string): number {
+        const tc = clips.filter((c) => c.trackId === trackId)
+        return tc.length
+          ? Math.max(...tc.map((c) => c.startTime + c.duration - c.trimStart - c.trimEnd))
+          : 0
+      }
+
+      const baseClip = {
+        filePath, fileName: name,
+        trimStart: 0, trimEnd: 0,
+        fadeIn: newFadeIn, fadeOut: 0, fadeInCurve: 0.5, fadeOutCurve: 0.5,
+        crossfadeIn: 0, crossfadeOut: 0, volume: 1, automation: [] as Clip['automation'],
+      }
+
+      let newTrack: Track | null = null
+      let clip: Clip
+
+      if (sorted.length === 0) {
+        // Create Track A; clip starts at 0
+        newTrack = { id: nanoid(), name: 'Track 1', color: pickTrackColor(0), volume: 1, muted: false, solo: false, order: 0 }
+        clip = { id: nanoid(), trackId: newTrack.id, ...baseClip, startTime: 0, duration }
+        set((s) => ({
+          tracks: [...s.tracks, newTrack!],
+          clips: computeCrossfades([...s.clips, clip]),
+          waveforms: { ...s.waveforms, [filePath]: { trackId: newTrack!.id, peaks: [], loading: true } },
+          ...historyPush(snap),
+        }))
+      } else if (sorted.length === 1) {
+        // Create Track B; clip starts where Track A ends, pulled back by its own fadeIn to overlap
+        const handoff = trackEnd(sorted[0].id)
+        const startTime = Math.max(0, handoff - newFadeIn)
+        newTrack = { id: nanoid(), name: 'Track 2', color: pickTrackColor(1), volume: 1, muted: false, solo: false, order: 1 }
+        clip = { id: nanoid(), trackId: newTrack.id, ...baseClip, startTime, duration }
+        set((s) => ({
+          tracks: [...s.tracks, newTrack!],
+          clips: computeCrossfades([...s.clips, clip]),
+          ...historyPush(snap),
+        }))
+      } else {
+        // Both tracks exist — place on whichever ends sooner, starting where the other ends,
+        // pulled back by the new clip's fadeIn so it overlaps with the other track's fade-out
+        const aEnd = trackEnd(sorted[0].id)
+        const bEnd = trackEnd(sorted[1].id)
+        const target = aEnd <= bEnd ? sorted[0] : sorted[1]
+        const handoff = Math.max(aEnd, bEnd)
+        const startTime = Math.max(0, handoff - newFadeIn)
+        clip = { id: nanoid(), trackId: target.id, ...baseClip, startTime, duration }
+        set((s) => ({
+          clips: computeCrossfades([...s.clips, clip]),
+          ...historyPush(snap),
+        }))
+      }
+
+      return { clip, newTrack }
     },
 
     removeTrack: (trackId) => {
