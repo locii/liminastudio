@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.0.4
+
+- **Open the indexing log any time** — The Music for Breathwork indexing log used to be reachable only while indexing was actively running; once it finished, there was no way back in to review what matched. It now lives in your account menu (top-right, when signed in), so you can reopen it whenever you like — with a count of any matches still waiting to be applied.
+- **Library keeps itself in sync with your folders** — Limina now rescans your watched folders automatically when it finishes loading and each time you bring the window back into focus. Files you added while the app was closed or in the background show up on their own — no manual rescan needed. It's a cheap diff that only reads genuinely new files, and nothing you or the catalogue curated is touched.
+- **Signing in is clearly optional** — The Music for Breathwork sign-in dialog now marks itself "optional" and offers a plain "Skip for now" button, so it's obvious you can go straight to working with your own files without an account.
+
 ## v1.0.3
 
 - **Drag from Up Next straight to Now Playing** — You can once again drag a track out of the Up Next queue and drop it onto the Now Playing area to play it immediately. Limina fades to that track and skips ahead, discarding anything queued before it — the same as double-clicking it.

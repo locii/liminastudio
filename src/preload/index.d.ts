@@ -156,6 +156,7 @@ export interface ElectronAPI {
   libraryPickFolder: () => Promise<string | null>
   buildWatchedFolder: (folderPath: string) => Promise<WatchedFolder>
   scanFolder: (folderPath: string) => Promise<ScanResult>
+  diffFolder: (folderPath: string, knownPaths: string[]) => Promise<ScanResult & { missing: string[] }>
   findOnDisk: (title: string, artist: string) => Promise<string[]>
   scanFile: (filePath: string) => Promise<LibraryFile | null>
   pickAudioFile: () => Promise<string | null>

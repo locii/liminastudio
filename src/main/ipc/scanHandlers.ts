@@ -70,6 +70,55 @@ async function walkDir(dir: string): Promise<string[]> {
   return results
 }
 
+/** Build a full LibraryFile from a path — reads stat + audio metadata. Shared by
+ *  the initial folder scan and the incremental diff rescan. */
+async function buildLibraryFile(filePath: string, folderPath: string): Promise<LibraryFile> {
+  const stat = await fs.stat(filePath)
+  const meta = await parseFile(filePath, { skipCovers: true, duration: true })
+  const dirPath = dirname(filePath)
+  const pathGuesses = inferPathArtistAlbum(dirPath, folderPath)
+  return {
+    id: fileId(filePath),
+    filePath,
+    fileName: basename(filePath),
+    artist: pickArtist(meta.common),
+    album: pickAlbum(meta.common),
+    ...pathGuesses,
+    appliedPathGuess: false,
+    folderPath: dirPath,
+    duration: meta.format.duration ?? 0,
+    sampleRate: meta.format.sampleRate ?? 0,
+    channels: meta.format.numberOfChannels ?? 0,
+    format: extname(filePath).replace('.', '').toLowerCase(),
+    fileSize: stat.size,
+    tags: [],
+    rating: 0,
+    notes: '',
+    breathworkPhase: null,
+    dateAdded: fileCreatedISO(stat),
+    peaks: [],
+    trackTitle: '',
+    mfbTrackId: null,
+    mfbIndexed: false,
+    mfbApplied: false,
+    audioFeatures: null,
+    audioFeaturesEstimated: false,
+    featuresAnalyzed: false,
+    albumImageUrl: null,
+    bandcampUrl: null,
+    beatportUrl: null,
+    appleMusicUrl: null,
+    mfbMatchRejected: false,
+    introEndMs: null,
+    outroStartMs: null,
+    fadeInCurve: 0,
+    fadeOutCurve: 0,
+    clipStartMs: null,
+    clipEndMs: null,
+    cuesAnalyzed: false,
+  }
+}
+
 export function registerScanHandlers(): void {
   ipcMain.handle('library:pickFolder', async (): Promise<string | null> => {
     const result = await dialog.showOpenDialog({
@@ -87,50 +136,7 @@ export function registerScanHandlers(): void {
     await Promise.all(
       paths.map(async (filePath) => {
         try {
-          const stat = await fs.stat(filePath)
-          const meta = await parseFile(filePath, { skipCovers: true, duration: true })
-          const dirPath = dirname(filePath)
-          const pathGuesses = inferPathArtistAlbum(dirPath, folderPath)
-          files.push({
-            id: fileId(filePath),
-            filePath,
-            fileName: basename(filePath),
-            artist: pickArtist(meta.common),
-            album: pickAlbum(meta.common),
-            ...pathGuesses,
-            appliedPathGuess: false,
-            folderPath: dirPath,
-            duration: meta.format.duration ?? 0,
-            sampleRate: meta.format.sampleRate ?? 0,
-            channels: meta.format.numberOfChannels ?? 0,
-            format: extname(filePath).replace('.', '').toLowerCase(),
-            fileSize: stat.size,
-            tags: [],
-            rating: 0,
-            notes: '',
-            breathworkPhase: null,
-            dateAdded: fileCreatedISO(stat),
-            peaks: [],
-            trackTitle: '',
-            mfbTrackId: null,
-            mfbIndexed: false,
-            mfbApplied: false,
-            audioFeatures: null,
-            audioFeaturesEstimated: false,
-            featuresAnalyzed: false,
-            albumImageUrl: null,
-            bandcampUrl: null,
-            beatportUrl: null,
-            appleMusicUrl: null,
-            mfbMatchRejected: false,
-            introEndMs: null,
-            outroStartMs: null,
-            fadeInCurve: 0,
-            fadeOutCurve: 0,
-            clipStartMs: null,
-            clipEndMs: null,
-            cuesAnalyzed: false,
-          })
+          files.push(await buildLibraryFile(filePath, folderPath))
         } catch (e) {
           errors.push(`${filePath}: ${e}`)
         }
@@ -138,6 +144,34 @@ export function registerScanHandlers(): void {
     )
 
     return { files, errors }
+  })
+
+  // Incremental rescan: walk the folder but only parse metadata for paths that
+  // aren't already known, so an occasional rescan stays cheap. `missing` lists
+  // known paths under this folder that are gone from disk. The renderer's
+  // addFiles merge is non-destructive, so the result can be applied freely
+  // without clobbering user- or MFB-curated data on existing files.
+  ipcMain.handle('library:diffFolder', async (_, folderPath: string, knownPaths: string[]): Promise<ScanResult & { missing: string[] }> => {
+    const known = new Set(knownPaths.map(normalize))
+    const diskPaths = await walkDir(folderPath)
+    const diskSet = new Set(diskPaths.map(normalize))
+    const added = diskPaths.filter((p) => !known.has(normalize(p)))
+    const root = normalize(folderPath)
+    const missing = knownPaths.filter((p) => normalize(p).startsWith(root) && !diskSet.has(normalize(p)))
+
+    const files: LibraryFile[] = []
+    const errors: string[] = []
+    await Promise.all(
+      added.map(async (filePath) => {
+        try {
+          files.push(await buildLibraryFile(filePath, folderPath))
+        } catch (e) {
+          errors.push(`${filePath}: ${e}`)
+        }
+      })
+    )
+
+    return { files, errors, missing }
   })
 
   ipcMain.handle('library:buildWatchedFolder', async (_, folderPath: string): Promise<WatchedFolder> => {

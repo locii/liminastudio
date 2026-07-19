@@ -6,6 +6,7 @@ import { NavConfirmModal } from './NavConfirmModal'
 import { OverwriteModal } from './OverwriteModal'
 import { useUIStore } from './uiStore'
 import { useCatalogueBootstrap } from './useCatalogueBootstrap'
+import { useLibraryAutoRescan } from './library/useLibraryAutoRescan'
 
 /**
  * Limina Studio umbrella shell. Switches between the two ported apps — Mix and
@@ -15,6 +16,7 @@ import { useCatalogueBootstrap } from './useCatalogueBootstrap'
 export default function Root(): JSX.Element {
   const surface = useUIStore((s) => s.surface)
   useCatalogueBootstrap()
+  useLibraryAutoRescan()
 
   const view = ((): JSX.Element => {
     switch (surface) {

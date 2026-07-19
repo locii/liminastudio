@@ -439,6 +439,22 @@ export default function App(): JSX.Element {
         </button>
       )}
       <div className="my-1 border-t border-surface-border" />
+      {hasContent && userAccount && (
+        <button
+          type="button"
+          onClick={() => setShowLog(true)}
+          className="w-full text-left flex items-center gap-2 px-3 py-1.5 text-gray-300 hover:bg-surface-hover hover:text-gray-100 transition-colors"
+        >
+          <svg className="w-3 h-3 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2.5 2h5l2 2v6a.5.5 0 0 1-.5.5H2.5A.5.5 0 0 1 2 10V2.5A.5.5 0 0 1 2.5 2z" />
+            <path d="M4 5.5h4M4 7.5h4" />
+          </svg>
+          <span className="flex-1">Indexing Log</span>
+          {pendingCount > 0 && (
+            <span className="text-[9px] text-accent tabular-nums whitespace-nowrap">{pendingCount} pending</span>
+          )}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => openBackups()}
@@ -563,7 +579,7 @@ export default function App(): JSX.Element {
                 </svg>
               </button>
               {showUtilMenu && (
-                <div onClick={() => setShowUtilMenu(false)} className="absolute right-0 top-8 z-50 min-w-[160px] rounded border border-surface-border bg-surface-panel shadow-lg py-1 text-[11px]">
+                <div onClick={() => setShowUtilMenu(false)} className="absolute right-0 top-8 z-50 min-w-[220px] rounded border border-surface-border bg-surface-panel shadow-lg py-1 text-[11px]">
                   {folderActionItems}
                 </div>
               )}

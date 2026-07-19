@@ -114,7 +114,7 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
           )}
         </button>
         {showMenu && (
-          <div className="absolute right-0 top-8 z-50 min-w-[170px] rounded border border-surface-border bg-surface-panel shadow-lg py-1 text-[11px]">
+          <div className="absolute right-0 top-8 z-50 min-w-[220px] rounded border border-surface-border bg-surface-panel shadow-lg py-1 text-[11px]">
             <div className="px-3 py-2 border-b border-surface-border">
               <p className="font-medium text-gray-300 truncate">{userAccount.name}</p>
               <p className="text-gray-600 truncate">{userAccount.email}</p>
@@ -307,7 +307,7 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
             <div className="flex flex-col flex-1 p-8 gap-6">
               <div className="flex justify-between items-start">
                 <div className="flex flex-col gap-1">
-                  <span className="text-[16px] font-semibold text-gray-100">Sign in</span>
+                  <span className="text-[16px] font-semibold text-gray-100">Sign in <span className="text-[11px] font-normal text-gray-600">· optional</span></span>
                   <span className="text-[11px] text-gray-600">Connect your Music for Breathwork account</span>
                 </div>
                 <button
@@ -360,6 +360,17 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
                 Your Music for Breathwork account gives Library access to the catalogue — phase tags,
                 audio features, and playlist data are all pulled from your account.
               </p>
+
+              <div className="flex items-center gap-3 mt-auto pt-4 border-t border-surface-border">
+                <span className="text-[11px] text-gray-600">Just want to work with your own files?</span>
+                <button
+                  type="button"
+                  onClick={() => { setShowModal(false); setError('') }}
+                  className="text-[11px] font-medium text-gray-400 hover:text-gray-200 transition-colors underline underline-offset-2 decoration-gray-700 hover:decoration-gray-400"
+                >
+                  Skip for now
+                </button>
+              </div>
             </div>
 
           </div>

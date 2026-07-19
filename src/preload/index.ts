@@ -96,6 +96,7 @@ const api: ElectronAPI = {
   libraryPickFolder: () => ipcRenderer.invoke('library:pickFolder'),
   buildWatchedFolder: (folderPath) => ipcRenderer.invoke('library:buildWatchedFolder', folderPath),
   scanFolder: (folderPath) => ipcRenderer.invoke('library:scanFolder', folderPath),
+  diffFolder: (folderPath, knownPaths) => ipcRenderer.invoke('library:diffFolder', folderPath, knownPaths),
   findOnDisk: (title, artist) => ipcRenderer.invoke('library:findOnDisk', title, artist),
   scanFile: (filePath) => ipcRenderer.invoke('library:scanFile', filePath),
   pickAudioFile: () => ipcRenderer.invoke('library:pickAudioFile'),
