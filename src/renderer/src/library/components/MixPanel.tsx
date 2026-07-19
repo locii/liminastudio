@@ -604,13 +604,20 @@ export function MixPanel(): JSX.Element {
   }, [addQueueTrack])
   const onNowPlayingDrop = useCallback((e: React.DragEvent): void => {
     e.preventDefault(); setNpDragOver(false)
+    // An Up-Next queue item dropped here → play it now (skip ahead + consume it).
+    const queueItemId = e.dataTransfer.getData(MIX_QUEUE_DND_TYPE)
+    if (queueItemId) {
+      const item = mixQueue.find((q) => q.id === queueItemId)
+      if (item) playQueueItem(item)
+      return
+    }
     const id = e.dataTransfer.getData(MIX_TRACK_DND_TYPE)
     const fromItem = e.dataTransfer.getData(MIX_UPCOMING_ITEM_DND)
     const f = id ? files.find((x) => x.id === id) : null
     if (f) engineRef.current?.fadeTo(f)
     // Dragged out of a tag generator's list → consume it from that generator.
     if (f && fromItem) consumeFromUpcoming(fromItem, f.id)
-  }, [files, consumeFromUpcoming])
+  }, [files, consumeFromUpcoming, mixQueue, playQueueItem])
 
   // --- playlist → queue ----------------------------------------------------
   const [playlistId, setPlaylistId] = useState<number | ''>('')
@@ -926,7 +933,7 @@ export function MixPanel(): JSX.Element {
         <div className="flex flex-col flex-1 min-w-0 min-h-0">
           {/* Now playing */}
           <div
-            onDragOver={(e) => { if (e.dataTransfer.types.includes(MIX_TRACK_DND_TYPE)) { e.preventDefault(); setNpDragOver(true) } }}
+            onDragOver={(e) => { if (e.dataTransfer.types.includes(MIX_TRACK_DND_TYPE) || e.dataTransfer.types.includes(MIX_QUEUE_DND_TYPE)) { e.preventDefault(); setNpDragOver(true) } }}
             onDragLeave={() => setNpDragOver(false)}
             onDrop={onNowPlayingDrop}
             className={`p-2 border-b shrink-0 border-surface-border transition-colors ${npDragOver ? 'bg-accent/10 ring-1 ring-inset ring-accent/40' : ''}`}

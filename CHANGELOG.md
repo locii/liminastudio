@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.0.3
+
+- **Drag from Up Next straight to Now Playing** — You can once again drag a track out of the Up Next queue and drop it onto the Now Playing area to play it immediately. Limina fades to that track and skips ahead, discarding anything queued before it — the same as double-clicking it.
+- **Larger sign-in window** — The Music for Breathwork sign-in dialog was cramped against the app window. It's now bigger, with more readable text and roomier fields.
+
 ## v1.0.2
 
 - **Returning users no longer see the new-user setup on launch** — Limina Studio opens on Home, but your library and sign-in were only restored once you visited the Library screen. On restart that left Home briefly showing the "sign in / add music" onboarding steps even though a real library and login already existed. The catalogue and session are now loaded up front, so your library and account are recognised immediately on every launch.

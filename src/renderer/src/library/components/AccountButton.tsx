@@ -270,33 +270,33 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
 
       {showModal && (
         <div className="flex fixed inset-0 z-50 justify-center items-center bg-black/70 backdrop-blur-sm">
-          <div className="flex w-[480px] rounded-xl border shadow-2xl border-surface-border bg-surface-panel overflow-hidden">
+          <div className="flex w-[640px] max-w-[90vw] rounded-xl border shadow-2xl border-surface-border bg-surface-panel overflow-hidden">
 
             {/* Left — benefits panel */}
-            <div className="flex flex-col gap-4 p-6 w-48 shrink-0 bg-surface-base border-r border-surface-border">
+            <div className="flex flex-col gap-5 p-8 w-60 shrink-0 bg-surface-base border-r border-surface-border">
               <div className="flex flex-col gap-1">
-                <span className="text-[10px] uppercase tracking-widest text-gray-600">Unlock with</span>
-                <span className="text-[11px] font-semibold text-gray-300 leading-snug">Music for Breathwork</span>
+                <span className="text-[11px] uppercase tracking-widest text-gray-600">Unlock with</span>
+                <span className="text-[14px] font-semibold text-gray-300 leading-snug">Music for Breathwork</span>
               </div>
-              <div className="flex flex-col gap-3 mt-1">
+              <div className="flex flex-col gap-4 mt-1">
                 {[
                   { icon: '◎', label: 'Catalogue matching' },
                   { icon: '◈', label: 'Phase tags & colour coding' },
                   { icon: '◇', label: 'Audio features & intensity scores' },
                   { icon: '◉', label: 'Playlist sync' },
                 ].map((b) => (
-                  <div key={b.label} className="flex items-start gap-2">
-                    <span className="text-accent text-[11px] mt-px shrink-0">{b.icon}</span>
-                    <span className="text-[10px] text-gray-500 leading-snug">{b.label}</span>
+                  <div key={b.label} className="flex items-start gap-2.5">
+                    <span className="text-accent text-[13px] mt-px shrink-0">{b.icon}</span>
+                    <span className="text-[12px] text-gray-500 leading-snug">{b.label}</span>
                   </div>
                 ))}
               </div>
-              <div className="mt-auto pt-4 border-t border-surface-border">
-                <span className="text-[10px] text-gray-600 leading-snug block">No account?</span>
+              <div className="mt-auto pt-5 border-t border-surface-border">
+                <span className="text-[11px] text-gray-600 leading-snug block">No account?</span>
                 <button
                   type="button"
                   onClick={() => window.open('https://musicforbreathwork.com', '_blank')}
-                  className="text-[10px] text-accent hover:text-accent/80 transition-colors underline underline-offset-2 mt-0.5"
+                  className="text-[11px] text-accent hover:text-accent/80 transition-colors underline underline-offset-2 mt-1"
                 >
                   musicforbreathwork.com ↗
                 </button>
@@ -304,59 +304,59 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
             </div>
 
             {/* Right — form */}
-            <div className="flex flex-col flex-1 p-6 gap-5">
+            <div className="flex flex-col flex-1 p-8 gap-6">
               <div className="flex justify-between items-start">
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-[13px] font-semibold text-gray-100">Sign in</span>
-                  <span className="text-[10px] text-gray-600">Connect your Music for Breathwork account</span>
+                <div className="flex flex-col gap-1">
+                  <span className="text-[16px] font-semibold text-gray-100">Sign in</span>
+                  <span className="text-[11px] text-gray-600">Connect your Music for Breathwork account</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => { setShowModal(false); setError('') }}
                   className="text-gray-600 transition-colors hover:text-gray-400 mt-0.5"
                 >
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                  <svg className="w-4 h-4" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                     <path d="M2 2l8 8M10 2l-8 8" />
                   </svg>
                 </button>
               </div>
 
-              <form onSubmit={handleLogin} className="flex flex-col gap-3">
+              <form onSubmit={handleLogin} className="flex flex-col gap-4">
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] text-gray-600 uppercase tracking-wider">Email</label>
+                  <label className="text-[11px] text-gray-600 uppercase tracking-wider">Email</label>
                   <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
                     autoFocus
-                    className="h-8 px-2.5 text-[11px] text-gray-300 bg-surface-hover border border-surface-border rounded outline-none focus:border-accent/50 placeholder-gray-700"
+                    className="h-10 px-3 text-[13px] text-gray-300 bg-surface-hover border border-surface-border rounded outline-none focus:border-accent/50 placeholder-gray-700"
                     placeholder="you@example.com"
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] text-gray-600 uppercase tracking-wider">Password</label>
+                  <label className="text-[11px] text-gray-600 uppercase tracking-wider">Password</label>
                   <input
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    className="h-8 px-2.5 text-[11px] text-gray-300 bg-surface-hover border border-surface-border rounded outline-none focus:border-accent/50"
+                    className="h-10 px-3 text-[13px] text-gray-300 bg-surface-hover border border-surface-border rounded outline-none focus:border-accent/50"
                   />
                 </div>
                 {error && (
-                  <p className="text-[10px] text-red-400">{error}</p>
+                  <p className="text-[11px] text-red-400">{error}</p>
                 )}
                 <button
                   type="submit"
                   disabled={loading}
-                  className="h-9 mt-1 text-[11px] font-medium text-white bg-accent hover:bg-accent/80 rounded transition-colors disabled:opacity-50"
+                  className="h-11 mt-1 text-[13px] font-medium text-white bg-accent hover:bg-accent/80 rounded transition-colors disabled:opacity-50"
                 >
                   {loading ? 'Signing in…' : 'Sign in'}
                 </button>
               </form>
 
-              <p className="text-[10px] text-gray-700 leading-relaxed">
+              <p className="text-[11px] text-gray-700 leading-relaxed">
                 Your Music for Breathwork account gives Library access to the catalogue — phase tags,
                 audio features, and playlist data are all pulled from your account.
               </p>

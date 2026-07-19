@@ -1,6 +1,6 @@
 {
   "name": "limina-mix",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Limina Studio — library, session player & multitrack mixer for breathwork facilitators",
   "author": "Anthony Olsen",
   "main": "out/main/index.js",
