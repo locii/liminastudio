@@ -50,6 +50,10 @@ class AudioEngine {
   private warmupPool: HTMLAudioElement[] = []
   private warmupCancelled = false
 
+  // File paths known to be missing on disk. Clips referencing these are skipped
+  // during scheduling and warmup so one absent file never stalls the whole mix.
+  private missingPaths = new Set<string>()
+
   private localUrl(filePath: string): string {
     // Windows paths ("C:\a\b.mp3") have no leading slash and use backslashes,
     // which fused the drive letter onto the port and corrupted the URL — audio
@@ -91,6 +95,12 @@ class AudioEngine {
       this.masterGainNode.connect(this.getMasterLimiter())
     }
     return this.masterGainNode
+  }
+
+  // Record which file paths are missing on disk (from the renderer's existence
+  // check). Missing clips are then skipped everywhere audio would be requested.
+  setMissingPaths(paths: string[]): void {
+    this.missingPaths = new Set(paths)
   }
 
   getTrackAnalyser(trackId: string): AnalyserNode | null {
@@ -359,6 +369,7 @@ class AudioEngine {
     const hasSolo = this.lastTracks.some((t) => t.solo && !t.muted)
     for (const clip of this.lastClips) {
       if (this.activeElements.has(clip.id)) continue
+      if (this.missingPaths.has(clip.filePath)) continue  // file absent — skip, don't stall
       const clipEnd = clip.startTime + clip.duration - clip.trimStart - clip.trimEnd
       if (seekPos >= clipEnd) continue           // already past
       if (clip.startTime > windowEnd) continue  // too far ahead
@@ -550,15 +561,29 @@ class AudioEngine {
     for (const filePath of filePaths) {
       if (this.warmupCancelled) break
 
+      // Known-missing files: count as done immediately, never open a request.
+      if (this.missingPaths.has(filePath)) { onProgress(++done, total); continue }
+
       const audio = document.createElement('audio')
       audio.preload = 'auto'
       audio.src = this.localUrl(filePath)
       this.warmupPool.push(audio)
 
       await new Promise<void>((resolve) => {
-        const onDone = (): void => { onProgress(++done, total); resolve() }
-        audio.addEventListener('canplay', onDone, { once: true })
-        audio.addEventListener('error', onDone, { once: true })
+        let settled = false
+        const finish = (): void => {
+          if (settled) return
+          settled = true
+          clearTimeout(timer)
+          onProgress(++done, total)
+          resolve()
+        }
+        // A missing/unreachable file may fire neither canplay nor error (the
+        // request can hang), which previously froze buffering for the whole
+        // session. Cap each file so the queue always advances.
+        const timer = setTimeout(finish, 15_000)
+        audio.addEventListener('canplay', finish, { once: true })
+        audio.addEventListener('error', finish, { once: true })
       })
     }
   }

@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.1.0
+
+- **Your mixes are now self-contained projects** — Saving a mix creates a project folder that keeps the session and its audio together, so a mix stays intact when you move it, back it up, or hand it to someone else. "Save" makes the project folder the first time and updates it after that; "Save As New Project…" makes a fresh copy. "Collect Project Files" gathers every track used into the project so nothing depends on scattered originals. The old loose single-file save has been retired in favour of this safer default.
+- **Mixes survive moved or missing files** — If a track's source file has moved or gone offline, its clip no longer breaks the layout or stalls playback. It stays in place as a clearly-marked placeholder, playback simply skips it, and you can point it back at the file with "Locate…" / "Relink File…". When a file is missing from its original spot but present in the project's files folder, Limina reconnects it automatically. Clips that were saved with an unknown length are also healed back to their full duration on load.
+- **A tidier File menu** — Exporting to WAV and MP3 is now a single "Export Mix…" that lets you pick the format, and the less-used actions are grouped into "Share" (Collect Files, Export Project as ZIP, Track Listing PDF) and "Utilities" (Rebuild Waveforms, Export Waveform Data) submenus.
+- **Sharper waveforms when you zoom in** — Waveforms are now extracted at a higher resolution and drawn per screen pixel, so zooming deep into a clip stays crisp instead of turning blocky and blurry.
+- **Rebuild Waveforms reports what actually happened** — Instead of always claiming success, it now tells you how many waveforms were rebuilt, how many had no audio data, and how many failed — so a folder of offline files is obvious at a glance.
+- **Finer clip placement** — Dragging a clip on the timeline no longer snaps to a coarse half-second grid. Placement is now as fine as your current zoom allows, so you can line clips up exactly where you want them.
+- **Add tracks to a mix straight from the Library** — Select one or more library tracks and use "Add to Mix" to drop them into your current mix, with a quick confirmation of what was added.
+- **Mix cues on your clips** — The clip properties panel now shows intro/outro cue points, so you can mark where a track really gets going and where it starts winding down — handy when arranging crossfades.
+- **Better Adobe Audition (.sesx) import** — Clip volume envelopes drawn in Audition are now imported as proper volume automation, so a mix brought over from Audition sounds the way it did there.
+- **Under the hood** — Updated to Electron 43, and the developer inspector opens automatically in development builds.
+
 ## v1.0.4
 
 - **Open the indexing log any time** — The Music for Breathwork indexing log used to be reachable only while indexing was actively running; once it finished, there was no way back in to review what matched. It now lives in your account menu (top-right, when signed in), so you can reopen it whenever you like — with a count of any matches still waiting to be applied.

@@ -42,6 +42,11 @@ interface UIState {
    *  unmounts Collections, whose cleanup would otherwise clear the selection. */
   libraryRevealFileId: string | null
   setLibraryRevealFileId: (id: string | null) => void
+  /** A .limina session path to open in Mix Mode — set when the OS opens a
+   *  .limina file (double-click / "open with"). The umbrella switches to Mix
+   *  and Mix Mode consumes + loads it on mount (or immediately if already open). */
+  pendingMixOpenPath: string | null
+  setPendingMixOpenPath: (path: string | null) => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -86,4 +91,6 @@ export const useUIStore = create<UIState>((set) => ({
   setCollectionsPendingSessionId: (id) => set({ collectionsPendingSessionId: id }),
   libraryRevealFileId: null,
   setLibraryRevealFileId: (id) => set({ libraryRevealFileId: id }),
+  pendingMixOpenPath: null,
+  setPendingMixOpenPath: (path) => set({ pendingMixOpenPath: path }),
 }))

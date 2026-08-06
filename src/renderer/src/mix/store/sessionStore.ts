@@ -80,6 +80,10 @@ interface SessionState {
   updateTrack: (trackId: string, patch: Partial<Track>) => void
   updateClip: (clipId: string, patch: Partial<Clip>) => void
   updateClipSilent: (clipId: string, patch: Partial<Clip>) => void
+  /** Restore a clip whose duration was saved as 0 (file missing/dataless at build
+   *  time) to its true full-file length, and ripple every later clip back by the
+   *  reclaimed time so the healed clip doesn't overlap the following ones. */
+  healClipDuration: (clipId: string, fullDuration: number) => void
   pushHistorySnapshot: (snap: { tracks: Track[]; clips: Clip[] }) => void
   removeClip: (clipId: string) => void
   removeClips: (clipIds: string[]) => void
@@ -330,6 +334,28 @@ export const useSessionStore = create<SessionState>((set, get) => {
           clips: fadeOnly ? next : computeCrossfades(next),
           ...historyPush(snap),
         }
+      })
+    },
+
+    healClipDuration: (clipId, fullDuration) => {
+      if (!(fullDuration > 0)) return
+      const snap = snapshot()
+      set((s) => {
+        const clip = s.clips.find((c) => c.id === clipId)
+        if (!clip) return {}
+        const oldEff = clip.duration - clip.trimStart - clip.trimEnd
+        const newEff = fullDuration - clip.trimStart - clip.trimEnd
+        // How much timeline space this clip now occupies that it didn't before.
+        // Downstream clips were laid out as if the clip were `oldEff` long (≈0),
+        // so shift everything that starts after it by the reclaimed span.
+        const addedSpan = newEff - oldEff
+        const S = clip.startTime
+        const next = s.clips.map((c) => {
+          if (c.id === clipId) return { ...c, duration: fullDuration }
+          if (addedSpan > 0 && c.startTime > S) return { ...c, startTime: c.startTime + addedSpan }
+          return c
+        })
+        return { clips: computeCrossfades(next), ...historyPush(snap) }
       })
     },
 

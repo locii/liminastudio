@@ -3,25 +3,18 @@ import { useSessionStore } from '../../store/sessionStore'
 import { useTransportStore } from '../../store/transportStore'
 import { audioEngine } from '../../audio/audioEngine'
 import { KeyboardShortcuts } from '../KeyboardShortcuts'
-function formatTime(seconds: number): string {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = Math.floor(seconds % 60)
-  const ms = Math.floor((seconds % 1) * 10)
-  return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${ms}`
-}
 
 interface Props {
   onAddTrack: () => void
   onAddEmptyTrack: () => void
-  onOpenExportWav: () => void
-  onOpenExportMp3: () => void
+  onExportMix: () => void
   onExportPDF: () => void
   onNewSession: () => void
   onOpen: () => void
   onImport: () => void
   onSave: () => void
   onSaveAs: () => void
+  onRevertBackup: () => void
   onCollect: () => void
   onExportZip: () => void
   onRebuildWaveforms: () => void
@@ -36,13 +29,12 @@ interface Props {
 }
 
 export function TransportBar({
-  onAddTrack, onAddEmptyTrack, onOpenExportWav, onOpenExportMp3, onExportPDF,
-  onNewSession, onOpen, onImport, onSave, onSaveAs, onCollect, onExportZip,
+  onAddTrack, onAddEmptyTrack, onExportMix, onExportPDF,
+  onNewSession, onOpen, onImport, onSave, onSaveAs, onRevertBackup, onCollect, onExportZip,
   onRebuildWaveforms, onExportWaveformData, onOpenRecent,
   onFitToWindow, onFocusPlayhead, onZoomIn, onZoomOut, libraryOpen, onToggleLibrary,
 }: Props): JSX.Element {
   const playing = useTransportStore((s) => s.playing)
-  const looping = useTransportStore((s) => s.looping)
   const zoom = useTransportStore((s) => s.zoom)
   const setZoom = useTransportStore((s) => s.setZoom)
   const toggleLoop = useTransportStore((s) => s.toggleLoop)
@@ -66,10 +58,6 @@ export function TransportBar({
     if (!fileMenuOpen) { setRecentOpen(false); return }
     window.electronAPI.getRecentSessions().then(setRecentSessions).catch(() => {})
   }, [fileMenuOpen])
-
-  const totalDuration = clips.length
-    ? Math.max(...clips.map((c) => c.startTime + c.duration - c.trimStart - c.trimEnd))
-    : 0
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -161,22 +149,25 @@ export function TransportBar({
             <div className="absolute left-0 top-full z-[200] py-1 mt-1 w-56 text-[11px] rounded border shadow-xl bg-surface-panel border-surface-border">
               <MenuItem label="New Session" onClick={menuAction(onNewSession)} />
               <Divider />
-              <MenuItem label="Open Session…" shortcut="⌘O" onClick={menuAction(onOpen)} />
 
-              {/* Open Recent flyout */}
+              {/* Open flyout: "Open Session…" plus the recent list underneath */}
               <div
                 className="relative"
                 onMouseEnter={() => setRecentOpen(true)}
                 onMouseLeave={() => setRecentOpen(false)}
               >
                 <button className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] text-gray-300 hover:bg-surface-hover transition-colors text-left">
-                  <span>Open Recent</span>
+                  <span>Open</span>
                   <svg className="w-3 h-3 text-gray-500" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M3 2l4 3-4 3" />
                   </svg>
                 </button>
                 {recentOpen && (
-                  <div className="absolute left-full top-0 z-[210] py-1 w-64 max-h-80 overflow-y-auto rounded border shadow-xl bg-surface-panel border-surface-border text-[11px]">
+                  <div className="absolute left-full top-0 z-[210] py-1 w-64 max-h-96 overflow-y-auto rounded border shadow-xl bg-surface-panel border-surface-border text-[11px]">
+                    <MenuItem label="Open Session…" shortcut="⌘O" onClick={menuAction(onOpen)} />
+                     <MenuItem label="Import session" onClick={menuAction(onImport)} />
+                    <Divider />
+                    <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-gray-600">Recent</div>
                     {recentSessions.length > 0 ? recentSessions.map((filePath) => {
                       const name = filePath.split(/[\\/]/).pop()?.replace(/\.limina$/, '') ?? filePath
                       return (
@@ -196,8 +187,6 @@ export function TransportBar({
                   </div>
                 )}
               </div>
-
-              <MenuItem label="Import session" onClick={menuAction(onImport)} />
               <Divider />
               <MenuItem
                 label="Save"
@@ -205,18 +194,20 @@ export function TransportBar({
                 onClick={menuAction(onSave)}
                 highlight={isDirty}
               />
-              <MenuItem label="Save As…" shortcut="⌘⇧S" onClick={menuAction(onSaveAs)} />
+              <MenuItem label="Save As New Project…" shortcut="⌘⇧S" onClick={menuAction(onSaveAs)} />
+              <MenuItem label="Revert to Backup…" onClick={menuAction(onRevertBackup)} />
               <Divider />
-              <MenuItem label="Export as WAV…" shortcut="⌘E" onClick={menuAction(onOpenExportWav)} />
-              <MenuItem label="Export as MP3…" onClick={menuAction(onOpenExportMp3)} />
+              <MenuItem label="Export Mix…" shortcut="⌘E" onClick={menuAction(onExportMix)} />
+              <Submenu label="Share">
+                <MenuItem label="Collect Project Files" onClick={menuAction(onCollect)} />
+                <MenuItem label="Export Project as ZIP…" onClick={menuAction(onExportZip)} />
+                <MenuItem label="Export Track Listing PDF…" onClick={menuAction(onExportPDF)} />
+              </Submenu>
               <Divider />
-              <MenuItem label="Export Track Listing PDF…" onClick={menuAction(onExportPDF)} />
-              <Divider />
-              <MenuItem label="Collect Project Files" onClick={menuAction(onCollect)} />
-              <MenuItem label="Export Project as ZIP…" onClick={menuAction(onExportZip)} />
-              <Divider />
-              <MenuItem label="Rebuild Waveforms" onClick={menuAction(onRebuildWaveforms)} />
-              <MenuItem label="Export Waveform Data…" onClick={menuAction(onExportWaveformData)} />
+              <Submenu label="Utilities">
+                <MenuItem label="Rebuild Waveforms" onClick={menuAction(onRebuildWaveforms)} />
+                <MenuItem label="Export Waveform Data…" onClick={menuAction(onExportWaveformData)} />
+              </Submenu>
             </div>
           )}
         </div>
@@ -356,6 +347,27 @@ function MenuItem({ label, shortcut, onClick, highlight }: {
       <span>{label}</span>
       {shortcut && <span className="text-gray-600 text-[10px]">{shortcut}</span>}
     </button>
+  )
+}
+
+// Hover-reveal nested menu (matches the "Open" flyout style). Groups low-frequency
+// File actions so the top level stays short.
+function Submenu({ label, children }: { label: string; children: React.ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="relative" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      <button className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] text-gray-300 hover:bg-surface-hover transition-colors text-left">
+        <span>{label}</span>
+        <svg className="w-3 h-3 text-gray-500" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 2l4 3-4 3" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute left-full top-0 z-[210] py-1 w-56 rounded border shadow-xl bg-surface-panel border-surface-border text-[11px]">
+          {children}
+        </div>
+      )}
+    </div>
   )
 }
 

@@ -44,7 +44,7 @@ function extractPeaks(filePath: string, numPeaks: number): Promise<number[]> {
     }
 
     const args = [
-      '-v', 'quiet',
+      '-v', 'error',
       '-i', filePath,
       '-ac', '1',
       '-ar', String(EXTRACT_SAMPLE_RATE),
@@ -55,6 +55,7 @@ function extractPeaks(filePath: string, numPeaks: number): Promise<number[]> {
     ]
 
     const proc = spawn(bin, args)
+    let stderr = ''
 
     // Halving-streaming peak extractor: keeps memory bounded to ~2*numPeaks pairs
     // regardless of file length. When the bucket array grows past the target,
@@ -105,12 +106,12 @@ function extractPeaks(filePath: string, numPeaks: number): Promise<number[]> {
       }
     })
 
-    proc.stderr.on('data', () => {})
+    proc.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString() })
     proc.on('error', reject)
 
     proc.on('close', (code) => {
       if (code !== 0 && buckets.length === 0 && curCount === 0) {
-        reject(new Error(`ffmpeg exited with code ${code}`))
+        reject(new Error(`ffmpeg exited with code ${code} for ${filePath}: ${stderr.trim() || '(no stderr)'}`))
         return
       }
       if (curCount > 0) flushBucket()
@@ -118,6 +119,10 @@ function extractPeaks(filePath: string, numPeaks: number): Promise<number[]> {
       const pairCount = buckets.length / 2
       const result = new Array<number>(numPeaks * 2).fill(0)
       if (pairCount === 0) {
+        // File opened but decoded to no audio samples — typically a zero-byte or
+        // cloud-placeholder file (e.g. Dropbox online-only). Surface it so the
+        // renderer can distinguish "empty" from a real waveform of silence.
+        console.warn(`[getWaveformPeaks] no audio decoded for ${filePath}${stderr.trim() ? ` — ${stderr.trim()}` : ''}`)
         resolve(result)
         return
       }

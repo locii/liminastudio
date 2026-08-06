@@ -5,6 +5,8 @@ import { useTransportStore } from '../../store/transportStore'
 import { useDragContext } from './DragContext'
 import { MiniWaveform } from './MiniWaveform'
 import { audioEngine } from '../../audio/audioEngine'
+import { showFilePathInLibrary } from '../../../navigate'
+import { useToastStore } from '../../store/toastStore'
 import type { Clip, Track } from '../../types'
 
 interface Props {
@@ -20,6 +22,7 @@ const MIN_CLIP_DURATION = 1
 export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JSX.Element {
   const waveforms = useSessionStore((s) => s.waveforms)
   const waveformData = waveforms[clip.filePath]
+  const isMissing = waveformData?.missing === true
   const selectedClipIds = useSessionStore((s) => s.selectedClipIds)
   const updateClip = useSessionStore((s) => s.updateClip)
   const updateClipSilent = useSessionStore((s) => s.updateClipSilent)
@@ -106,9 +109,12 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
           const dy = me.clientY - dragState.current.startY
           if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasDragged = true
         }
-        // Snap the delta so all clips move together without drifting relative to each other
+        // Quantise the shared delta to whole on-screen pixels (not a fixed time
+        // grid) so placement is as fine as the current zoom allows — sub-half-second
+        // when zoomed in — while staying crisp with no sub-pixel jitter. All clips
+        // share this one delta, so they still move in lockstep.
         const rawDelta = (me.clientX - dragState.current.startX) / zoom
-        const snappedDelta = Math.round(rawDelta * 2) / 2
+        const snappedDelta = Math.round(rawDelta * zoom) / zoom
         for (const [id, startTime] of startTimesMap) {
           updateClipSilent(id, { startTime: Math.max(0, startTime + snappedDelta) })
         }
@@ -309,6 +315,27 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
     []
   )
 
+  // Relink a missing (or wrong) file: browse for the audio on disk, point the
+  // clip at it, restore its length if it was a zero-length placeholder, and
+  // rebuild the waveform.
+  const locateFile = useCallback(async (): Promise<void> => {
+    const picked = await window.electronAPI.pickAudioFile()
+    if (!picked) return
+    const name = picked.split(/[\\/]/).pop() ?? picked
+    const dur = await window.electronAPI.getFileDuration(picked).catch(() => 0)
+    updateClip(clip.id, { filePath: picked, fileName: name })
+    if (!(clip.duration > 0) && dur > 0) {
+      useSessionStore.getState().healClipDuration(clip.id, dur)
+    }
+    const zoom = useTransportStore.getState().zoom
+    const numPeaks = Math.min(Math.ceil((dur || clip.duration || 300) * zoom), 50_000)
+    setWaveform(picked, { trackId: track.id, peaks: [], loading: true, missing: false })
+    window.electronAPI
+      .getWaveformPeaks(picked, numPeaks)
+      .then((peaks) => setWaveform(picked, { peaks, loading: false, missing: false }))
+      .catch(() => setWaveform(picked, { peaks: [], loading: false }))
+  }, [clip.id, clip.duration, track.id, updateClip, setWaveform])
+
   return (
     <>
     <div
@@ -318,16 +345,47 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
       style={{
         left: `${left}px`,
         width: `${width}px`,
-        background: track.color + '33',
-        borderLeft: `2px solid ${track.color}`,
+        background: isMissing ? 'rgba(239,68,68,0.08)' : track.color + '33',
+        borderLeft: `2px solid ${isMissing ? '#ef4444' : track.color}`,
       }}
       onMouseDown={onMouseDown}
       onClick={(e) => e.stopPropagation()}
       onDoubleClick={(e) => { e.stopPropagation(); selectClip(clip.id) }}
       onContextMenu={onContextMenu}
     >
+      {/* Missing-file placeholder: keep the clip's footprint on the timeline so
+          the rest of the mix lays out correctly, but flag it clearly. */}
+      {isMissing && (
+        <div
+          className="absolute inset-0 z-0 flex items-center justify-center gap-2 pointer-events-none"
+          style={{
+            backgroundImage:
+              'repeating-linear-gradient(45deg, rgba(239,68,68,0.14) 0, rgba(239,68,68,0.14) 6px, transparent 6px, transparent 12px)',
+          }}
+        >
+          <span className="flex items-center gap-1 text-[10px] font-medium text-red-300/90">
+            <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 1L11 10.5H1L6 1z" />
+              <line x1="6" y1="4.5" x2="6" y2="7" />
+              <circle cx="6" cy="8.8" r="0.4" fill="currentColor" stroke="none" />
+            </svg>
+            File missing
+          </span>
+          {width >= 90 && (
+            <button
+              type="button"
+              className="pointer-events-auto px-1.5 py-0.5 text-[9px] rounded border border-red-400/50 text-red-200 hover:bg-red-400/15 transition-colors"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); void locateFile() }}
+            >
+              Locate…
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Waveform canvas */}
-      {waveformData?.peaks && waveformData.peaks.length > 0 && (
+      {!isMissing && waveformData?.peaks && waveformData.peaks.length > 0 && (
         <MiniWaveform
           peaks={waveformData.peaks}
           color={track.color}
@@ -466,6 +524,23 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
           onClick={() => { window.electronAPI.showInFolder(clip.filePath); setCtxMenu(null) }}
         >
           Show in Folder
+        </button>
+        <button
+          className="w-full text-left px-3 py-1.5 hover:bg-surface-hover text-gray-300 transition-colors"
+          onClick={() => {
+            if (!showFilePathInLibrary(clip.filePath)) {
+              useToastStore.getState().add('This track isn’t in your Library', 'info')
+            }
+            setCtxMenu(null)
+          }}
+        >
+          Show in Library
+        </button>
+        <button
+          className="w-full text-left px-3 py-1.5 hover:bg-surface-hover text-gray-300 transition-colors"
+          onClick={() => { void locateFile(); setCtxMenu(null) }}
+        >
+          {isMissing ? 'Locate Missing File…' : 'Relink File…'}
         </button>
         <button
           className="w-full text-left px-3 py-1.5 hover:bg-surface-hover text-gray-300 transition-colors"

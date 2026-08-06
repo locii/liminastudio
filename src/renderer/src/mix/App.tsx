@@ -28,9 +28,19 @@ import { markTriedMix } from '../OnboardingWizard'
 
 const TARGET_PEAK_LINEAR = Math.pow(10, -0.5 / 20) // -0.5 dBFS
 
-// 1 peak per pixel at current zoom → consistent visual density regardless of clip duration
-function peaksForClip(duration: number, zoom: number): number {
-  return Math.min(Math.ceil(duration * zoom), 50_000)
+// Extract peaks at the timeline's MAXIMUM zoom (not the current zoom) so zooming
+// in stays crisp without re-fetching per clip. 1 peak ≈ 1px at max zoom; capped so
+// very long clips stay bounded (a 4-min clip already gets ~48k peaks). The second
+// arg is kept for call-site compatibility but intentionally ignored.
+const PEAK_REF_PX_PER_SEC = 200 // matches TransportBar's max zoom
+function peaksForClip(duration: number, _zoom?: number): number {
+  return Math.min(Math.ceil(duration * PEAK_REF_PX_PER_SEC), 50_000)
+}
+
+function formatClock(seconds: number): string {
+  const m = Math.floor(seconds / 60)
+  const s = Math.round(seconds % 60)
+  return `${m}:${String(s).padStart(2, '0')}`
 }
 
 export default function App(): JSX.Element {
@@ -54,6 +64,8 @@ export default function App(): JSX.Element {
   }, [mixOpenLibraryOnMount, setMixOpenLibraryOnMount])
   const [autosave, setAutosave] = useState<{ json: string; savedAt: string } | null>(null)
   const [warmup, setWarmup] = useState<{ done: number; total: number } | null>(null)
+  const [saveGuard, setSaveGuard] = useState<{ message: string } | null>(null)
+  const applySessionRef = useRef<((r: { json: string; filePath: string }) => Promise<void>) | null>(null)
   const fitToWindowRef = useRef<(() => void) | null>(null)
   const scrollToPlayheadRef = useRef<(() => void) | null>(null)
   const focusPlayheadRef = useRef<(() => void) | null>(null)
@@ -146,12 +158,14 @@ export default function App(): JSX.Element {
 
   // ── Session helpers ──────────────────────────────────────────────────────
 
-  const saveSession = useCallback(async () => {
+  // The actual write (atomic + backup happen in the main process).
+  const writeSessionToDisk = useCallback(async () => {
     const { tracks, clips, segments, segmentLaneHeight, segmentLaneCollapsed, sessionLabel, trackHeights, laneHeights } = useSessionStore.getState()
     const json = JSON.stringify({ tracks, clips, segments, segmentLaneHeight, segmentLaneCollapsed, sessionLabel, trackHeights, laneHeights }, null, 2)
     let filePath = currentFilePath
     if (!filePath) {
-      filePath = await window.electronAPI.saveSession(json, sessionLabel || undefined)
+      // New session → save as a project folder by default (Foo/Foo.limina).
+      filePath = await window.electronAPI.saveProject(json, sessionLabel || undefined)
       if (!filePath) return
       setCurrentFile(filePath)
     } else {
@@ -162,16 +176,46 @@ export default function App(): JSX.Element {
     toast('Session saved', 'success')
   }, [currentFilePath, setCurrentFile, markClean, toast])
 
-  const saveSessionAs = useCallback(async () => {
+  // Save the current session as a NEW project folder (migrates a loose .limina).
+  const saveAsProject = useCallback(async () => {
     const { tracks, clips, segments, segmentLaneHeight, segmentLaneCollapsed, sessionLabel, trackHeights, laneHeights } = useSessionStore.getState()
     const json = JSON.stringify({ tracks, clips, segments, segmentLaneHeight, segmentLaneCollapsed, sessionLabel, trackHeights, laneHeights }, null, 2)
-    const filePath = await window.electronAPI.saveSession(json)
+    const filePath = await window.electronAPI.saveProject(json, sessionLabel || undefined)
     if (!filePath) return
     setCurrentFile(filePath)
     markClean()
     window.electronAPI.clearAutosave(filePath)
-    toast('Session saved', 'success')
+    toast('Project saved', 'success')
   }, [setCurrentFile, markClean, toast])
+
+  // Save-guard: never let a degraded read (zero-length clips / missing audio)
+  // silently overwrite a good mix. Warn first; the actual save is atomic + keeps
+  // a rolling backup, so an accepted overwrite is still recoverable.
+  const saveSession = useCallback(async () => {
+    const { clips } = useSessionStore.getState()
+    const badDuration = clips.filter((c) => !(c.duration > 0)).length
+    const uniquePaths = [...new Set(clips.map((c) => c.filePath))]
+    const missing = (await window.electronAPI.checkFilesExist(uniquePaths).catch(() => [] as string[])).length
+    if (badDuration > 0 || missing > 0) {
+      const parts: string[] = []
+      if (badDuration > 0) parts.push(`${badDuration} clip${badDuration > 1 ? 's' : ''} with unknown length`)
+      if (missing > 0) parts.push(`${missing} missing file${missing > 1 ? 's' : ''}`)
+      setSaveGuard({ message: parts.join(' and ') })
+      return
+    }
+    await writeSessionToDisk()
+  }, [writeSessionToDisk])
+
+  const revertToBackup = useCallback(async () => {
+    if (!currentFilePath) { toast('Save the session once before reverting to a backup', 'info'); return }
+    const result = await window.electronAPI.revertToBackup(currentFilePath)
+    if (!result) return
+    try {
+      await applySessionRef.current?.(result)
+    } catch (e) {
+      toast(`Failed to load backup: ${e}`, 'error')
+    }
+  }, [currentFilePath, toast])
 
   // Auto-dismiss the warmup bar 2 seconds after it completes
   useEffect(() => {
@@ -191,40 +235,141 @@ export default function App(): JSX.Element {
     })
   }, [])
 
+  // Fetch waveforms + MFB metadata for a freshly loaded set of clips, first
+  // checking which source files are actually present. Missing files are flagged
+  // (rendered as placeholders, skipped by the audio engine) so one absent track
+  // never stalls buffering or throws off the rest of the timeline.
+  const loadClipWaveforms = useCallback(async (clips: Clip[]) => {
+    const uniquePaths = [...new Set(clips.map((c) => c.filePath))]
+    const liminaPath = useSessionStore.getState().currentFilePath
+    let missing: string[] = []
+    // Project-folder fallback: for a file gone from its original location, look
+    // for a collected copy in the project's files/ folder and relink to it.
+    let resolvedMap: Record<string, string> = {}
+    try {
+      if (liminaPath) {
+        const res = await window.electronAPI.resolveMissing(liminaPath, uniquePaths)
+        resolvedMap = res.resolved
+        missing = res.missing
+        for (const [orig, found] of Object.entries(resolvedMap)) {
+          clips.filter((c) => c.filePath === orig).forEach((c) => updateClip(c.id, { filePath: found }))
+        }
+      } else {
+        missing = await window.electronAPI.checkFilesExist(uniquePaths)
+      }
+    } catch {
+      missing = []
+    }
+    const missingSet = new Set(missing)
+    audioEngine.setMissingPaths(missing)
+
+    const zoom = useTransportStore.getState().zoom
+    for (const clip of clips) {
+      // Use the relinked path if this clip's original was recovered from files/.
+      const fp = resolvedMap[clip.filePath] ?? clip.filePath
+      if (missingSet.has(clip.filePath)) {
+        setWaveform(clip.filePath, { trackId: clip.trackId, peaks: [], loading: false, missing: true })
+        continue
+      }
+      // Clips saved with a bad duration (0/NaN) — metadata failed at import time
+      // (float WAV, or a dataless Dropbox file). These are a zero-width sliver on
+      // the timeline; the global heal effect restores their true length + ripples
+      // the following clips. Just mark it loading here and let that effect run.
+      if (!(clip.duration > 0)) {
+        setWaveform(fp, { trackId: clip.trackId, peaks: [], loading: true, missing: false })
+        continue
+      }
+      window.electronAPI
+        .getWaveformPeaks(fp, peaksForClip(clip.duration, zoom))
+        .then((peaks) => setWaveform(fp, { peaks, loading: false, missing: false }))
+        .catch((e) => {
+          console.error('[loadClipWaveforms] getWaveformPeaks failed for', fp, e)
+          setWaveform(fp, { peaks: [], loading: false })
+        })
+      if (clip.mfbTrackId == null) {
+        window.electronAPI
+          .lookupLibraryFile(fp)
+          .then((libData) => {
+            if (libData) updateClip(clip.id, {
+              mfbTrackId: libData.mfbTrackId,
+              mfbTrackTitle: libData.trackTitle || undefined,
+              mfbArtist: libData.artist || undefined,
+              mfbAlbumImageUrl: libData.albumImageUrl ?? undefined,
+              mfbTags: libData.tags,
+              mfbBreathworkPhase: libData.breathworkPhase,
+            })
+          })
+          .catch(() => {})
+      }
+    }
+
+    if (missing.length > 0) {
+      toast(
+        `${missing.length} file${missing.length === 1 ? '' : 's'} missing — shown as placeholders and skipped during playback`,
+        'error',
+        8000
+      )
+    }
+  }, [setWaveform, updateClip, toast])
+
+  // Self-healing: any clip whose duration was saved as 0 (file missing/dataless
+  // at build time) collapses to a zero-width sliver and throws off the layout.
+  // Whenever such a clip appears — from ANY load path (open, autosave, Open-in-Mix,
+  // import, drag) — restore its true length via ffmpeg and ripple the later clips
+  // back so nothing overlaps. Runs once per clip id (guarded) and is reviewable:
+  // it flags each healed clip and only persists when the user saves.
+  const healedRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const runHeal = (): void => {
+      const { clips } = useSessionStore.getState()
+      const zoom = useTransportStore.getState().zoom
+      for (const c of clips) {
+        if (c.duration > 0 || healedRef.current.has(c.id)) continue
+        healedRef.current.add(c.id)
+        const clipId = c.id, filePath = c.filePath, fileName = c.fileName, trackId = c.trackId
+        void (async (): Promise<void> => {
+          try {
+            const missing = await window.electronAPI.checkFilesExist([filePath])
+            if (missing.length > 0) {
+              // Can't recover length without the file — flag it and allow a
+              // re-heal later once the user relinks it via "Locate file…".
+              setWaveform(filePath, { trackId, peaks: [], loading: false, missing: true })
+              healedRef.current.delete(clipId)
+              return
+            }
+            const dur = await window.electronAPI.getFileDuration(filePath)
+            if (!(dur > 0)) { healedRef.current.delete(clipId); return }
+            useSessionStore.getState().healClipDuration(clipId, dur)
+            toast(`Restored “${fileName}” to full length (${formatClock(dur)}) — check its trim`, 'info', 6000)
+            const peaks = await window.electronAPI.getWaveformPeaks(filePath, peaksForClip(dur, zoom))
+            setWaveform(filePath, { peaks, loading: false, missing: false })
+            // Clear the guard: the clip is now duration>0 so it won't re-trigger
+            // this session, but reloading the same file from disk (unhealed) will.
+            healedRef.current.delete(clipId)
+          } catch {
+            healedRef.current.delete(clipId)
+          }
+        })()
+      }
+    }
+    runHeal()
+    return useSessionStore.subscribe(runHeal)
+  }, [setWaveform, toast])
+
   const applySession = useCallback(async (result: { json: string; filePath: string }) => {
     audioEngine.cancelWarmup()
     setWarmup(null)
     const data = JSON.parse(result.json) as { tracks: Track[]; clips: Clip[]; segments?: import('./types').Segment[]; segmentLaneHeight?: number; segmentLaneCollapsed?: boolean; sessionLabel?: string; trackHeights?: Record<string, number>; laneHeights?: Record<string, number> }
     loadSnapshot(data)
     setCurrentFile(result.filePath)
-    for (const track of data.tracks) {
-      const clipsForTrack = data.clips.filter((c) => c.trackId === track.id)
-      for (const clip of clipsForTrack) {
-        window.electronAPI
-          .getWaveformPeaks(clip.filePath, peaksForClip(clip.duration, useTransportStore.getState().zoom))
-          .then((peaks) => setWaveform(clip.filePath, { peaks, loading: false }))
-          .catch(() => setWaveform(clip.filePath, { peaks: [], loading: false }))
-        if (clip.mfbTrackId == null) {
-          window.electronAPI
-            .lookupLibraryFile(clip.filePath)
-            .then((libData) => {
-              if (libData) updateClip(clip.id, {
-                mfbTrackId: libData.mfbTrackId,
-                mfbTrackTitle: libData.trackTitle || undefined,
-                mfbArtist: libData.artist || undefined,
-                mfbAlbumImageUrl: libData.albumImageUrl ?? undefined,
-                mfbTags: libData.tags,
-                mfbBreathworkPhase: libData.breathworkPhase,
-              })
-            })
-            .catch(() => {})
-        }
-      }
-    }
+    await loadClipWaveforms(data.clips)
     window.electronAPI.clearAutosave(result.filePath)
     toast('Session loaded', 'success')
     triggerWarmup()
-  }, [loadSnapshot, setCurrentFile, setWaveform, updateClip, toast, triggerWarmup])
+  }, [loadSnapshot, setCurrentFile, loadClipWaveforms, toast, triggerWarmup])
+
+  // Expose applySession to callbacks defined earlier (e.g. revertToBackup).
+  applySessionRef.current = applySession
 
   const openSession = useCallback(async () => {
     const result = await window.electronAPI.loadSession()
@@ -251,30 +396,7 @@ export default function App(): JSX.Element {
     try {
       const data = JSON.parse(autosave.json) as { tracks: Track[]; clips: Clip[] }
       loadSnapshot(data)
-      for (const track of data.tracks) {
-        const clipsForTrack = data.clips.filter((c) => c.trackId === track.id)
-        for (const clip of clipsForTrack) {
-          window.electronAPI
-            .getWaveformPeaks(clip.filePath, peaksForClip(clip.duration, useTransportStore.getState().zoom))
-            .then((peaks) => setWaveform(clip.filePath, { peaks, loading: false }))
-            .catch(() => setWaveform(clip.filePath, { peaks: [], loading: false }))
-          if (clip.mfbTrackId == null) {
-            window.electronAPI
-              .lookupLibraryFile(clip.filePath)
-              .then((libData) => {
-                if (libData) updateClip(clip.id, {
-                  mfbTrackId: libData.mfbTrackId,
-                  mfbTrackTitle: libData.trackTitle || undefined,
-                  mfbArtist: libData.artist || undefined,
-                  mfbAlbumImageUrl: libData.albumImageUrl ?? undefined,
-                  mfbTags: libData.tags,
-                  mfbBreathworkPhase: libData.breathworkPhase,
-                })
-              })
-              .catch(() => {})
-          }
-        }
-      }
+      await loadClipWaveforms(data.clips)
       await window.electronAPI.clearAutosave()
       setAutosave(null)
       toast('Session restored from autosave', 'success')
@@ -282,7 +404,7 @@ export default function App(): JSX.Element {
       toast(`Restore failed: ${e}`, 'error')
       setAutosave(null)
     }
-  }, [autosave, loadSnapshot, setWaveform, updateClip, toast])
+  }, [autosave, loadSnapshot, loadClipWaveforms, toast])
 
   const handleDiscardAutosave = useCallback(async () => {
     await window.electronAPI.clearAutosave()
@@ -353,20 +475,40 @@ export default function App(): JSX.Element {
     toast(`Rebuilding ${uniquePaths.length} waveform${uniquePaths.length !== 1 ? 's' : ''}…`, 'info')
 
     const zoom = useTransportStore.getState().zoom
-    let done = 0
+    let ok = 0
+    let empty = 0
+    let failed = 0
     await Promise.all(
       uniquePaths.map(async (filePath) => {
         const dur = useSessionStore.getState().clips.find((c) => c.filePath === filePath)?.duration ?? 300
         try {
           const peaks = await window.electronAPI.getWaveformPeaks(filePath, peaksForClip(dur, zoom))
-          setWaveform(filePath, { peaks, loading: false })
-        } catch {
+          if (peaks.some((v) => v !== 0)) {
+            // Real audio decoded — clear any stale missing flag (setWaveform merges,
+            // so an old missing:true would otherwise keep the clip hidden).
+            setWaveform(filePath, { peaks, loading: false, missing: false })
+            ok++
+          } else {
+            // File opened but produced silence/no data (zero-byte or cloud placeholder).
+            console.warn('[rebuildWaveforms] empty peaks for', filePath)
+            setWaveform(filePath, { peaks: [], loading: false })
+            empty++
+          }
+        } catch (e) {
+          console.error('[rebuildWaveforms] failed for', filePath, e)
           setWaveform(filePath, { peaks: [], loading: false })
+          failed++
         }
-        done++
       })
     )
-    toast(`Rebuilt ${done} waveform${done !== 1 ? 's' : ''}`, 'success')
+    if (ok === uniquePaths.length) {
+      toast(`Rebuilt ${ok} waveform${ok !== 1 ? 's' : ''}`, 'success')
+    } else {
+      const parts = [`${ok} rebuilt`]
+      if (empty > 0) parts.push(`${empty} empty (no audio data)`)
+      if (failed > 0) parts.push(`${failed} failed`)
+      toast(parts.join(', '), empty + failed > 0 ? 'error' : 'success', 7000)
+    }
   }, [setWaveform, toast])
 
   const handleSyncAllMfb = useCallback(async () => {
@@ -546,7 +688,7 @@ export default function App(): JSX.Element {
       const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || (activeEl?.isContentEditable ?? false)
 
       if (mod && !e.shiftKey && e.key === 's') { e.preventDefault(); await saveSession(); return }
-      if (mod && e.shiftKey && e.key === 's') { e.preventDefault(); await saveSessionAs(); return }
+      if (mod && e.shiftKey && e.key === 's') { e.preventDefault(); await saveAsProject(); return }
       if (mod && e.key === 'e') { e.preventDefault(); setExportOpen(true); return }
       if (mod && !e.shiftKey && e.key === 'z') { e.preventDefault(); undo(); return }
       if (mod && e.shiftKey && e.key === 'z') { e.preventDefault(); redo(); return }
@@ -608,15 +750,17 @@ export default function App(): JSX.Element {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [saveSession, openSession, handleAddTrack, undo, redo, selectClip, removeClip, removeClips, splitClip, copyClip, pasteClip, addClipToTrack, updateClip, setWaveform, selectedClipId, selectedClipIds])
+  }, [saveSession, saveAsProject, openSession, handleAddTrack, undo, redo, selectClip, removeClip, removeClips, splitClip, copyClip, pasteClip, addClipToTrack, updateClip, setWaveform, selectedClipId, selectedClipIds])
 
-  // ── File opened from OS (Limina Library or double-click) ────────────────
-
+  // ── File opened from OS (Limina Library or .limina double-click) ────────
+  // Root stashes the path and switches to Mix; consume it here — on mount if a
+  // path was queued before Mix existed, and live while Mix stays mounted.
+  const pendingMixOpenPath = useUIStore((s) => s.pendingMixOpenPath)
   useEffect(() => {
-    return window.electronAPI.onFileOpened((filePath) => {
-      openRecentSession(filePath)
-    })
-  }, [openRecentSession])
+    if (!pendingMixOpenPath) return
+    useUIStore.getState().setPendingMixOpenPath(null)
+    openRecentSession(pendingMixOpenPath)
+  }, [pendingMixOpenPath, openRecentSession])
 
   useEffect(() => {
     return window.electronAPI.onMenuOpenRecent((filePath) => {
@@ -667,8 +811,11 @@ export default function App(): JSX.Element {
     const unsubs = [
       window.electronAPI.onMenu('menu:save', () => saveSession()),
       window.electronAPI.onMenu('menu:open', () => openSession()),
+      window.electronAPI.onMenu('menu:saveProject', () => saveAsProject()),
+      window.electronAPI.onMenu('menu:revertBackup', () => revertToBackup()),
       window.electronAPI.onMenu('menu:import', () => setImportOpen(true)),
       window.electronAPI.onMenu('menu:export', () => { setExportFormat('wav'); setExportOpen(true) }),
+      window.electronAPI.onMenu('menu:exportPDF', () => setPdfOpen(true)),
       window.electronAPI.onMenu('menu:collect', () => handleCollect()),
       window.electronAPI.onMenu('menu:exportZip', () => handleExportZip()),
       window.electronAPI.onMenu('menu:undo', () => undo()),
@@ -680,7 +827,7 @@ export default function App(): JSX.Element {
       window.electronAPI.onMenu('menu:syncMfbData', () => handleSyncAllMfb()),
     ]
     return () => unsubs.forEach((u) => u())
-  }, [saveSession, openSession, openRecentSession, handleCollect, handleExportZip, undo, redo, handleAddTrack, selectedClipId, removeClip, handleRebuildWaveforms, handleExportWaveformData, handleSyncAllMfb])
+  }, [saveSession, saveAsProject, openSession, revertToBackup, openRecentSession, handleCollect, handleExportZip, undo, redo, handleAddTrack, selectedClipId, removeClip, handleRebuildWaveforms, handleExportWaveformData, handleSyncAllMfb])
 
   return (
     <div className="flex flex-col h-full text-gray-200 bg-surface-base">
@@ -714,14 +861,14 @@ export default function App(): JSX.Element {
       <TransportBar
         onAddTrack={handleAddTrack}
         onAddEmptyTrack={addEmptyTrack}
-        onOpenExportWav={() => { setExportFormat('wav'); setExportOpen(true) }}
-        onOpenExportMp3={() => { setExportFormat('mp3'); setExportOpen(true) }}
+        onExportMix={() => { setExportFormat('wav'); setExportOpen(true) }}
         onExportPDF={() => setPdfOpen(true)}
         onNewSession={handleNewSession}
         onOpen={openSession}
         onImport={() => setImportOpen(true)}
         onSave={saveSession}
-        onSaveAs={saveSessionAs}
+        onSaveAs={saveAsProject}
+        onRevertBackup={revertToBackup}
         onCollect={handleCollect}
         onExportZip={handleExportZip}
         onRebuildWaveforms={handleRebuildWaveforms}
@@ -778,6 +925,42 @@ export default function App(): JSX.Element {
       )}
 
       {tourOpen && <GuidedTour onClose={() => setTourOpen(false)} />}
+
+      {saveGuard && (
+        <div
+          className="flex fixed inset-0 z-[70] justify-center items-center bg-black/60"
+          onClick={() => setSaveGuard(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="flex flex-col gap-3 p-5 w-96 rounded-lg border shadow-xl border-surface-border bg-surface-panel"
+          >
+            <span className="text-sm font-medium text-gray-200">Save over the existing mix?</span>
+            <p className="text-[12px] leading-relaxed text-gray-400">
+              This session has <span className="text-red-300">{saveGuard.message}</span>. Saving now
+              will overwrite the file with that degraded state. A timestamped backup is kept either
+              way, but you may prefer to fix the clips first (missing files heal automatically once
+              relinked).
+            </p>
+            <div className="flex gap-2 justify-end mt-1">
+              <button
+                type="button"
+                onClick={() => setSaveGuard(null)}
+                className="px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => { setSaveGuard(null); void writeSessionToDisk() }}
+                className="px-3 py-1.5 text-xs rounded border border-red-400/60 text-red-300 hover:bg-red-400/10 transition-colors"
+              >
+                Save anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ToastContainer />
 

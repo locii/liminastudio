@@ -20,6 +20,7 @@ import type { LibraryFile, MfbPlaylistTrack } from '../types'
 import { mfbTrackUrl, phaseColorForTag } from '../types'
 import { useLibraryStore } from '../store/libraryStore'
 import { syncLibraryToMfb } from '../lib/syncLibrary'
+import { addLibraryFileToMix } from '../../mix/utils/addLibraryFileToMix'
 import { analyzeFileFeatures, analyzingFeatureIds, subscribeAnalyzing } from '../lib/featureScan'
 
 const COLUMN_STORAGE_KEY = 'library-file-list-column-widths-v7'
@@ -325,6 +326,14 @@ export function FileList(): JSX.Element {
 
   const [queuedIds, setQueuedIds] = useState<Set<string>>(new Set())
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
+  // Transient confirmation after "Add to Mix" (Library surface has no toast host).
+  const [mixAddFlash, setMixAddFlash] = useState<string | null>(null)
+  const mixAddFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const flashMixAdd = useCallback((msg: string) => {
+    setMixAddFlash(msg)
+    if (mixAddFlashTimer.current) clearTimeout(mixAddFlashTimer.current)
+    mixAddFlashTimer.current = setTimeout(() => setMixAddFlash(null), 2200)
+  }, [])
   // Re-render when on-demand feature analysis starts/finishes so per-row state updates.
   const [, forceAnalyzingTick] = useState(0)
   useEffect(() => subscribeAnalyzing(() => forceAnalyzingTick((n) => n + 1)), [])
@@ -1029,6 +1038,15 @@ export function FileList(): JSX.Element {
       </div>{/* end scrollRef / overflow-auto */}
 
       {/* Context menu */}
+      {mixAddFlash && (
+        <div className="fixed bottom-6 left-1/2 z-[60] -translate-x-1/2 px-3.5 py-2 rounded-lg border border-surface-border bg-surface-panel shadow-xl text-[12px] text-gray-200 flex items-center gap-2">
+          <svg className="w-3.5 h-3.5 text-green-400" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2.5 7.5l3 3 6-7" />
+          </svg>
+          {mixAddFlash}
+        </div>
+      )}
+
       {contextMenu && (() => {
         const isMulti = multiSelectedIds.size > 1 && multiSelectedIds.has(contextMenu.fileId)
         return (
@@ -1037,6 +1055,24 @@ export function FileList(): JSX.Element {
             style={{ left: contextMenu.x, top: contextMenu.y }}
             onMouseDown={(e) => e.stopPropagation()}
           >
+            <button
+              type="button"
+              className="w-full text-left px-3 py-1.5 text-gray-300 hover:bg-surface-hover transition-colors"
+              onClick={async () => {
+                const ids = isMulti ? [...multiSelectedIds] : [contextMenu.fileId]
+                const single = allFiles.find((x) => x.id === contextMenu.fileId)
+                setContextMenu(null)
+                let added = 0
+                for (const id of ids) {
+                  const f = allFiles.find((x) => x.id === id)
+                  if (f) { await addLibraryFileToMix(f, { silent: true }); added++ }
+                }
+                flashMixAdd(isMulti ? `Added ${added} tracks to Mix` : `Added “${(single?.trackTitle || single?.fileName) ?? 'track'}” to Mix`)
+              }}
+            >
+              {isMulti ? `Add ${multiSelectedIds.size} to Mix` : 'Add to Mix'}
+            </button>
+            <div className="h-px mx-2 my-1 bg-surface-border" />
             {!isMulti && (
               <>
                 <button

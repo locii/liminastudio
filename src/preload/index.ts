@@ -18,6 +18,11 @@ const api: ElectronAPI = {
   saveSession: (sessionJson, defaultName) => ipcRenderer.invoke('session:save', sessionJson, defaultName),
   saveSessionAs: (sessionJson, filePath) => ipcRenderer.invoke('session:saveAs', sessionJson, filePath),
   loadSession: () => ipcRenderer.invoke('session:load'),
+  saveProject: (sessionJson, defaultName) => ipcRenderer.invoke('session:saveProject', sessionJson, defaultName),
+  openProject: () => ipcRenderer.invoke('session:openProject'),
+  resolveMissing: (liminaPath, paths) => ipcRenderer.invoke('session:resolveMissing', liminaPath, paths),
+  listSessionBackups: (filePath) => ipcRenderer.invoke('session:listBackups', filePath),
+  revertToBackup: (filePath) => ipcRenderer.invoke('session:revertToBackup', filePath),
   getRecentSessions: () => ipcRenderer.invoke('session:getRecent'),
   openRecentSession: (filePath) => ipcRenderer.invoke('session:openRecent', filePath),
   collectProject: (sessionJson, filePath) => ipcRenderer.invoke('session:collect', sessionJson, filePath),
@@ -41,6 +46,7 @@ const api: ElectronAPI = {
 
   showInFolder: (filePath) => ipcRenderer.invoke('shell:showInFolder', filePath),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+  checkFilesExist: (paths) => ipcRenderer.invoke('file:checkExist', paths),
   readClipboardPath: () => ipcRenderer.invoke('shell:readClipboardPath'),
 
   lookupLibraryFile: (filePath) => ipcRenderer.invoke('library:lookupFile', filePath),

@@ -65,3 +65,22 @@ export function cancelPendingNav(): void {
   pendingAction = null
   useUIStore.getState().setNavConfirmOpen(false)
 }
+
+/**
+ * Reveal the Library file backing `filePath` in the Library workspace (mirrors
+ * the "Show in Library" action in Collections). Returns false when the file
+ * isn't in the user's Library, so callers can surface a hint instead.
+ */
+export function showFilePathInLibrary(filePath: string): boolean {
+  const lib = useLibraryStore.getState()
+  const file = lib.files.find((f) => f.filePath === filePath)
+  if (!file) return false
+  // Stash the reveal target and switch surfaces; the Library consumes it on
+  // mount (setting it here survives the current surface unmounting).
+  requestNavigate(() => {
+    lib.exitMixMode()
+    useUIStore.getState().setLibraryRevealFileId(file.id)
+    useUIStore.getState().setSurface('library')
+  }, 'library')
+  return true
+}

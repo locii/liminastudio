@@ -103,6 +103,11 @@ export interface ElectronAPI {
   saveSession: (sessionJson: string, defaultName?: string) => Promise<string | null>
   saveSessionAs: (sessionJson: string, filePath: string) => Promise<void>
   loadSession: () => Promise<{ json: string; filePath: string } | null>
+  saveProject: (sessionJson: string, defaultName?: string) => Promise<string | null>
+  openProject: () => Promise<{ json: string; filePath: string } | null>
+  resolveMissing: (liminaPath: string, paths: string[]) => Promise<{ resolved: Record<string, string>; missing: string[] }>
+  listSessionBackups: (filePath: string) => Promise<Array<{ path: string; savedAt: string; size: number }>>
+  revertToBackup: (filePath: string) => Promise<{ json: string; filePath: string } | null>
   getRecentSessions: () => Promise<string[]>
   openRecentSession: (filePath: string) => Promise<{ json: string; filePath: string } | null>
   collectProject: (sessionJson: string, filePath: string) => Promise<string>
@@ -122,6 +127,8 @@ export interface ElectronAPI {
 
   showInFolder: (filePath: string) => Promise<void>
   openExternal: (url: string) => Promise<void>
+  /** Returns the subset of the given paths that do NOT exist on disk. */
+  checkFilesExist: (paths: string[]) => Promise<string[]>
   readClipboardPath: () => Promise<string | null>
   lookupLibraryFile: (filePath: string) => Promise<LibraryMfbData | null>
   importFile: () => Promise<{ content: string; filePath: string; ext: string } | null>

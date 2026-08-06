@@ -1,7 +1,9 @@
 import { ipcMain, dialog, shell, clipboard, app } from 'electron'
 import { promises as fs } from 'fs'
+import { spawn } from 'child_process'
 import { basename, join } from 'path'
 import * as mm from 'music-metadata'
+import ffmpegPath from 'ffmpeg-static'
 
 export interface LibraryMfbData {
   mfbTrackId: number
@@ -52,6 +54,19 @@ export function registerFileHandlers(): void {
 
   ipcMain.handle('shell:showInFolder', (_e, filePath: string) => shell.showItemInFolder(filePath))
   ipcMain.handle('shell:openExternal', (_e, url: string) => shell.openExternal(url))
+
+  // Given a list of file paths, return only those that are missing on disk.
+  // Used by Mix to flag clips whose audio can't be found so the session still
+  // loads (with placeholders) instead of stalling on the missing file.
+  ipcMain.handle('file:checkExist', async (_e, paths: string[]): Promise<string[]> => {
+    const missing: string[] = []
+    await Promise.all(
+      paths.map(async (p) => {
+        try { await fs.access(p) } catch { missing.push(p) }
+      })
+    )
+    return missing
+  })
 
   const AUDIO_EXTS = new Set(['.mp3', '.wav', '.flac', '.aiff', '.aif', '.m4a', '.ogg'])
   ipcMain.handle('shell:readClipboardPath', async (): Promise<string | null> => {
@@ -183,15 +198,47 @@ export function registerFileHandlers(): void {
 async function parseMeta(filePath: string): Promise<AudioFileMeta | null> {
   try {
     const metadata = await mm.parseFile(filePath)
+    let duration = metadata.format.duration ?? 0
+    // music-metadata occasionally returns 0/undefined (e.g. float/24-bit WAVs, or
+    // a Dropbox placeholder that was dataless at read time). A zero duration makes
+    // the clip a zero-width sliver on the timeline, so fall back to an
+    // ffmpeg decode-and-count, which reads the true length regardless of header.
+    if (!(duration > 0)) {
+      duration = await ffmpegDuration(filePath)
+    }
     return {
       path: filePath,
       name: basename(filePath),
-      duration: metadata.format.duration ?? 0,
+      duration,
       sampleRate: metadata.format.sampleRate ?? 44100,
       channels: metadata.format.numberOfChannels ?? 2,
     }
   } catch (err) {
     console.error(`[parseMeta] Failed for ${filePath}:`, err)
+    // Last resort: try to at least recover the duration so the clip is usable.
+    const duration = await ffmpegDuration(filePath).catch(() => 0)
+    if (duration > 0) {
+      return { path: filePath, name: basename(filePath), duration, sampleRate: 44100, channels: 2 }
+    }
     return null
   }
+}
+
+// Accurate duration via ffmpeg: decode to 8kHz mono PCM and count bytes. Bypasses
+// any container/header quirks that make music-metadata report 0.
+function ffmpegDuration(filePath: string): Promise<number> {
+  return new Promise((resolve) => {
+    const bin = (ffmpegPath as string).replace('app.asar', 'app.asar.unpacked')
+    if (!bin) { resolve(0); return }
+    const proc = spawn(bin, [
+      '-v', 'quiet', '-i', filePath,
+      '-ac', '1', '-filter:a', 'aresample=8000',
+      '-map', '0:a', '-c:a', 'pcm_s16le', '-f', 's16le', 'pipe:1',
+    ])
+    let byteCount = 0
+    proc.stdout.on('data', (c: Buffer) => { byteCount += c.byteLength })
+    proc.stderr.on('data', () => {})
+    proc.on('error', () => resolve(0))
+    proc.on('close', () => resolve(byteCount / 2 / 8000))
+  })
 }

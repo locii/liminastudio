@@ -1,6 +1,19 @@
 import type React from 'react'
 import { useState, useEffect, useRef } from 'react'
 import { useSessionStore } from '../../store/sessionStore'
+import { useLibraryStore } from '../../../library/store/libraryStore'
+import { MixCueEditorModal } from '../../../library/components/MixCueEditorModal'
+import { showFilePathInLibrary } from '../../../navigate'
+
+/** The cue-point payload emitted by MixCueEditorModal.onSave. */
+type CueUpdates = {
+  introEndMs: number | null
+  outroStartMs: number | null
+  fadeInCurve: number
+  fadeOutCurve: number
+  clipStartMs: number | null
+  clipEndMs: number | null
+}
 
 function formatDuration(s: number): string {
   const h = Math.floor(s / 3600)
@@ -9,6 +22,13 @@ function formatDuration(s: number): string {
   const ms = Math.round((s % 1) * 10)
   if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}.${ms}`
   return `${m}:${String(sec).padStart(2, '0')}.${ms}`
+}
+
+function formatCueMs(ms: number): string {
+  const s = ms / 1000
+  const m = Math.floor(s / 60)
+  const sec = (s % 60).toFixed(1)
+  return `${m}:${sec.padStart(4, '0')}`
 }
 
 const TARGET_PEAK_DBFS = -0.5
@@ -21,6 +41,14 @@ export function PropertiesPanel(): JSX.Element {
   const tracks = useSessionStore((s) => s.tracks)
   const updateClip = useSessionStore((s) => s.updateClip)
   const [autoGainPending, setAutoGainPending] = useState(false)
+
+  // Mix cue points live on the underlying Library track (file). We reuse the
+  // Library's cue editor and, on save, ask before writing back to the track so
+  // we never silently overwrite cue points already set for that file.
+  const libraryFiles = useLibraryStore((s) => s.files)
+  const updateLibraryFile = useLibraryStore((s) => s.updateFile)
+  const [cueEditorOpen, setCueEditorOpen] = useState(false)
+  const [pendingCueApply, setPendingCueApply] = useState<CueUpdates | null>(null)
 
   const [mfbUser, setMfbUser] = useState<{ id: number; name: string; email: string } | null | undefined>(undefined)
   const [mfbLoginOpen, setMfbLoginOpen] = useState(false)
@@ -45,6 +73,8 @@ export function PropertiesPanel(): JSX.Element {
     setSearchOpen(false)
     setSearchQuery('')
     setSearchResults([])
+    setCueEditorOpen(false)
+    setPendingCueApply(null)
   }, [selectedClipId])
 
   async function handleMfbLogin(e: React.FormEvent): Promise<void> {
@@ -152,6 +182,42 @@ export function PropertiesPanel(): JSX.Element {
   const effectiveDuration = clip ? clip.duration - clip.trimStart - clip.trimEnd : 0
   const isOpen = clip !== null && track !== null
 
+  // The Library track backing this clip (matched by file path). Its cue points
+  // are the "source of truth" the mix originally derived fades from.
+  const libFile = clip ? libraryFiles.find((f) => f.filePath === clip.filePath) ?? null : null
+
+  // Applies cue points to the CURRENT clip only (the mix session), mirroring the
+  // mapping used when a track is first dragged in from the Library dock.
+  function applyCuesToClip(updates: CueUpdates): void {
+    if (!clip) return
+    const clipStartSec = (updates.clipStartMs ?? 0) / 1000
+    const clipEndSec = updates.clipEndMs != null ? updates.clipEndMs / 1000 : clip.duration
+    const fadeIn = updates.introEndMs != null ? Math.max(0, updates.introEndMs / 1000 - clipStartSec) : 0
+    const fadeOut = updates.outroStartMs != null ? Math.max(0, clipEndSec - updates.outroStartMs / 1000) : 0
+    updateClip(clip.id, {
+      trimStart: clipStartSec,
+      trimEnd: Math.max(0, clip.duration - clipEndSec),
+      fadeIn,
+      fadeOut,
+      fadeInCurve: updates.fadeInCurve,
+      fadeOutCurve: updates.fadeOutCurve,
+    })
+  }
+
+  // Called when the cue editor is saved: update this clip immediately, then ask
+  // whether to also write the new cue points back to the Library track.
+  function handleCueSave(updates: CueUpdates): void {
+    applyCuesToClip(updates)
+    setPendingCueApply(updates)
+  }
+
+  function confirmApplyToTrack(apply: boolean): void {
+    if (apply && libFile && pendingCueApply) {
+      updateLibraryFile(libFile.id, pendingCueApply)
+    }
+    setPendingCueApply(null)
+  }
+
   const noDrag = { WebkitAppRegion: 'no-drag' } as React.CSSProperties
 
   return (
@@ -213,6 +279,20 @@ export function PropertiesPanel(): JSX.Element {
                 <span className="text-xs tabular-nums text-gray-400">{formatDuration(effectiveDuration)}</span>
               </Section>
 
+              {/* Jump to this file in the Library browser */}
+              {libFile && (
+                <button
+                  type="button"
+                  onClick={() => showFilePathInLibrary(clip.filePath)}
+                  className="flex items-center gap-1.5 self-start px-2.5 py-1 text-[10px] uppercase tracking-wider rounded border border-surface-border text-gray-400 hover:text-accent hover:border-accent transition-colors"
+                >
+                  <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1.5 3.5h9M1.5 6h9M1.5 8.5h5" />
+                  </svg>
+                  Show in Library
+                </button>
+              )}
+
               <div className="h-px bg-surface-border shrink-0" />
 
               {/* Clip gain */}
@@ -239,6 +319,41 @@ export function PropertiesPanel(): JSX.Element {
                 >
                   {autoGainPending ? '…' : 'Auto Gain'}
                 </button>
+              </Section>
+
+              <div className="h-px bg-surface-border shrink-0" />
+
+              {/* Mix cue points (intro/outro fades) — sourced from the Library track */}
+              <Section label="Mix Cues">
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-teal-500 shrink-0" />
+                    <span className="text-[10px] text-gray-500">Intro ends</span>
+                    <span className="ml-auto font-mono text-[11px] text-teal-400 tabular-nums">
+                      {libFile?.introEndMs != null ? formatCueMs(libFile.introEndMs) : '—'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-orange-500 shrink-0" />
+                    <span className="text-[10px] text-gray-500">Outro starts</span>
+                    <span className="ml-auto font-mono text-[11px] text-orange-400 tabular-nums">
+                      {libFile?.outroStartMs != null ? formatCueMs(libFile.outroStartMs) : '—'}
+                    </span>
+                  </div>
+                </div>
+                {libFile ? (
+                  <button
+                    type="button"
+                    onClick={() => setCueEditorOpen(true)}
+                    className="self-start mt-1 px-2.5 py-1 text-[10px] uppercase tracking-wider rounded border border-surface-border text-gray-400 hover:text-accent hover:border-accent transition-colors"
+                  >
+                    Edit Cue Points
+                  </button>
+                ) : (
+                  <span className="text-[10px] text-gray-600 mt-1">
+                    Not in your Library — cue points can’t be edited here.
+                  </span>
+                )}
               </Section>
 
               <div className="h-px bg-surface-border shrink-0" />
@@ -337,6 +452,51 @@ export function PropertiesPanel(): JSX.Element {
           </>
         )}
       </div>
+
+      {/* Mix cue editor — reuses the Library editor, seeded from the backing track */}
+      {cueEditorOpen && libFile && (
+        <MixCueEditorModal
+          file={libFile}
+          onSave={handleCueSave}
+          onClose={() => setCueEditorOpen(false)}
+        />
+      )}
+
+      {/* Ask before writing the new cue points back to the Library track */}
+      {pendingCueApply && (
+        <div
+          className="flex fixed inset-0 z-[60] justify-center items-center bg-black/60"
+          onClick={() => confirmApplyToTrack(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="flex flex-col gap-3 p-5 w-80 rounded-lg border shadow-xl border-surface-border bg-surface-panel"
+          >
+            <span className="text-sm font-medium text-gray-200">Apply cue points to the track?</span>
+            <p className="text-[11px] leading-relaxed text-gray-500">
+              The new cue points have been applied to this clip. Do you also want to save them to
+              <span className="text-gray-300"> “{libFile?.trackTitle || libFile?.fileName || clip?.fileName}” </span>
+              in your Library? This will replace any cue points already set for that track.
+            </p>
+            <div className="flex gap-2 justify-end mt-1">
+              <button
+                type="button"
+                onClick={() => confirmApplyToTrack(false)}
+                className="px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200 transition-colors"
+              >
+                Just this clip
+              </button>
+              <button
+                type="button"
+                onClick={() => confirmApplyToTrack(true)}
+                className="px-3 py-1.5 text-xs rounded border border-accent text-accent hover:bg-accent/10 transition-colors"
+              >
+                Apply to track
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MFB login modal */}
       {mfbLoginOpen && (

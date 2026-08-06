@@ -1,6 +1,6 @@
 {
   "name": "limina-mix",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "description": "Limina Studio — library, session player & multitrack mixer for breathwork facilitators",
   "author": "Anthony Olsen",
   "main": "out/main/index.js",
@@ -33,7 +33,7 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.19",
-    "electron": "^31.3.1",
+    "electron": "^43.3.0",
     "electron-builder": "^24.13.3",
     "electron-vite": "^2.3.0",
     "postcss": "^8.4.39",

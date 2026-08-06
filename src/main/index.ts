@@ -254,19 +254,32 @@ async function createAppMenu(): Promise<void> {
       submenu: [
         { label: 'Add Track…', accelerator: 'CmdOrCtrl+T', click: () => send('menu:addTrack') },
         { type: 'separator' },
-        { label: 'Save Session', accelerator: 'CmdOrCtrl+S', click: () => send('menu:save') },
         { label: 'Open Session…', accelerator: 'CmdOrCtrl+O', click: () => send('menu:open') },
         { label: 'Open Recent', submenu: openRecentSubmenu },
         { label: 'Import Session from Other App…', click: () => send('menu:import') },
         { type: 'separator' },
+        { label: 'Save', accelerator: 'CmdOrCtrl+S', click: () => send('menu:save') },
+        { label: 'Save As New Project…', accelerator: 'CmdOrCtrl+Shift+S', click: () => send('menu:saveProject') },
+        { label: 'Revert to Backup…', click: () => send('menu:revertBackup') },
+        { type: 'separator' },
         { label: 'Export Mix…', accelerator: 'CmdOrCtrl+E', click: () => send('menu:export') },
+        {
+          label: 'Share',
+          submenu: [
+            { label: 'Collect Project Files', click: () => send('menu:collect') },
+            { label: 'Export Project as ZIP…', click: () => send('menu:exportZip') },
+            { label: 'Export Track Listing PDF…', click: () => send('menu:exportPDF') },
+          ],
+        },
         { type: 'separator' },
-        { label: 'Collect Project Files', click: () => send('menu:collect') },
-        { label: 'Export Project as ZIP…', click: () => send('menu:exportZip') },
-        { type: 'separator' },
-        { label: 'Rebuild Waveforms', click: () => send('menu:rebuildWaveforms') },
-        { label: 'Export Waveform Data…', click: () => send('menu:exportWaveformData') },
-        { label: 'Sync MFB Data', click: () => send('menu:syncMfbData') },
+        {
+          label: 'Utilities',
+          submenu: [
+            { label: 'Rebuild Waveforms', click: () => send('menu:rebuildWaveforms') },
+            { label: 'Export Waveform Data…', click: () => send('menu:exportWaveformData') },
+            { label: 'Sync MFB Data', click: () => send('menu:syncMfbData') },
+          ],
+        },
         { type: 'separator' },
         { role: 'quit' },
       ],
@@ -398,6 +411,9 @@ function createWindow(): void {
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    // Open the inspector automatically in dev so console errors are visible
+    // without relying on the menu accelerator.
+    mainWindow.webContents.openDevTools({ mode: 'detach' })
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }

@@ -16,9 +16,11 @@ export function MiniWaveform({ peaks, color, duration, trimStart, trimEnd, gain 
     const canvas = canvasRef.current
     if (!canvas || peaks.length < 2 || duration <= 0) return
 
-    // Most browsers cap canvas width at 32767 physical px. If the clip is very
-    // wide we cap the buffer and let CSS stretch it — still a clear overview.
-    const MAX_CANVAS_PX = 16383
+    // Chromium caps a canvas at 32767px per side and ~2^28px total area. Render
+    // as many device pixels as we can afford so the buffer rarely needs CSS
+    // stretching (the old, much lower cap is what made deep zoom look blurry).
+    const MAX_DIM = 32767
+    const MAX_AREA = 16_000_000
 
     const draw = (): void => {
       const dpr = window.devicePixelRatio || 1
@@ -26,16 +28,14 @@ export function MiniWaveform({ peaks, color, duration, trimStart, trimEnd, gain 
       const cssH = canvas.offsetHeight
       if (cssW === 0 || cssH === 0) return
 
-      const physW = Math.min(Math.round(cssW * dpr), MAX_CANVAS_PX)
       const physH = Math.round(cssH * dpr)
+      const capW = Math.min(MAX_DIM, Math.floor(MAX_AREA / Math.max(1, physH)))
+      const physW = Math.min(Math.round(cssW * dpr), capW)
       canvas.width = physW
       canvas.height = physH
 
       const ctx = canvas.getContext('2d')
       if (!ctx) return
-
-      const effectiveCssW = physW / dpr
-      ctx.scale(dpr, dpr)
 
       // peaks is flat interleaved [min0, max0, min1, max1, ...]
       const pairCount = peaks.length >> 1
@@ -44,22 +44,30 @@ export function MiniWaveform({ peaks, color, duration, trimStart, trimEnd, gain 
       const visibleCount = endPair - startPair
       if (visibleCount <= 0) return
 
-      ctx.clearRect(0, 0, effectiveCssW, cssH)
+      ctx.clearRect(0, 0, physW, physH)
       ctx.fillStyle = color + 'aa'
 
-      const barW = effectiveCssW / visibleCount
-      const drawW = Math.max(0.5, barW - 0.25)
       const scale = Math.min(2, Math.max(0, gain))
-      const half = cssH / 2
+      const half = physH / 2
 
-      for (let i = 0; i < visibleCount; i++) {
-        const idx = (startPair + i) * 2
-        const mn = peaks[idx] * scale
-        const mx = peaks[idx + 1] * scale
+      // Draw one min/max bar per PHYSICAL pixel column, aggregating every peak
+      // that maps to that column. This stays crisp at any zoom: when peaks
+      // outnumber columns we downsample here; when columns outnumber peaks each
+      // peak spans ~1px, so it never degrades into chunky blocks.
+      for (let x = 0; x < physW; x++) {
+        const from = startPair + Math.floor((x / physW) * visibleCount)
+        const to = Math.max(from + 1, startPair + Math.floor(((x + 1) / physW) * visibleCount))
+        let mn = 0
+        let mx = 0
+        for (let p = from; p < to && p < endPair; p++) {
+          const v0 = peaks[p * 2] * scale
+          const v1 = peaks[p * 2 + 1] * scale
+          if (v0 < mn) mn = v0
+          if (v1 > mx) mx = v1
+        }
         const top = half - mx * half
         const bot = half - mn * half
-        const h = Math.max(1, bot - top)
-        ctx.fillRect(i * barW, Math.min(top, half - 0.5), drawW, h)
+        ctx.fillRect(x, Math.min(top, half - 0.5), 1, Math.max(1, bot - top))
       }
     }
 

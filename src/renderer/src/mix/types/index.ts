@@ -90,6 +90,10 @@ export interface WaveformData {
   peaks: number[]
   loading: boolean
   error?: string
+  /** True when the clip's source file could not be found on disk. The clip is
+   *  still laid out on the timeline (as a placeholder) so the rest of the mix
+   *  isn't thrown off; playback just skips it. */
+  missing?: boolean
 }
 
 // Track colours pool
