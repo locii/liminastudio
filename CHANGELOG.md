@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.1.1
+
+- **Fixed waveforms not coming back after Rebuild or Relink** — When a track's file was empty or offline, rebuilding its waveform or pointing the clip at a good file sometimes did nothing until you restarted the app. The waveform now reappears immediately once a valid file is found, with no restart needed.
+- **Broken tracks are now clearly flagged** — A file that can't be read (zero-byte, corrupt, or an offline cloud placeholder) now shows the red "File missing" placeholder with a Locate option, instead of sitting on the timeline as a blank clip with no explanation.
+
 ## v1.1.0
 
 - **Your mixes are now self-contained projects** — Saving a mix creates a project folder that keeps the session and its audio together, so a mix stays intact when you move it, back it up, or hand it to someone else. "Save" makes the project folder the first time and updates it after that; "Save As New Project…" makes a fresh copy. "Collect Project Files" gathers every track used into the project so nothing depends on scattered originals. The old loose single-file save has been retired in favour of this safer default.
