@@ -332,8 +332,12 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
     setWaveform(picked, { trackId: track.id, peaks: [], loading: true, missing: false })
     window.electronAPI
       .getWaveformPeaks(picked, numPeaks)
-      .then((peaks) => setWaveform(picked, { peaks, loading: false, missing: false }))
-      .catch(() => setWaveform(picked, { peaks: [], loading: false }))
+      .then((peaks) =>
+        setWaveform(picked, peaks.some((v) => v !== 0)
+          ? { peaks, loading: false, missing: false }
+          : { peaks: [], loading: false, missing: true })
+      )
+      .catch(() => setWaveform(picked, { peaks: [], loading: false, missing: true }))
   }, [clip.id, clip.duration, track.id, updateClip, setWaveform])
 
   return (
@@ -545,11 +549,21 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
         <button
           className="w-full text-left px-3 py-1.5 hover:bg-surface-hover text-gray-300 transition-colors"
           onClick={() => {
+            // Keep `missing` in sync: a successful decode must clear a stale
+            // missing:true (setWaveform merges, so an old flag otherwise keeps the
+            // waveform hidden behind the placeholder — "rebuild does nothing").
+            // A decode that yields no real audio flags the clip as missing so it
+            // shows the red placeholder + Locate affordance instead of a blank clip.
+            const numPeaks = Math.min(Math.ceil((clip.duration || 300) * zoom), 50_000)
             setWaveform(clip.filePath, { peaks: [], loading: true })
             window.electronAPI
-              .getWaveformPeaks(clip.filePath, 4000)
-              .then((peaks) => setWaveform(clip.filePath, { peaks, loading: false }))
-              .catch(() => setWaveform(clip.filePath, { peaks: [], loading: false }))
+              .getWaveformPeaks(clip.filePath, numPeaks)
+              .then((peaks) =>
+                setWaveform(clip.filePath, peaks.some((v) => v !== 0)
+                  ? { peaks, loading: false, missing: false }
+                  : { peaks: [], loading: false, missing: true })
+              )
+              .catch(() => setWaveform(clip.filePath, { peaks: [], loading: false, missing: true }))
             setCtxMenu(null)
           }}
         >

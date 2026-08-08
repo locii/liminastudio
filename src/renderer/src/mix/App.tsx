@@ -490,13 +490,15 @@ export default function App(): JSX.Element {
             ok++
           } else {
             // File opened but produced silence/no data (zero-byte or cloud placeholder).
+            // Flag as missing so it shows the red placeholder + Locate affordance
+            // rather than a blank-but-normal clip the user can't diagnose or recover.
             console.warn('[rebuildWaveforms] empty peaks for', filePath)
-            setWaveform(filePath, { peaks: [], loading: false })
+            setWaveform(filePath, { peaks: [], loading: false, missing: true })
             empty++
           }
         } catch (e) {
           console.error('[rebuildWaveforms] failed for', filePath, e)
-          setWaveform(filePath, { peaks: [], loading: false })
+          setWaveform(filePath, { peaks: [], loading: false, missing: true })
           failed++
         }
       })
