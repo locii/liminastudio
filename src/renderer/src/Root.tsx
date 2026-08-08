@@ -31,6 +31,35 @@ export default function Root(): JSX.Element {
     })
   }, [])
 
+  // Cmd/Ctrl+A inside a text field. On macOS the native select-all needs the
+  // Edit menu's Select All role, which we don't register (Cmd+A is overloaded to
+  // "select all clips" in Mix). Handle it here at the umbrella level — capture
+  // phase, so it runs before any surface's own Cmd+A — for every input box in
+  // every workspace. Only acts when focus is in an editable field; otherwise it
+  // falls through to the surface handler.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.key !== 'a' || !(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return
+      const el = document.activeElement as HTMLElement | null
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+        el.select()
+      } else if (el?.isContentEditable) {
+        const sel = window.getSelection()
+        if (!sel) return
+        const range = document.createRange()
+        range.selectNodeContents(el)
+        sel.removeAllRanges()
+        sel.addRange(range)
+      } else {
+        return // not in a field — let the surface's "select all" handler run
+      }
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [])
+
   const view = ((): JSX.Element => {
     switch (surface) {
       case 'mix':

@@ -271,7 +271,9 @@ function formatDateAddedFull(iso: string): string {
 }
 
 export function FileList(): JSX.Element {
-  const [query, setQuery] = useState('')
+  // Search text lives in the store so it persists across a workspace switch.
+  const query = useLibraryStore((s) => s.searchQuery)
+  const setQuery = useLibraryStore((s) => s.setSearchQuery)
   const [pendingOnly, setPendingOnly] = useState(false)
   const [duplicateOnly, setDuplicateOnly] = useState(false)
   const unmatchedOnly = useLibraryStore((s) => s.unmatchedOnly)
@@ -1071,6 +1073,20 @@ export function FileList(): JSX.Element {
               }}
             >
               {isMulti ? `Add ${multiSelectedIds.size} to Mix` : 'Add to Mix'}
+            </button>
+            <button
+              type="button"
+              className="w-full text-left px-3 py-1.5 text-gray-300 hover:bg-surface-hover transition-colors"
+              onClick={() => {
+                const ids = isMulti ? [...multiSelectedIds] : [contextMenu.fileId]
+                const single = allFiles.find((x) => x.id === contextMenu.fileId)
+                setContextMenu(null)
+                // Append to the end of the Up-Next session queue, in order.
+                for (const id of ids) addQueueTrack(id)
+                flashMixAdd(isMulti ? `Added ${ids.length} tracks to Session` : `Added “${(single?.trackTitle || single?.fileName) ?? 'track'}” to Session`)
+              }}
+            >
+              {isMulti ? `Add ${multiSelectedIds.size} to Session` : 'Add to Session'}
             </button>
             <div className="h-px mx-2 my-1 bg-surface-border" />
             {!isMulti && (

@@ -216,7 +216,8 @@ export function FolderPanel({ onAddFolder, onRescan }: Props): JSX.Element {
     if (e.dataTransfer.items?.length > 0) {
       for (const item of Array.from(e.dataTransfer.items)) {
         const file = item.getAsFile()
-        const path = (file as unknown as { path: string } | null)?.path
+        // Electron 32+ dropped File.path; resolve via webUtils in the preload.
+        const path = file ? window.electronAPI.getPathForFile(file) : ''
         if (path) paths.push(path)
       }
     }
@@ -224,7 +225,7 @@ export function FolderPanel({ onAddFolder, onRescan }: Props): JSX.Element {
     // Fallback to files
     if (paths.length === 0) {
       for (const file of Array.from(e.dataTransfer.files)) {
-        const path = (file as unknown as { path: string }).path
+        const path = window.electronAPI.getPathForFile(file)
         if (path) paths.push(path)
       }
     }

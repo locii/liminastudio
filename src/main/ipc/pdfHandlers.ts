@@ -16,7 +16,9 @@ export function registerPdfHandlers(getMainWindow: () => BrowserWindow | null): 
       webPreferences: { sandbox: true },
     })
     await hidden.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
-    const pdfBuffer = await hidden.webContents.printToPDF({ pageSize: 'A4' })
+    // printBackground defaults to false in Electron; without it any shaded rows,
+    // headers, or colour blocks in the tracklist render white.
+    const pdfBuffer = await hidden.webContents.printToPDF({ pageSize: 'A4', printBackground: true })
     hidden.close()
 
     await fs.writeFile(result.filePath, pdfBuffer)

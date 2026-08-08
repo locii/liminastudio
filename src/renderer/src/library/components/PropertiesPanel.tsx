@@ -45,6 +45,33 @@ function SectionHeader({ label, open, onToggle }: { label: string; open: boolean
   )
 }
 
+/** Re-read artist/album from the file's embedded tags on disk, overwriting any
+ *  stale (e.g. leftover match) values. Manages its own transient busy/done state
+ *  since the Library surface has no toast host. */
+function RereadTagsButton({ onReread }: { onReread: () => Promise<void> }): JSX.Element {
+  const [state, setState] = useState<'idle' | 'busy' | 'done'>('idle')
+  return (
+    <button
+      type="button"
+      disabled={state === 'busy'}
+      onClick={async () => {
+        setState('busy')
+        try {
+          await onReread()
+          setState('done')
+          setTimeout(() => setState('idle'), 1500)
+        } catch {
+          setState('idle')
+        }
+      }}
+      className="self-start mt-1 text-[10px] text-gray-500 hover:text-gray-300 disabled:opacity-50 transition-colors"
+      title="Overwrite artist & album from the file's embedded tags on disk"
+    >
+      {state === 'busy' ? 'Re-reading…' : state === 'done' ? 'Re-read ✓' : 'Re-read tags from file'}
+    </button>
+  )
+}
+
 function Row({ label, value }: { label: string; value: string }): JSX.Element {
   return (
     <div className="flex gap-2 justify-between items-baseline">
@@ -101,6 +128,7 @@ export function PropertiesPanel(): JSX.Element {
   const selectFile = useLibraryStore((s) => s.selectFile)
   const removeFile = useLibraryStore((s) => s.removeFile)
   const unlinkMfb = useLibraryStore((s) => s.unlinkMfb)
+  const rereadFileTags = useLibraryStore((s) => s.rereadFileTags)
   const pendingMatches = useLibraryStore((s) => s.pendingMatches)
   const applyPendingMatch = useLibraryStore((s) => s.applyPendingMatch)
   const clearPendingMatch = useLibraryStore((s) => s.clearPendingMatch)
@@ -641,6 +669,7 @@ export function PropertiesPanel(): JSX.Element {
             <Row label="Sample rate" value={`${(file.sampleRate / 1000).toFixed(1)} kHz`} />
             <Row label="Channels" value={file.channels === 2 ? 'Stereo' : file.channels === 1 ? 'Mono' : String(file.channels)} />
             <Row label="File size" value={formatSize(file.fileSize)} />
+            <RereadTagsButton onReread={() => rereadFileTags(file.id)} />
           </div>
         )}
       </div>

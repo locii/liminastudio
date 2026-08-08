@@ -104,7 +104,8 @@ export function TimelineTrack({ track, tracks, clips, zoom, height, onHeightChan
 
     if (nativeFiles.length > 0) {
       for (const f of nativeFiles) {
-        const fp = (f as File & { path?: string }).path
+        // Electron 32+ dropped File.path; resolve via webUtils in the preload.
+        const fp = window.electronAPI.getPathForFile(f)
         if (fp) sources.push({ filePath: fp, fileName: f.name })
       }
     } else if (libraryPath) {

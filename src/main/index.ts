@@ -290,7 +290,11 @@ async function createAppMenu(): Promise<void> {
         { label: 'Undo', accelerator: 'CmdOrCtrl+Z', click: () => send('menu:undo') },
         { label: 'Redo', accelerator: 'CmdOrCtrl+Shift+Z', click: () => send('menu:redo') },
         { type: 'separator' },
-        { label: 'Delete Clip', accelerator: 'Backspace', click: () => send('menu:deleteClip') },
+        // No accelerator: a plain-Backspace menu accelerator fires globally and
+        // hijacks Backspace inside text inputs (can't delete typed text). The
+        // renderer's own input-aware keydown handler covers Delete/Backspace on
+        // the timeline instead.
+        { label: 'Delete Clip', click: () => send('menu:deleteClip') },
       ],
     },
     { role: 'viewMenu' },
@@ -407,6 +411,16 @@ function createWindow(): void {
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
+  })
+
+  // This is a single-page app that never legitimately navigates. Without this
+  // guard, a file dropped onto any non-drop-zone region navigates the window to
+  // that file (file://…) and blanks the app until restart. Allow only the dev
+  // renderer URL (HMR/full reloads); block everything else.
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const devUrl = process.env['ELECTRON_RENDERER_URL']
+    if (is.dev && devUrl && url.startsWith(devUrl)) return
+    event.preventDefault()
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {

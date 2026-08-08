@@ -116,6 +116,57 @@ export default function App(): JSX.Element {
     return () => window.removeEventListener('app:start-tour', handler)
   }, [])
 
+  // Self-heal stale "File missing" placeholders. A clip whose source was an
+  // online-only cloud file (or briefly unreadable) decodes to silence and gets
+  // flagged missing; that flag then sticks in the in-memory waveform store even
+  // after the file is fully local. On every window focus, re-check any
+  // missing-flagged clip against disk and rebuild its waveform if it's now
+  // readable — mirroring the Library's auto-rescan-on-focus.
+  useEffect(() => {
+    let running = false
+    const revalidate = async (): Promise<void> => {
+      if (running) return
+      const { clips, waveforms } = useSessionStore.getState()
+      const flagged = [
+        ...new Set(clips.map((c) => c.filePath).filter((fp) => waveforms[fp]?.missing === true)),
+      ]
+      if (flagged.length === 0) return
+      running = true
+      try {
+        // checkFilesExist returns the subset that is ABSENT; anything not in it
+        // is present on disk and worth a fresh peak read.
+        const absent = new Set(
+          await window.electronAPI.checkFilesExist(flagged).catch(() => flagged),
+        )
+        const present = flagged.filter((fp) => !absent.has(fp))
+        await Promise.all(
+          present.map(async (fp) => {
+            const dur = useSessionStore.getState().clips.find((c) => c.filePath === fp)?.duration ?? 300
+            try {
+              const peaks = await window.electronAPI.getWaveformPeaks(fp, peaksForClip(dur))
+              // Only clear the flag once real audio decodes; a still-empty read
+              // (cloud file not yet downloaded) stays flagged for the next focus.
+              if (peaks.some((v) => v !== 0)) setWaveform(fp, { peaks, loading: false, missing: false })
+            } catch { /* leave flagged; next focus retries */ }
+          }),
+        )
+        // Recompute the engine's skip-list so healed clips play again.
+        const wf = useSessionStore.getState().waveforms
+        const stillMissing = [
+          ...new Set(
+            useSessionStore.getState().clips.map((c) => c.filePath).filter((p) => wf[p]?.missing === true),
+          ),
+        ]
+        audioEngine.setMissingPaths(stillMissing)
+      } finally {
+        running = false
+      }
+    }
+    const onFocus = (): void => void revalidate()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [setWaveform])
+
   // Crash-recovery autosave restore prompt is disabled: the Mix app remounts on
   // every workspace switch and the autosave reflects the user's live session, so
   // the prompt was noise. Autosave still WRITES (useAutoSave) so nothing is lost;

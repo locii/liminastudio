@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.2.0
+
+- **Dragging files in from Finder works again** — Dropping audio files onto the timeline, and dropping folders onto the Library or Home, had silently stopped working after the Electron 43 update (the file path was no longer being read). Drag-and-drop from Finder is fully restored across the app.
+- **"File missing" now clears itself when the file comes back** — A track flagged as missing — because its file was briefly unreadable or an online-only cloud file that hadn't finished downloading — used to stay marked missing until you restarted or rebuilt it by hand. Limina now re-checks flagged tracks whenever you return to the window and brings the waveform back on its own once the file is readable.
+- **Add tracks straight to your session queue** — Right-click one or more tracks in the Library and choose "Add to Session" to append them to the end of the Up Next queue, alongside the existing "Add to Mix".
+- **Library search sticks around** — Your search text in the Library is now kept when you switch over to Mix and back, instead of being cleared every time.
+- **Select-all and delete work in every text box** — Cmd/Ctrl+A now selects the text in any input or search field, and Backspace/Delete clears it, instead of those keys being intercepted by app shortcuts.
+- **Re-read a track's tags from the file** — The clip properties panel has a new "Re-read tags from file" action that pulls artist and album straight from the file on disk, fixing tracks left showing the wrong album. Unlinking a Music for Breathwork match no longer strands that match's album or artwork on the track.
+- **Track Listing PDF keeps its colours** — Exported track-listing PDFs now render their shaded headers and rows instead of coming out plain white.
+- **Steadier on stray file drops** — Accidentally dropping a file onto an empty part of the window can no longer blank the app until restart.
+
 ## v1.1.1
 
 - **Fixed waveforms not coming back after Rebuild or Relink** — When a track's file was empty or offline, rebuilding its waveform or pointing the clip at a good file sometimes did nothing until you restarted the app. The waveform now reappears immediately once a valid file is found, with no restart needed.

@@ -819,7 +819,8 @@ function WelcomeScreen({ onAddFolder, hasContent, onClose, indexing }: {
     setIsDragOver(false)
     const file = e.dataTransfer.files[0]
     if (file) {
-      const path = (file as File & { path?: string }).path
+      // Electron 32+ dropped File.path; resolve via webUtils in the preload.
+      const path = window.electronAPI.getPathForFile(file)
       if (path) onAddFolder(path)
     }
   }

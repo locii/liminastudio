@@ -1,8 +1,11 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { ElectronAPI, ExportConfig } from './index.d'
 
 const api: ElectronAPI = {
   // File
+  // Electron 32+ removed File.path from the DOM File object; getPathForFile is
+  // the only way to resolve a dropped/selected file's absolute path.
+  getPathForFile: (file: File) => webUtils.getPathForFile(file),
   openAudioFiles: () => ipcRenderer.invoke('file:openAudioFiles'),
   readAudioFile: (filePath) => ipcRenderer.invoke('file:readAudioFile', filePath),
   getAudioMetadata: (filePath) => ipcRenderer.invoke('file:getAudioMetadata', filePath),

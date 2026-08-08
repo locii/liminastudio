@@ -236,7 +236,8 @@ function HomeDropZone({ onAdd }: { onAdd: (path?: string) => void }): JSX.Elemen
     dragCounterRef.current = 0
     setIsDragOver(false)
     const file = e.dataTransfer.files[0]
-    const path = file && (file as File & { path?: string }).path
+    // Electron 32+ dropped File.path; resolve via webUtils in the preload.
+    const path = file ? window.electronAPI.getPathForFile(file) : ''
     if (path) onAdd(path)
   }
 

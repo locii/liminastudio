@@ -125,6 +125,8 @@ export interface ElectronAPI {
   // Audio server
   getAudioServerPort: () => Promise<number>
 
+  /** Resolve the absolute path of a dropped/selected DOM File (Electron webUtils). */
+  getPathForFile: (file: File) => string
   showInFolder: (filePath: string) => Promise<void>
   openExternal: (url: string) => Promise<void>
   /** Returns the subset of the given paths that do NOT exist on disk. */

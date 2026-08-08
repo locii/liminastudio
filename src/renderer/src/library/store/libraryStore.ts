@@ -180,11 +180,18 @@ interface LibraryState {
   clearPendingMatch: (fileId: string) => void
   applyAllPendingMatches: () => void
   unlinkMfb: (fileId: string) => void
+  /** Re-read artist/album from the file's embedded tags on disk, overwriting any
+   *  stale (e.g. match-derived) values. Leaves MFB link and user data intact. */
+  rereadFileTags: (fileId: string) => Promise<void>
   resetUnmatchedIndexing: () => void
   resetAllIndexing: () => void
   toCatalogue: () => Catalogue
   unmatchedOnly: boolean
   setUnmatchedOnly: (v: boolean) => void
+  /** File-list search text. Lifted out of FileList so it survives a workspace
+   *  switch (Library unmounts when you go to Mix) and is restored on return. */
+  searchQuery: string
+  setSearchQuery: (q: string) => void
   loginFlash: boolean
   setLoginFlash: (v: boolean) => void
   previewFileId: string | null
@@ -303,6 +310,8 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   playlistSessions: {},
   unmatchedOnly: false,
   setUnmatchedOnly: (v) => set({ unmatchedOnly: v }),
+  searchQuery: '',
+  setSearchQuery: (q) => set({ searchQuery: q }),
   loginFlash: false,
   setLoginFlash: (v) => set({ loginFlash: v }),
   previewFileId: null,
@@ -697,10 +706,26 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
             beatportUrl: null,
             appleMusicUrl: null,
             notes: '',
+            // Also drop the match-derived display metadata; otherwise a wrong
+            // album/artist/art is stranded on the file after unlinking. Re-read
+            // tags from the file (rereadFileTags) to restore its real values.
+            artist: '',
+            album: '',
+            albumImageUrl: null,
           }
         : f
     ),
   })),
+
+  rereadFileTags: async (fileId) => {
+    const file = get().files.find((f) => f.id === fileId)
+    if (!file) return
+    const scanned = await window.electronAPI.scanFile(file.filePath)
+    if (!scanned) return
+    // Overwrite only the embedded-tag fields from the file on disk (the source
+    // of truth); leave MFB link, user tags, cues, ratings, etc. untouched.
+    get().updateFile(fileId, { artist: scanned.artist, album: scanned.album })
+  },
 
   resetUnmatchedIndexing: () => set((s) => ({
     files: s.files.map((f) =>
