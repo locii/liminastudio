@@ -100,7 +100,7 @@ export function SpotifyImportModal({ fileName, artist, folderArtist, duration, o
         {/* Header */}
         <div className="flex justify-between items-center px-4 py-3 border-b border-surface-border shrink-0">
           <div className="min-w-0">
-            <h2 className="text-[12px] font-medium text-gray-200">Find on Music for Breathwork</h2>
+            <h2 className="text-[12px] font-medium text-gray-200">Find or add on Music for Breathwork</h2>
             <p className="text-[10px] text-gray-500 truncate">Your file: {fmt(duration)} · {fileName}</p>
           </div>
           <button type="button" onClick={onClose} className="text-gray-500 hover:text-gray-300 shrink-0 ml-2" title="Close">

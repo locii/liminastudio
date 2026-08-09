@@ -20,8 +20,6 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
   const setDevSkipLoad = useUIStore((s) => s.setDevSkipLoad)
   const [checkState, setCheckState] = useState<'idle' | 'checking' | 'upToDate'>('idle')
   const [showMenu, setShowMenu] = useState(false)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -63,21 +61,21 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
     return () => window.removeEventListener('mousedown', onDown)
   }, [showMenu])
 
-  async function handleLogin(e: React.FormEvent): Promise<void> {
-    e.preventDefault()
+  async function handleConnect(): Promise<void> {
     setError('')
     setLoading(true)
     try {
-      const user = await window.electronAPI.authLogin(email, password)
+      // Opens the system browser and resolves once the user authorizes on
+      // musicforbreathwork.com and the loopback callback completes.
+      const user = await window.electronAPI.authBeginOAuth()
       setUserAccount(user)
       setLoginFlash(true)
       setShowModal(false)
-      setEmail('')
-      setPassword('')
     } catch (err) {
       const msg = err instanceof Error ? err.message : ''
-      const isAuthError = /401|403|invalid|incorrect|password|credentials|unauthorized/i.test(msg)
-      setError(isAuthError ? 'Incorrect email or password.' : 'Login failed — please try again.')
+      if (/access_denied/i.test(msg)) setError('Sign-in was cancelled.')
+      else if (/timeout/i.test(msg)) setError('Sign-in timed out. Please try again.')
+      else setError('Sign-in failed — please try again.')
     } finally {
       setLoading(false)
     }
@@ -321,44 +319,38 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
                 </button>
               </div>
 
-              <form onSubmit={handleLogin} className="flex flex-col gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[11px] text-gray-600 uppercase tracking-wider">Email</label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    autoFocus
-                    className="h-10 px-3 text-[13px] text-gray-300 bg-surface-hover border border-surface-border rounded outline-none focus:border-accent/50 placeholder-gray-700"
-                    placeholder="you@example.com"
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[11px] text-gray-600 uppercase tracking-wider">Password</label>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    className="h-10 px-3 text-[13px] text-gray-300 bg-surface-hover border border-surface-border rounded outline-none focus:border-accent/50"
-                  />
-                </div>
+              <div className="flex flex-col gap-4">
+                <button
+                  type="button"
+                  onClick={handleConnect}
+                  disabled={loading}
+                  className="flex items-center justify-center gap-2 h-11 text-[13px] font-medium text-white bg-accent hover:bg-accent/80 rounded transition-colors disabled:opacity-60"
+                >
+                  {loading ? (
+                    <>
+                      <svg className="w-3.5 h-3.5 animate-spin shrink-0" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                      </svg>
+                      Waiting for your browser…
+                    </>
+                  ) : (
+                    'Sign in with Music for Breathwork'
+                  )}
+                </button>
+                {loading && (
+                  <p className="text-[11px] text-gray-600 leading-relaxed">
+                    Complete sign-in in the browser window that just opened, then return here.
+                  </p>
+                )}
                 {error && (
                   <p className="text-[11px] text-red-400">{error}</p>
                 )}
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="h-11 mt-1 text-[13px] font-medium text-white bg-accent hover:bg-accent/80 rounded transition-colors disabled:opacity-50"
-                >
-                  {loading ? 'Signing in…' : 'Sign in'}
-                </button>
-              </form>
+              </div>
 
               <p className="text-[11px] text-gray-700 leading-relaxed">
-                Your Music for Breathwork account gives Library access to the catalogue — phase tags,
-                audio features, and playlist data are all pulled from your account.
+                Opens your browser to authorize securely — Limina Studio never sees your password.
+                Your account unlocks catalogue matching, phase tags, audio features, and playlist sync.
               </p>
 
               <div className="flex items-center gap-3 mt-auto pt-4 border-t border-surface-border">

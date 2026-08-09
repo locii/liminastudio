@@ -204,6 +204,7 @@ export interface ElectronAPI {
 
   // ── MFB account (Library-style auth; same auth.bin token) ──────────────────
   authLogin: (email: string, password: string) => Promise<{ id: number; name: string; email: string }>
+  authBeginOAuth: () => Promise<{ id: number; name: string; email: string }>
   authLogout: () => Promise<void>
   authMe: () => Promise<{ id: number; name: string; email: string } | null>
   getUserPlaylists: () => Promise<MfbPlaylist[]>

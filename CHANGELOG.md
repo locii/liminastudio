@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.3.0
+
+- **Sign in through your browser** — Connecting your Music for Breathwork account no longer asks for your email and password inside Limina Studio. Click "Sign in with Music for Breathwork" and a browser window opens where you approve access on musicforbreathwork.com — the same place you already sign in, with your password manager and any two-step verification you use. Limina Studio never sees your password, and if you're already signed in on the site it's a single click to authorize. You can revoke access at any time from your account settings.
+- **"Find or add on Music for Breathwork"** — The catalogue lookup on a track, and the header of its search dialog, now read "Find or add" to make clear you can add a track to the catalogue from here, not just find an existing match.
+
 ## v1.2.0
 
 - **Dragging files in from Finder works again** — Dropping audio files onto the timeline, and dropping folders onto the Library or Home, had silently stopped working after the Electron 43 update (the file path was no longer being read). Drag-and-drop from Finder is fully restored across the app.

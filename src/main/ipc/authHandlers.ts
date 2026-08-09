@@ -1,10 +1,39 @@
-import { ipcMain, safeStorage, app } from 'electron'
+import { ipcMain, safeStorage, app, shell } from 'electron'
 import { get, request } from 'https'
+import { createServer } from 'http'
+import type { AddressInfo } from 'net'
+import { randomBytes, createHash } from 'crypto'
 import { join } from 'path'
 import { promises as fs } from 'fs'
 
 const BASE = 'https://musicforbreathwork.com/api'
+const SITE = BASE.replace(/\/api\/?$/, '') // web root, for the browser authorize page
 const TOKEN_FILE = join(app.getPath('userData'), 'auth.bin')
+
+/** Fixed client id agreed with the musicforbreathwork.com desktop authorize flow. */
+const OAUTH_CLIENT_ID = 'limina-desktop'
+
+/** Give up waiting for the browser callback after this long. */
+const OAUTH_TIMEOUT_MS = 5 * 60 * 1000
+
+/** RFC 4648 §5 base64url (no padding) — used for the PKCE verifier/challenge and state. */
+function base64url(buf: Buffer): string {
+  return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+/** Minimal HTML shown in the user's browser after the redirect lands on our loopback server. */
+function callbackPage(ok: boolean): string {
+  const title = ok ? 'You’re signed in' : 'Sign-in cancelled'
+  const body = ok
+    ? 'Limina Studio is now connected to your account. You can close this tab and return to the app.'
+    : 'The sign-in was cancelled or failed. You can close this tab and try again from Limina Studio.'
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>
+<style>html{color-scheme:dark}body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;
+background:#0f0f0f;color:#e5e5e5;font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+.card{max-width:340px;text-align:center;padding:0 24px}.mark{font-size:32px;color:#6366f1;margin-bottom:12px}
+h1{font-size:17px;font-weight:600;margin:0 0 8px}p{color:#9ca3af;margin:0}</style></head>
+<body><div class="card"><div class="mark">${ok ? '◎' : '×'}</div><h1>${title}</h1><p>${body}</p></div></body></html>`
+}
 
 async function saveToken(token: string): Promise<void> {
   const encrypted = safeStorage.encryptString(token)
@@ -99,6 +128,75 @@ export interface AuthUser {
 export function registerAuthHandlers(): void {
   ipcMain.handle('auth:login', async (_, email: string, password: string) => {
     const result = await apiPost<{ token: string; user: AuthUser }>('/auth/login', { email, password })
+    await saveToken(result.token)
+    return result.user
+  })
+
+  // Browser-delegated sign-in (Authorization Code + PKCE over loopback). The user
+  // authorizes on musicforbreathwork.com in their real browser — the app never
+  // sees their password. See DesktopAuthController on the server side.
+  ipcMain.handle('auth:beginOAuth', async () => {
+    const verifier = base64url(randomBytes(32))
+    const challenge = base64url(createHash('sha256').update(verifier).digest())
+    const state = base64url(randomBytes(16))
+
+    // Spin up a one-shot loopback server on a random free port, open the browser,
+    // and wait for the redirect back to /callback.
+    const { code, redirectUri } = await new Promise<{ code: string; redirectUri: string }>(
+      (resolve, reject) => {
+        let redirectUri = ''
+        const server = createServer((req, res) => {
+          const url = new URL(req.url ?? '/', 'http://127.0.0.1')
+          if (url.pathname !== '/callback') {
+            res.writeHead(404).end()
+            return
+          }
+          const returnedState = url.searchParams.get('state')
+          const errParam = url.searchParams.get('error')
+          const code = url.searchParams.get('code')
+          const ok = !errParam && !!code && returnedState === state
+
+          res.writeHead(ok ? 200 : 400, { 'Content-Type': 'text/html; charset=utf-8' })
+          res.end(callbackPage(ok))
+          // Close after the response has been flushed so the page renders.
+          setImmediate(() => server.close())
+
+          if (errParam) return reject(new Error(errParam))
+          if (returnedState !== state) return reject(new Error('state_mismatch'))
+          if (!code) return reject(new Error('no_code'))
+          resolve({ code, redirectUri })
+        })
+
+        const timeout = setTimeout(() => {
+          server.close()
+          reject(new Error('timeout'))
+        }, OAUTH_TIMEOUT_MS)
+        server.on('close', () => clearTimeout(timeout))
+        server.on('error', reject)
+
+        server.listen(0, '127.0.0.1', () => {
+          const port = (server.address() as AddressInfo).port
+          redirectUri = `http://127.0.0.1:${port}/callback`
+          const authUrl =
+            `${SITE}/desktop/authorize?` +
+            new URLSearchParams({
+              client_id: OAUTH_CLIENT_ID,
+              response_type: 'code',
+              redirect_uri: redirectUri,
+              code_challenge: challenge,
+              code_challenge_method: 'S256',
+              state,
+              scope: 'limina',
+            }).toString()
+          shell.openExternal(authUrl)
+        })
+      }
+    )
+
+    const result = await apiPost<{ token: string; expires_at: string; user: AuthUser }>(
+      '/auth/token',
+      { code, code_verifier: verifier, redirect_uri: redirectUri, device_name: 'Limina Studio' }
+    )
     await saveToken(result.token)
     return result.user
   })

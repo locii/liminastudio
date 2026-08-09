@@ -486,7 +486,7 @@ export function PropertiesPanel(): JSX.Element {
                       <path d="M4.5 11.5A3 3 0 0 1 4 5.6 4 4 0 0 1 11.8 6 2.75 2.75 0 0 1 11.5 11.5" />
                       <path d="M8 7.5v5M6 10.5l2 2 2-2" />
                     </svg>
-                    Find on Music for Breathwork…
+                    Find or add on Music for Breathwork…
                   </button>
                 )}
 
