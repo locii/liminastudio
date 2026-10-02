@@ -87,12 +87,18 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release edit ${{ github.ref_name }} --draft=false --repo ${{ github.repository }}
 
-  revalidate-changelog:
+  rebuild-website:
     needs: publish-release
     runs-on: ubuntu-latest
     steps:
-      - name: Revalidate changelog on getliminastudio
+      # getliminastudio.com is a static site: its changelog, download count and installer
+      # links are read from these releases when it builds, so a release rebuilds it.
+      - name: Rebuild getliminastudio.com
+        env:
+          FORGE_DEPLOY_HOOK: ${{ secrets.FORGE_DEPLOY_HOOK }}
         run: |
-          curl -s -o /dev/null -w "%{http_code}" \
-            -X POST https://www.getliminastudio.com/api/revalidate \
-            -H "x-revalidate-token: ${{ secrets.REVALIDATE_TOKEN }}"
+          if [ -z "$FORGE_DEPLOY_HOOK" ]; then
+            echo "FORGE_DEPLOY_HOOK secret is not set - skipping the website rebuild"
+            exit 0
+          fi
+          curl -fsS -X POST "$FORGE_DEPLOY_HOOK" -o /dev/null && echo "Website rebuild queued"
