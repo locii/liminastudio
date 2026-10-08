@@ -5,6 +5,8 @@ import { Home } from './Home'
 import { PlaylistsSurface } from './PlaylistsSurface'
 import { NavConfirmModal } from './NavConfirmModal'
 import { OverwriteModal } from './OverwriteModal'
+import { QuickJump } from './QuickJump'
+import { LibraryHealthDialog } from './library/components/LibraryHealthDialog'
 import { useUIStore } from './uiStore'
 import { useLibraryStore } from './library/store/libraryStore'
 import { useCatalogueBootstrap } from './useCatalogueBootstrap'
@@ -17,6 +19,8 @@ import { useLibraryAutoRescan } from './library/useLibraryAutoRescan'
  */
 export default function Root(): JSX.Element {
   const surface = useUIStore((s) => s.surface)
+  const collectionsView = useUIStore((s) => s.collectionsView)
+  const collectionsNonce = useUIStore((s) => s.collectionsNonce)
   useCatalogueBootstrap()
   useLibraryAutoRescan()
 
@@ -67,7 +71,7 @@ export default function Root(): JSX.Element {
       case 'library':
         return <LibraryApp />
       case 'playlists':
-        return <PlaylistsSurface />
+        return <PlaylistsSurface key={`${collectionsView}:${collectionsNonce}`} />
       default:
         return <Home />
     }
@@ -78,6 +82,8 @@ export default function Root(): JSX.Element {
       {view}
       <NavConfirmModal />
       <OverwriteModal />
+      <QuickJump />
+      <LibraryHealthDialog />
     </>
   )
 }

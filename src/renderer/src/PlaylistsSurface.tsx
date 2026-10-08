@@ -11,6 +11,7 @@ import { GlobalControls } from './GlobalControls'
 import { GuidedTour } from './library/components/GuidedTour'
 import type { TourStep } from './library/components/GuidedTour'
 import { useUIStore } from './uiStore'
+import type { CollectionsView, SessionsSection } from './uiStore'
 import { openInMix } from './openInMix'
 import { requestOpen } from './openGuard'
 import { requestNavigate } from './navigate'
@@ -115,7 +116,7 @@ function Section({
       >
         <span>{label}</span>
         <span className="flex items-center gap-1.5">
-          {count > 0 && <span className="tracking-normal text-gray-700 normal-case">{count}</span>}
+          {count > 0 && <span className="tracking-normal text-gray-600 normal-case">{count}</span>}
           <svg className={`w-2.5 h-2.5 transition-transform ${open ? '' : '-rotate-90'}`} viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
             <path d="M2 3.5l3 3 3-3" />
           </svg>
@@ -141,22 +142,22 @@ function SidebarItem({
       className={`flex flex-col w-full px-3 py-2 text-left transition-colors border-b border-surface-border/30 ${active ? 'bg-accent/15 text-accent' : 'text-gray-300 hover:bg-surface-hover'}`}
     >
       <span className="text-[11px] truncate leading-tight">{label}</span>
-      {sub && <span className={`text-[10px] truncate leading-tight mt-0.5 ${active ? 'text-accent/70' : 'text-gray-600'}`}>{sub}</span>}
+      {sub && <span className={`text-[10px] truncate leading-tight mt-0.5 ${active ? 'text-accent/70' : 'text-gray-500'}`}>{sub}</span>}
     </button>
   )
 }
 
-const COLLECTIONS_STEPS: TourStep[] = [
+const PLAYLISTS_STEPS: TourStep[] = [
   {
-    id: 'collections-welcome',
-    title: 'Welcome to Collections',
-    body: 'Collections is your hub for MFB playlists, session templates, recorded sessions, and saved mixes. Select any item on the left to see its details.',
+    id: 'playlists-welcome',
+    title: 'Welcome to Playlists',
+    body: 'Your Music for Breathwork playlists live here. Select one to see which tracks you already own, preview them, and open the playlist in Session Mode.',
     placement: 'center',
   },
   {
-    id: 'collections-filter',
+    id: 'playlists-filter',
     title: 'Filter & Search',
-    body: 'Type here to instantly filter across all collection types — playlists, templates, sessions, and mix files.',
+    body: 'Type here to filter your playlists by name.',
     target: '[data-tour="collections-filter"]',
     placement: 'bottom',
     spotlight: true,
@@ -167,6 +168,31 @@ const COLLECTIONS_STEPS: TourStep[] = [
     body: 'Your curated MFB playlists appear here once you\'re signed in. Click a playlist to see which tracks you own and preview them.',
     target: '[data-tour="collections-playlists"]',
     placement: 'right',
+    spotlight: true,
+  },
+  {
+    id: 'playlists-detail',
+    title: 'Detail Panel',
+    body: 'The selected playlist\'s tracks appear here, grouped by section, with what you own and what\'s missing.',
+    target: '[data-tour="collections-detail"]',
+    placement: 'left',
+    spotlight: true,
+  },
+]
+
+const SESSIONS_STEPS: TourStep[] = [
+  {
+    id: 'sessions-welcome',
+    title: 'Welcome to Sessions',
+    body: 'Sessions gathers your session templates, recorded live sessions and saved mixes. Select any item on the left to see its details.',
+    placement: 'center',
+  },
+  {
+    id: 'sessions-filter',
+    title: 'Filter & Search',
+    body: 'Type here to filter across templates, recorded sessions and mix files.',
+    target: '[data-tour="collections-filter"]',
+    placement: 'bottom',
     spotlight: true,
   },
   {
@@ -194,16 +220,33 @@ const COLLECTIONS_STEPS: TourStep[] = [
     spotlight: true,
   },
   {
-    id: 'collections-detail',
+    id: 'sessions-detail',
     title: 'Detail Panel',
-    body: 'Select any collection on the left to see its details — tracks, timestamps, durations, and actions like Open in Mix or Load in Session.',
+    body: 'Select any item on the left to see its details — tracks, timestamps, durations, and actions like Open in Mix or Load in Session.',
     target: '[data-tour="collections-detail"]',
     placement: 'left',
     spotlight: true,
   },
 ]
 
+const SESSIONS_SECTION_LABELS: Record<SessionsSection, string> = {
+  templates: 'Session Templates',
+  recorded: 'Recorded Sessions',
+  mixes: 'Recent Mixes',
+}
+
+/** Which view a selection belongs to. */
+function viewFor(sel: CollSel): CollectionsView {
+  return sel.kind === 'playlist' ? 'playlists' : 'sessions'
+}
+
+/**
+ * The Playlists and Sessions workspaces (formerly one "Collections" screen).
+ * Root remounts this per view (`key={collectionsView}`), so selection, tour and
+ * sidebar state start fresh when switching between them.
+ */
 export function PlaylistsSurface(): JSX.Element {
+  const view = useUIStore((s) => s.collectionsView)
   const setSurface = useUIStore((s) => s.setSurface)
   const userAccount = useLibraryStore((s) => s.userAccount)
   const playlists = useLibraryStore((s) => s.playlists)
@@ -223,18 +266,35 @@ export function PlaylistsSurface(): JSX.Element {
   const selectedFileId = useLibraryStore((s) => s.selectedFileId)
   const selectedMissingTrackId = useLibraryStore((s) => s.selectedMissingTrackId)
 
-  // Initial selection, in priority order: a "View in Collections" deep-link, then
+  // Initial selection, in priority order: a "View in Sessions" deep-link, then
   // the selection from the last visit. Either way, force its sidebar section open
   // (set synchronously so the Section reads it when it first mounts, below).
   const [sel, setSel] = useState<CollSel | null>(() => {
+    // Opened from the nav's Sessions menu: expand just that section.
+    const focus = useUIStore.getState().sessionsFocusSection
+    const focusLabel = focus && view === 'sessions' ? SESSIONS_SECTION_LABELS[focus] : null
+    if (focusLabel) {
+      for (const label of Object.values(SESSIONS_SECTION_LABELS)) sectionState[label] = label === focusLabel
+      useUIStore.setState({ sessionsFocusSection: null })
+    }
+    const pendingPlaylist = useUIStore.getState().pendingPlaylistId
+    if (pendingPlaylist != null && view === 'playlists') {
+      useUIStore.setState({ pendingPlaylistId: null })
+      sectionState['Music for Breathwork Playlists'] = true
+      return { kind: 'playlist', id: pendingPlaylist }
+    }
     const pendingId = useUIStore.getState().collectionsPendingSessionId
-    if (pendingId) { sectionState['Recorded Sessions'] = true; return { kind: 'session', id: pendingId } }
+    if (pendingId && view === 'sessions') { sectionState['Recorded Sessions'] = true; return { kind: 'session', id: pendingId } }
     try {
-      const raw = localStorage.getItem(LAST_SEL_KEY)
+      // Per-view memory; fall back to the old shared key from the Collections era.
+      const raw = localStorage.getItem(`${LAST_SEL_KEY}:${view}`) ?? localStorage.getItem(LAST_SEL_KEY)
       if (raw) {
         const restored = JSON.parse(raw) as CollSel
-        sectionState[sectionLabelFor(restored)] = true
-        return restored
+        // When opened onto a specific section, only restore a selection in it.
+        if (viewFor(restored) === view && (!focusLabel || sectionLabelFor(restored) === focusLabel)) {
+          sectionState[sectionLabelFor(restored)] = true
+          return restored
+        }
       }
     } catch { /* ignore malformed */ }
     return null
@@ -245,9 +305,14 @@ export function PlaylistsSurface(): JSX.Element {
   const cancelledRef = useRef(false)
   const [tourOpen, setTourOpen] = useState(false)
 
+  // Each view has its own tour. Anyone who finished the old combined
+  // Collections tour has already seen both.
+  const tourKey = `${view}-tour-completed`
   useEffect(() => {
-    try { if (!localStorage.getItem('collections-tour-completed')) setTourOpen(true) } catch { /* noop */ }
-  }, [])
+    try {
+      if (!localStorage.getItem(tourKey) && !localStorage.getItem('collections-tour-completed')) setTourOpen(true)
+    } catch { /* noop */ }
+  }, [tourKey])
   useEffect(() => {
     const handler = (): void => setTourOpen(true)
     window.addEventListener('app:start-tour', handler)
@@ -255,8 +320,8 @@ export function PlaylistsSurface(): JSX.Element {
   }, [])
   const closeTour = useCallback(() => {
     setTourOpen(false)
-    try { localStorage.setItem('collections-tour-completed', '1') } catch { /* noop */ }
-  }, [])
+    try { localStorage.setItem(tourKey, '1') } catch { /* noop */ }
+  }, [tourKey])
 
   // Load MFB playlists when signed in
   useEffect(() => {
@@ -285,18 +350,18 @@ export function PlaylistsSurface(): JSX.Element {
 
   // Consume the deep-link so a later visit to Collections doesn't re-select it.
   useEffect(() => {
-    if (useUIStore.getState().collectionsPendingSessionId) {
+    if (view === 'sessions' && useUIStore.getState().collectionsPendingSessionId) {
       useUIStore.getState().setCollectionsPendingSessionId(null)
     }
-  }, [])
+  }, [view])
 
   // Remember the current selection so it's restored next time we visit.
   useEffect(() => {
     try {
-      if (sel) localStorage.setItem(LAST_SEL_KEY, JSON.stringify(sel))
-      else localStorage.removeItem(LAST_SEL_KEY)
+      if (sel) localStorage.setItem(`${LAST_SEL_KEY}:${view}`, JSON.stringify(sel))
+      else localStorage.removeItem(`${LAST_SEL_KEY}:${view}`)
     } catch { /* ignore */ }
-  }, [sel])
+  }, [sel, view])
 
   const matchedMfbIds = useMemo(
     () => new Set(files.filter((f) => f.mfbTrackId != null).map((f) => f.mfbTrackId as number)),
@@ -452,28 +517,28 @@ export function PlaylistsSurface(): JSX.Element {
         <div className="flex flex-col w-64 min-h-0 border-r shrink-0 border-surface-border">
           {/* Filter */}
           <div data-tour="collections-filter" className="flex items-center gap-1.5 px-2 py-1.5 border-b border-surface-border shrink-0 bg-surface-panel">
-            <svg className="w-3 h-3 text-gray-600 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg className="w-3 h-3 text-gray-500 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="5" cy="5" r="3.5" /><path d="M8 8l2.5 2.5" />
             </svg>
             <input type="text" value={query} onChange={(e) => setQuery(e.target.value)}
-              placeholder="Filter collections…"
+              placeholder={view === 'playlists' ? 'Filter playlists…' : 'Filter sessions…'}
               className="flex-1 min-w-0 bg-transparent text-[11px] text-gray-300 placeholder-gray-700 outline-none" />
             {query && (
-              <button type="button" onClick={() => setQuery('')} className="text-gray-600 hover:text-gray-400 shrink-0">
+              <button type="button" onClick={() => setQuery('')} className="text-gray-500 hover:text-gray-400 shrink-0">
                 <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 2l8 8M10 2l-8 8" /></svg>
               </button>
             )}
           </div>
 
           <div className="flex-1 min-h-0 overflow-y-auto bg-surface-panel">
-            {/* MFB Playlists */}
-            {(!q || filteredPlaylists.length > 0) && (
+            {/* MFB Playlists — the whole Playlists view, so always expanded */}
+            {view === 'playlists' && (
               <div data-tour="collections-playlists">
-                <Section label="Music for Breathwork Playlists" count={filteredPlaylists.length} defaultOpen={false}>
+                <Section label="Music for Breathwork Playlists" count={filteredPlaylists.length} defaultOpen>
                   {!userAccount ? (
-                    <p className="px-3 pb-2 text-[10px] text-gray-600">Sign in to see your playlists.</p>
+                    <p className="px-3 pb-2 text-[10px] text-gray-500">Sign in to see your playlists.</p>
                   ) : filteredPlaylists.length === 0 ? (
-                    <p className="px-3 pb-2 text-[10px] text-gray-600">No playlists found.</p>
+                    <p className="px-3 pb-2 text-[10px] text-gray-500">No playlists found.</p>
                   ) : filteredPlaylists.map((p) => {
                     const total = p.trackIds?.length ?? 0
                     const present = (p.trackIds ?? []).filter((id) => matchedMfbIds.has(id)).length
@@ -488,11 +553,11 @@ export function PlaylistsSurface(): JSX.Element {
             )}
 
             {/* Session Templates */}
-            {(!q || filteredTemplates.length > 0) && (
+            {view === 'sessions' && (!q || filteredTemplates.length > 0) && (
               <div data-tour="collections-templates">
                 <Section label="Session Templates" count={filteredTemplates.length} defaultOpen={false}>
                   {filteredTemplates.length === 0 ? (
-                    <p className="px-3 pb-2 text-[10px] text-gray-600">No templates saved yet.</p>
+                    <p className="px-3 pb-2 text-[10px] text-gray-500">No templates saved yet.</p>
                   ) : filteredTemplates.map((m) => (
                     <SidebarItem key={m.id} label={m.name}
                       sub={`${m.queue.length} queue item${m.queue.length !== 1 ? 's' : ''}${m._system ? ' · system' : ''}`}
@@ -504,11 +569,11 @@ export function PlaylistsSurface(): JSX.Element {
             )}
 
             {/* Recorded Sessions */}
-            {(!q || filteredSessions.length > 0) && (
+            {view === 'sessions' && (!q || filteredSessions.length > 0) && (
               <div data-tour="collections-sessions">
                 <Section label="Recorded Sessions" count={filteredSessions.length} defaultOpen={false}>
                   {filteredSessions.length === 0 ? (
-                    <p className="px-3 pb-2 text-[10px] text-gray-600">No sessions recorded yet.</p>
+                    <p className="px-3 pb-2 text-[10px] text-gray-500">No sessions recorded yet.</p>
                   ) : filteredSessions.map((s) => (
                     <SidebarItem key={s.id} label={s.name}
                       sub={`${new Date(s.startedAt).toLocaleDateString()} · ${fmtDuration(s.durationMs)} · ${s.played.length} tracks`}
@@ -520,11 +585,11 @@ export function PlaylistsSurface(): JSX.Element {
             )}
 
             {/* Recent Mixes */}
-            {(!q || filteredMixes.length > 0) && (
+            {view === 'sessions' && (!q || filteredMixes.length > 0) && (
               <div data-tour="collections-mixes">
                 <Section label="Recent Mixes" count={filteredMixes.length} defaultOpen={false}>
                   {filteredMixes.length === 0 ? (
-                    <p className="px-3 pb-2 text-[10px] text-gray-600">No recent mixes.</p>
+                    <p className="px-3 pb-2 text-[10px] text-gray-500">No recent mixes.</p>
                   ) : filteredMixes.map(({ filePath, name }) => (
                     <SidebarItem key={filePath} label={name}
                       sub={filePath.replace(/^.*\/([^/]+\/[^/]+)$/, '…/$1')}
@@ -568,8 +633,8 @@ export function PlaylistsSurface(): JSX.Element {
                 onCancelOpen={cancelOpen}
               />
             ) : (
-              <div className="flex flex-1 items-center justify-center text-[11px] text-gray-600 select-none">
-                Select a collection
+              <div className="flex flex-1 items-center justify-center text-[11px] text-gray-500 select-none">
+                {view === 'playlists' ? 'Select a playlist' : 'Select a template, recorded session or mix'}
               </div>
             )}
           </div>
@@ -583,7 +648,7 @@ export function PlaylistsSurface(): JSX.Element {
 
       <PlayerBar />
       <SessionTransportBar />
-      {tourOpen && <GuidedTour steps={COLLECTIONS_STEPS} onClose={closeTour} />}
+      {tourOpen && <GuidedTour steps={view === 'playlists' ? PLAYLISTS_STEPS : SESSIONS_STEPS} onClose={closeTour} />}
     </div>
   )
 }
@@ -591,9 +656,12 @@ export function PlaylistsSurface(): JSX.Element {
 // ---- shared helpers ----
 
 function fmtSecs(s: number): string {
-  if (s < 60) return `${Math.round(s)}s`
-  const m = Math.floor(s / 60)
-  const sec = Math.round(s % 60)
+  // Round to whole seconds first — rounding only the remainder turned 239.6s
+  // into "3m 60s".
+  const total = Math.round(s)
+  if (total < 60) return `${total}s`
+  const m = Math.floor(total / 60)
+  const sec = total % 60
   return sec > 0 ? `${m}m ${sec}s` : `${m}m`
 }
 
@@ -612,10 +680,11 @@ function TrackThumb({
       ) : null}
       {canPreview && (
         <button type="button" onClick={onToggle}
+          aria-label={isPreviewing ? 'Stop preview' : 'Preview track'}
           className={`absolute inset-0 flex items-center justify-center transition-all ${
             albumImageUrl
               ? isPreviewing ? 'text-white opacity-100' : 'text-white opacity-0 group-hover:opacity-100'
-              : isPreviewing ? 'rounded-full border border-accent text-accent opacity-100' : 'rounded-full border border-gray-600 text-gray-600 hover:border-accent hover:text-accent opacity-0 group-hover:opacity-100'
+              : isPreviewing ? 'rounded-full border border-accent text-accent opacity-100' : 'rounded-full border border-gray-600 text-gray-500 hover:border-accent hover:text-accent opacity-0 group-hover:opacity-100'
           }`}>
           {isPreviewing
             ? <svg className="w-2 h-2" viewBox="0 0 8 8" fill="currentColor"><rect x="0.5" y="0" width="2.5" height="8" rx="0.5" /><rect x="5" y="0" width="2.5" height="8" rx="0.5" /></svg>
@@ -697,8 +766,8 @@ function TemplateDetail({
               {trackCount > 0 && ` · ${trackCount} track${trackCount !== 1 ? 's' : ''}`}
               {genCount > 0 && ` · ${genCount} generator${genCount !== 1 ? 's' : ''}`}
             </span>
-            <span className="text-[10px] text-gray-600 tabular-nums">{Math.round(mix.mixFadeMs / 1000)}s xfade</span>
-            {mix._system && <span className="text-[10px] text-gray-600">System preset</span>}
+            <span className="text-[10px] text-gray-500 tabular-nums">{Math.round(mix.mixFadeMs / 1000)}s xfade</span>
+            {mix._system && <span className="text-[10px] text-gray-500">System preset</span>}
           </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -708,8 +777,11 @@ function TemplateDetail({
           </button>
           <OpenInMixBtn opening={opening} onOpen={onOpenInMix} onCancel={onCancelOpen} />
           {!mix._system && (
-            <button type="button" onClick={onDelete} title="Delete template"
-              className="ml-1 text-gray-600 transition-colors hover:text-red-400">
+            <button type="button" title="Delete template" aria-label="Delete template"
+              onClick={async () => {
+                if (await window.electronAPI.confirm({ message: `Delete the template "${mix.name}"?`, detail: "This can't be undone." })) onDelete()
+              }}
+              className="ml-1 text-gray-500 transition-colors hover:text-red-400">
               <svg className="w-3.5 h-3.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><path d="M2 3h8M4.5 3V2h3v1M4 3v6M6 3v6M8 3v6M3 3l.5 7h5l.5-7" /></svg>
             </button>
           )}
@@ -717,7 +789,7 @@ function TemplateDetail({
       </div>
 
       {/* Column headers */}
-      <div className="flex items-center gap-2 px-3 h-7 border-b shrink-0 border-surface-border bg-surface-panel text-[10px] uppercase tracking-wider text-gray-600 select-none">
+      <div className="flex items-center gap-2 px-3 h-7 border-b shrink-0 border-surface-border bg-surface-panel text-[10px] uppercase tracking-wider text-gray-500 select-none">
         <span className="w-5 text-center shrink-0">#</span>
         <span className="w-5 shrink-0" />
         <span className="flex-1 min-w-0">Track / Generator</span>
@@ -727,7 +799,7 @@ function TemplateDetail({
       {/* Rows */}
       <div className="flex-1 min-h-0 overflow-y-auto">
         {mix.queue.length === 0 ? (
-          <p className="px-4 py-6 text-[11px] text-gray-600 text-center">Empty queue.</p>
+          <p className="px-4 py-6 text-[11px] text-gray-500 text-center">Empty queue.</p>
         ) : mix.queue.map((item, i) => {
           if (item.kind === 'track') {
             const f = fileById.get(item.fileId)
@@ -737,7 +809,7 @@ function TemplateDetail({
                 onClick={() => { if (f) selectFile(f.id) }}
                 className={`flex items-center gap-2 px-3 transition-colors border-b group cursor-pointer border-surface-border/50 hover:bg-surface-hover ${f && selectedFileId === f.id ? 'bg-surface-hover' : ''}`}
                 style={{ minHeight: 36 }}>
-                <span className="w-5 shrink-0 text-center text-[10px] text-gray-600 tabular-nums">{i + 1}</span>
+                <span className="w-5 shrink-0 text-center text-[10px] text-gray-500 tabular-nums">{i + 1}</span>
                 <TrackThumb
                   albumImageUrl={f?.albumImageUrl}
                   isPreviewing={isPreviewing}
@@ -750,11 +822,11 @@ function TemplateDetail({
                 />
                 <div className="flex flex-col flex-1 min-w-0 py-1.5">
                   <span className="text-[11px] text-gray-200 truncate leading-tight">
-                    {f ? (f.trackTitle || f.fileName) : <span className="italic text-gray-600">Unknown track</span>}
+                    {f ? (f.trackTitle || f.fileName) : <span className="italic text-gray-500">Unknown track</span>}
                   </span>
                   {f?.artist && <span className="text-[10px] text-gray-500 truncate leading-tight">{f.artist}</span>}
                 </div>
-                <span className="w-12 text-right text-[10px] text-gray-600 tabular-nums shrink-0">
+                <span className="w-12 text-right text-[10px] text-gray-500 tabular-nums shrink-0">
                   {f?.duration ? fmtSecs(f.duration) : '—'}
                 </span>
               </div>
@@ -765,7 +837,7 @@ function TemplateDetail({
             <div key={item.id ?? i}
               className="flex items-center gap-2 px-3 border-b group border-surface-border/50 hover:bg-surface-hover"
               style={{ minHeight: 36 }}>
-              <span className="w-5 shrink-0 text-center text-[10px] text-gray-600 tabular-nums">{i + 1}</span>
+              <span className="w-5 shrink-0 text-center text-[10px] text-gray-500 tabular-nums">{i + 1}</span>
               {/* Tag icon placeholder */}
               <div className="flex items-center justify-center w-5 h-5 rounded shrink-0 bg-accent/10">
                 <svg className="w-2.5 h-2.5 text-accent" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><path d="M1 3h8M1 5.5h6M1 8h4" /></svg>
@@ -774,19 +846,19 @@ function TemplateDetail({
                 <span className="text-[11px] text-accent truncate leading-tight">
                   [{item.tags.length > 0 ? item.tags.join(', ') : 'any tag'}]
                 </span>
-                <span className="text-[10px] text-gray-600 leading-tight">
+                <span className="text-[10px] text-gray-500 leading-tight">
                   {item.matchMode === 'all' ? 'match all' : 'match any'}
                   {item.durationMin != null && ` · ${item.durationMin}m`}
                 </span>
               </div>
-              <span className="w-12 text-right text-[10px] text-gray-600 tabular-nums shrink-0">
+              <span className="w-12 text-right text-[10px] text-gray-500 tabular-nums shrink-0">
                 {item.durationMin != null ? `${item.durationMin}m` : '—'}
               </span>
             </div>
           )
         })}
         {mix.mixTailTags && (
-          <div className="px-3 py-2 text-[10px] text-gray-600">
+          <div className="px-3 py-2 text-[10px] text-gray-500">
             then: random from [{mix.mixTailTags.join(', ')}]
           </div>
         )}
@@ -884,15 +956,18 @@ function SessionDetail({
               Save as template
             </button>
           )}
-          <button type="button" onClick={onDelete} title="Delete session"
-            className="ml-1 text-gray-600 transition-colors hover:text-red-400">
+          <button type="button" title="Delete session" aria-label="Delete session"
+            onClick={async () => {
+              if (await window.electronAPI.confirm({ message: `Delete the recorded session "${session.name}"?`, detail: "This can't be undone." })) onDelete()
+            }}
+            className="ml-1 text-gray-500 transition-colors hover:text-red-400">
             <svg className="w-3.5 h-3.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><path d="M2 3h8M4.5 3V2h3v1M4 3v6M6 3v6M8 3v6M3 3l.5 7h5l.5-7" /></svg>
           </button>
         </div>
       </div>
 
       {/* Column headers */}
-      <div className="flex items-center gap-2 px-3 h-7 border-b shrink-0 border-surface-border bg-surface-panel text-[10px] uppercase tracking-wider text-gray-600 select-none">
+      <div className="flex items-center gap-2 px-3 h-7 border-b shrink-0 border-surface-border bg-surface-panel text-[10px] uppercase tracking-wider text-gray-500 select-none">
         <span className="w-12 text-right shrink-0">Time</span>
         <span className="w-5 shrink-0" />
         <span className="flex-1 min-w-0">Track</span>
@@ -902,12 +977,12 @@ function SessionDetail({
       {/* Rows */}
       <div className="flex-1 min-h-0 overflow-y-auto">
         {timeline.length === 0 ? (
-          <p className="px-4 py-6 text-[11px] text-gray-600 text-center">Nothing captured in this session.</p>
+          <p className="px-4 py-6 text-[11px] text-gray-500 text-center">Nothing captured in this session.</p>
         ) : timeline.map((r, i) => {
           if (r.kind === 'edit') {
             return (
               <div key={i} className="flex items-center gap-2 px-3 py-1.5 border-b border-surface-border/30">
-                <span className="w-12 text-right font-mono text-[10px] text-gray-600 tabular-nums shrink-0">{fmtClock(r.atMs)}</span>
+                <span className="w-12 text-right font-mono text-[10px] text-gray-500 tabular-nums shrink-0">{fmtClock(r.atMs)}</span>
                 <span className="w-5 shrink-0" />
                 <span className="flex-1 min-w-0 text-[10px] text-gray-500 italic truncate">· {r.summary}</span>
               </div>
@@ -942,10 +1017,10 @@ function SessionDetail({
                       {fadeSecs(r.fadeInMs)} xfade
                     </span>
                   )}
-                  {r.ended === 'skip' && <span className="text-gray-600 shrink-0">skipped</span>}
+                  {r.ended === 'skip' && <span className="text-gray-500 shrink-0">skipped</span>}
                 </span>
               </div>
-              <span className="w-14 text-right text-[10px] text-gray-600 tabular-nums shrink-0">
+              <span className="w-14 text-right text-[10px] text-gray-500 tabular-nums shrink-0">
                 {r.playedMs > 0 ? fmtSecs(r.playedMs / 1000) : '—'}
               </span>
             </div>
@@ -1025,9 +1100,9 @@ function MixDetail({
           <h2 className="text-[12px] font-semibold text-gray-200 truncate">{name}</h2>
           <div className="flex items-center gap-3 mt-0.5">
             {loading
-              ? <span className="text-[10px] text-gray-600">Loading…</span>
+              ? <span className="text-[10px] text-gray-500">Loading…</span>
               : <span className="text-[10px] text-gray-500 tabular-nums">{clips.length} clip{clips.length !== 1 ? 's' : ''}</span>}
-            <span className="text-[10px] text-gray-600 truncate">{dir}</span>
+            <span className="text-[10px] text-gray-500 truncate">{dir}</span>
           </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -1057,7 +1132,7 @@ function MixDetail({
       </div>
 
       {/* Column headers */}
-      <div className="flex items-center gap-2 px-3 h-7 border-b shrink-0 border-surface-border bg-surface-panel text-[10px] uppercase tracking-wider text-gray-600 select-none">
+      <div className="flex items-center gap-2 px-3 h-7 border-b shrink-0 border-surface-border bg-surface-panel text-[10px] uppercase tracking-wider text-gray-500 select-none">
         <span className="w-12 text-right shrink-0">Start</span>
         <span className="w-5 shrink-0" />
         <span className="flex-1 min-w-0">Track</span>
@@ -1068,10 +1143,10 @@ function MixDetail({
       <div className="flex-1 min-h-0 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center py-10">
-            <svg className="w-4 h-4 text-gray-600 animate-spin" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 1v2M6 9v2M1 6h2M9 6h2" strokeLinecap="round" /></svg>
+            <svg className="w-4 h-4 text-gray-500 animate-spin" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M6 1v2M6 9v2M1 6h2M9 6h2" strokeLinecap="round" /></svg>
           </div>
         ) : clips.length === 0 ? (
-          <p className="px-4 py-6 text-[11px] text-gray-600 text-center">No clips found.</p>
+          <p className="px-4 py-6 text-[11px] text-gray-500 text-center">No clips found.</p>
         ) : clips.map((c, i) => {
           const libFile = fileByPath.get(c.filePath)
           const isPreviewing = libFile != null && previewFileId === libFile.id
@@ -1114,7 +1189,7 @@ function MixDetail({
                   )}
                 </span>
               </div>
-              <span className="w-12 text-right text-[10px] text-gray-600 tabular-nums shrink-0">
+              <span className="w-12 text-right text-[10px] text-gray-500 tabular-nums shrink-0">
                 {fmtSecs(dur)}
               </span>
             </div>

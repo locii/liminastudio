@@ -3,6 +3,13 @@ import { create } from 'zustand'
 /** Which sub-app the umbrella is showing. `home` is the launch switcher. */
 export type Surface = 'home' | 'library' | 'mix' | 'playlists'
 
+/** The `playlists` surface (formerly "Collections") shows one of two views:
+ *  MFB playlists, or Sessions (templates, recorded sessions, recent mixes). */
+export type CollectionsView = 'playlists' | 'sessions'
+
+/** A section of the Sessions view that navigation can open directly. */
+export type SessionsSection = 'templates' | 'recorded' | 'mixes'
+
 interface UIState {
   surface: Surface
   setSurface: (surface: Surface) => void
@@ -31,11 +38,26 @@ interface UIState {
    *  add begins (from Home or Library); cleared when the user opens the library. */
   librarySetupOpen: boolean
   setLibrarySetupOpen: (v: boolean) => void
-  /** Deep-link: a recorded session to reveal + select when Collections next
-   *  mounts (e.g. from the "View in Collections" chip after recording). Consumed
+  /** Deep-link: a recorded session to reveal + select when the Sessions view next
+   *  mounts (e.g. from the "View in Sessions" chip after recording). Consumed
    *  and cleared by PlaylistsSurface on mount. */
   collectionsPendingSessionId: string | null
   setCollectionsPendingSessionId: (id: string | null) => void
+  collectionsView: CollectionsView
+  setCollectionsView: (view: CollectionsView) => void
+  /** Section to expand when the Sessions view next mounts; consumed on mount. */
+  sessionsFocusSection: SessionsSection | null
+  /** Bumped to remount the playlists surface (e.g. jumping to another Sessions
+   *  section while already there). Part of Root's key for it. */
+  collectionsNonce: number
+  /** Show the Sessions view, optionally with one section expanded. */
+  openSessions: (section?: SessionsSection) => void
+  libraryHealthOpen: boolean
+  setLibraryHealthOpen: (open: boolean) => void
+  /** MFB playlist to select when the Playlists view next mounts; consumed on mount. */
+  pendingPlaylistId: number | null
+  /** Show the Playlists view with a given playlist selected. */
+  openPlaylist: (id: number) => void
   /** Deep-link: a library file to reveal + select when the Library next mounts
    *  (e.g. "Show in Library" from a Collections playlist). Consumed and cleared
    *  by the Library on mount — set directly here because switching surfaces
@@ -89,6 +111,25 @@ export const useUIStore = create<UIState>((set) => ({
   setLibrarySetupOpen: (v) => set({ librarySetupOpen: v }),
   collectionsPendingSessionId: null,
   setCollectionsPendingSessionId: (id) => set({ collectionsPendingSessionId: id }),
+  collectionsView: 'playlists',
+  setCollectionsView: (view) => set({ collectionsView: view }),
+  sessionsFocusSection: null,
+  collectionsNonce: 0,
+  pendingPlaylistId: null,
+  libraryHealthOpen: false,
+  setLibraryHealthOpen: (open) => set({ libraryHealthOpen: open }),
+  openPlaylist: (id) => set((s) => ({
+    collectionsView: 'playlists',
+    pendingPlaylistId: id,
+    collectionsNonce: s.collectionsNonce + 1,
+    surface: 'playlists',
+  })),
+  openSessions: (section) => set((s) => ({
+    collectionsView: 'sessions',
+    sessionsFocusSection: section ?? null,
+    collectionsNonce: s.collectionsNonce + 1,
+    surface: 'playlists',
+  })),
   libraryRevealFileId: null,
   setLibraryRevealFileId: (id) => set({ libraryRevealFileId: id }),
   pendingMixOpenPath: null,

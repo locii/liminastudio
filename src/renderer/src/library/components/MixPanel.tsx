@@ -15,6 +15,7 @@ import { openInMix } from '../../openInMix'
 import { requestOpen } from '../../openGuard'
 import { buildTwoTrackMix, buildTwoTrackMixFromRecording, type MixItem } from '../../buildLiminaMix'
 import { markTriedSession } from '../../OnboardingWizard'
+import { ReadyCheckDialog } from '../../ReadyCheckDialog'
 
 // Where the Pro upsell (locked Session Mode features) sends free users.
 const PRO_UPSELL_URL = 'https://musicforbreathwork.com/pricing'
@@ -64,6 +65,19 @@ export function MixPanel(): JSX.Element {
   const setMixFeatureTarget = useLibraryStore((s) => s.setMixFeatureTarget)
   const clearMixFeatureTargets = useLibraryStore((s) => s.clearMixFeatureTargets)
   const mixQueue = useLibraryStore((s) => s.mixQueue)
+  const [readyCheckOpen, setReadyCheckOpen] = useState(false)
+  // What the session will actually play: queued tracks plus each tag
+  // generator's materialised upcoming list. Snapshotted when the check opens.
+  const readyCheckItems = useMemo(() => {
+    if (!readyCheckOpen) return []
+    const st = useLibraryStore.getState()
+    const byId = new Map(st.files.map((f) => [f.id, f]))
+    const ids = st.mixQueue.flatMap((q) => (q.kind === 'track' ? [q.fileId] : q.upcoming))
+    return ids
+      .map((id) => byId.get(id))
+      .filter((f): f is NonNullable<typeof f> => !!f)
+      .map((f) => ({ filePath: f.filePath, label: f.trackTitle || f.fileName }))
+  }, [readyCheckOpen])
   const addQueueTrack = useLibraryStore((s) => s.addQueueTrack)
   const addQueueTags = useLibraryStore((s) => s.addQueueTags)
   const previewFileId = useLibraryStore((s) => s.previewFileId)
@@ -446,10 +460,10 @@ export function MixPanel(): JSX.Element {
   const [namingSession, setNamingSession] = useState(false)
   const [preRecordName, setPreRecordName] = useState('')
   const [savePromptOpen, setSavePromptOpen] = useState(false)
-  const [sessionSaveName, setSessionSaveName] = useState('')
+  const [, setSessionSaveName] = useState('')
   const [renamingSession, setRenamingSession] = useState(false)
   const [renameValue, setRenameValue] = useState('')
-  // After a recording is saved, show a persistent chip linking to it in Collections.
+  // After a recording is saved, show a persistent chip linking to it in Sessions.
   const [savedSession, setSavedSession] = useState<{ id: string; name: string } | null>(null)
   const [, setRecTick] = useState(0)
 
@@ -495,13 +509,14 @@ export function MixPanel(): JSX.Element {
   }, [recording])
   // Entering Session Mode (any path) retires the "try these next" card.
   useEffect(() => { markTriedSession() }, [])
-  // Jump to the Collections workspace with a recorded session selected.
-  const viewInCollections = useCallback((sessionId: string) => {
+  // Jump to the Sessions view with a recorded session selected.
+  const viewInSessions = useCallback((sessionId: string) => {
     useUIStore.getState().setCollectionsPendingSessionId(sessionId)
+    useUIStore.getState().setCollectionsView('sessions')
     useUIStore.getState().setSurface('playlists')
   }, [])
   // Finish recording: persist the session, then surface it as a chip that links
-  // to Collections (where recorded sessions live).
+  // to the Sessions view (where recorded sessions live).
   const handleSaveSession = useCallback((name: string) => {
     const saved = stopRecording(name)
     setSavePromptOpen(false)
@@ -511,11 +526,11 @@ export function MixPanel(): JSX.Element {
     cancelRecording()
     setSavePromptOpen(false)
   }, [])
-  // "Recorded sessions" now lives in Collections — jump there, newest selected.
+  // "Recorded sessions" lives in the Sessions view — jump there, newest selected.
   const openRecordedSessions = useCallback(() => {
     const latest = useLibraryStore.getState().mixSessions[0]
-    viewInCollections(latest?.id ?? '')
-  }, [viewInCollections])
+    viewInSessions(latest?.id ?? '')
+  }, [viewInSessions])
   // Double-click a tag in the picker: add it as a generator at the front and fade in.
   const startTagNow = useCallback((tag: string) => {
     const st = useLibraryStore.getState()
@@ -702,7 +717,7 @@ export function MixPanel(): JSX.Element {
                 Start
               </button>
               <button type="button" onClick={() => setNamingSession(false)}
-                className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors">
+                className="text-[10px] text-gray-500 hover:text-gray-400 transition-colors">
                 Cancel
               </button>
             </span>
@@ -711,14 +726,14 @@ export function MixPanel(): JSX.Element {
             <span className="flex items-center gap-2">
               <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse shrink-0" />
               <span className="text-xs text-gray-300 truncate max-w-[160px]">{preRecordName || 'Recording…'}</span>
-              <span className="text-[10px] text-gray-600 tabular-nums shrink-0">{fmt((Date.now() - recording.startedAt) / 1000)}</span>
+              <span className="text-[10px] text-gray-500 tabular-nums shrink-0">{fmt((Date.now() - recording.startedAt) / 1000)}</span>
             </span>
           ) : savePromptOpen ? (
             /* Step 3: confirm save after stopping */
             <span className="flex items-center gap-2">
               <span className="w-2 h-2 bg-red-500 rounded-full shrink-0" />
               <span className="text-xs text-gray-300 truncate max-w-[160px]">{preRecordName || 'Recording'}</span>
-              <span className="text-[10px] text-gray-600">—</span>
+              <span className="text-[10px] text-gray-500">—</span>
               <button type="button"
                 disabled={!recording?.trackCount}
                 onClick={() => { handleSaveSession(preRecordName.trim()); setSessionSaveName('') }}
@@ -726,27 +741,27 @@ export function MixPanel(): JSX.Element {
                 Save
               </button>
               <button type="button" onClick={() => setSavePromptOpen(false)}
-                className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors">
+                className="text-[10px] text-gray-500 hover:text-gray-400 transition-colors">
                 Keep recording
               </button>
               <button type="button" onClick={handleDiscardSession}
-                className="text-[10px] text-gray-600 hover:text-red-400 transition-colors">
+                className="text-[10px] text-gray-500 hover:text-red-400 transition-colors">
                 Discard
               </button>
             </span>
           ) : savedSession ? (
-            /* Just saved a recording — persistent chip linking to Collections */
+            /* Just saved a recording — persistent chip linking to Sessions */
             <span className="flex items-center min-w-0 gap-2">
               <span className="w-2 h-2 rounded-full bg-accent shrink-0" />
               <span className="text-xs text-gray-300 truncate">
                 Saved <span className="text-gray-400">&lsquo;{savedSession.name}&rsquo;</span>
               </span>
-              <button type="button" onClick={() => viewInCollections(savedSession.id)}
+              <button type="button" onClick={() => viewInSessions(savedSession.id)}
                 className="text-[10px] text-accent hover:text-accent/80 transition-colors shrink-0 whitespace-nowrap">
-                View in Collections →
+                View in Sessions →
               </button>
               <button type="button" onClick={() => setSavedSession(null)} title="Dismiss"
-                className="text-gray-600 transition-colors hover:text-gray-400 shrink-0">
+                className="text-gray-500 transition-colors hover:text-gray-400 shrink-0">
                 <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 2l8 8M10 2l-8 8" /></svg>
               </button>
             </span>
@@ -777,18 +792,18 @@ export function MixPanel(): JSX.Element {
             return (
               <span className="flex items-center gap-1.5 shrink-0">
                 <span
-                  className={`text-xs truncate cursor-default select-none ${displayName ? 'text-gray-400' : 'text-gray-600'}`}
+                  className={`text-xs truncate cursor-default select-none ${displayName ? 'text-gray-400' : 'text-gray-500'}`}
                   onDoubleClick={() => { if (canRename && displayName) { setRenameValue(displayName); setRenamingSession(true) } }}
                   title={canRename ? 'Double-click to rename' : undefined}
                 >
-                  <span className="text-gray-600">Session:</span>{' '}
+                  <span className="text-gray-500">Session:</span>{' '}
                   {displayName ?? 'Untitled'}
                 </span>
                 {canRename && (
                   <button
                     type="button"
                     onClick={() => { if (displayName) { setRenameValue(displayName); setRenamingSession(true) } }}
-                    className="text-gray-600 transition-colors hover:text-gray-300"
+                    className="text-gray-500 transition-colors hover:text-gray-300"
                     title="Rename session"
                   >
                     <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -828,6 +843,17 @@ export function MixPanel(): JSX.Element {
               </button>
             )
           )}
+          <button
+            type="button"
+            disabled={mixQueue.length === 0}
+            onClick={() => setReadyCheckOpen(true)}
+            title="Check every queued track is on this Mac before you start"
+            className="flex items-center gap-1 px-2 py-0.5 text-[10px] rounded border border-surface-border text-gray-400 hover:text-gray-200 hover:bg-surface-hover transition-colors disabled:opacity-40 disabled:pointer-events-none"
+          >
+            <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M2 6.5l2.5 2.5L10 3" /></svg>
+            Check files
+          </button>
+          <ReadyCheckDialog open={readyCheckOpen} onClose={() => setReadyCheckOpen(false)} subject="this session's queue" items={readyCheckItems} />
           {!isPro ? (
             <button type="button" onClick={() => setUpsellOpen(true)} title="Loading templates & sessions is a Pro feature"
               className="flex items-center gap-1 bg-surface-panel border border-surface-border rounded px-2 py-0.5 text-[10px] text-gray-500 hover:text-accent hover:border-accent/50 transition-colors">
@@ -859,7 +885,7 @@ export function MixPanel(): JSX.Element {
               {loadSel && (!loadSel.startsWith('sys:') || isAdmin) && (
                 <button type="button" onClick={deleteLoadSelection}
                   title={loadSel.startsWith('ses:') ? 'Delete this recorded session' : loadSel.startsWith('sys:') ? 'Delete this system preset (admin)' : 'Delete this template'}
-                  className="text-gray-600 transition-colors hover:text-gray-400">
+                  className="text-gray-500 transition-colors hover:text-gray-400">
                   <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 3h8M4.5 3V2h3v1M4 3v6M6 3v6M8 3v6M3 3l.5 7h5l.5-7" /></svg>
                 </button>
               )}
@@ -941,7 +967,7 @@ export function MixPanel(): JSX.Element {
             
 
             <div className="flex items-center justify-between">
-              <span className="flex items-center gap-2 text-[9px] uppercase tracking-widest text-gray-600">
+              <span className="flex items-center gap-2 text-[9px] uppercase tracking-widest text-gray-500">
                 Now Playing{npDragOver && <span className="tracking-normal normal-case text-accent"> — drop to fade in</span>}
               </span>
               {state.fading && state.outgoing ? (
@@ -950,7 +976,7 @@ export function MixPanel(): JSX.Element {
                     <path d="M1 5h9l-2-2M15 11H6l2 2" />
                   </svg>
                   <span className="truncate max-w-[130px] text-gray-400">{state.outgoing.trackTitle || state.outgoing.fileName}</span>
-                  <span className="text-gray-600">→</span>
+                  <span className="text-gray-500">→</span>
                   <span className="truncate max-w-[130px] text-gray-300">{cur ? (cur.trackTitle || cur.fileName) : ''}</span>
                   <span className="tabular-nums">· {fadeRemaining.toFixed(1)}s</span>
                 </span>
@@ -967,10 +993,10 @@ export function MixPanel(): JSX.Element {
                 className="flex flex-col items-center justify-center gap-2 py-8 m-2 mt-2 mb-4 transition-colors border-2 border-dashed rounded-lg"
                 style={{ borderColor: npDragOver ? '#6366f1' : '#2a2a3a', background: npDragOver ? 'rgba(99,102,241,0.06)' : 'transparent' }}
               >
-                <svg className="text-gray-700 w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                <svg className="text-gray-600 w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M9 19V6l12-3v13" /><circle cx="6" cy="19" r="3" /><circle cx="18" cy="16" r="3" />
                 </svg>
-                <span className="text-[11px] text-gray-600">
+                <span className="text-[11px] text-gray-500">
                   {npDragOver ? 'Drop to start playing' : 'Drag a track here to start'}
                 </span>
               </div>
@@ -981,7 +1007,7 @@ export function MixPanel(): JSX.Element {
                     <img src={cur.albumImageUrl} alt="" className="object-cover rounded w-11 h-11 shrink-0" />
                   ) : (
                     <div className="flex items-center justify-center rounded w-11 h-11 shrink-0 bg-surface-hover">
-                      <svg className="w-4 h-4 text-gray-600" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55A4 4 0 1014 17V7h4V3h-6z" /></svg>
+                      <svg className="w-4 h-4 text-gray-500" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3v10.55A4 4 0 1014 17V7h4V3h-6z" /></svg>
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
@@ -1016,7 +1042,7 @@ export function MixPanel(): JSX.Element {
                 <div className="h-0.5 mt-1 bg-surface-border rounded overflow-hidden">
                   {state.fading && <div className="h-full bg-accent transition-[width] duration-100" style={{ width: `${fadeProgress * 100}%` }} />}
                 </div>
-                <div className="flex items-center justify-between mt-1 font-mono text-[10px] tabular-nums text-gray-600">
+                <div className="flex items-center justify-between mt-1 font-mono text-[10px] tabular-nums text-gray-500">
                   <span>{fmt(state.currentTime)}</span>
                   <span className="text-gray-500">−{fmt(Math.max(0, state.duration - state.currentTime))} left</span>
                   <span>{fmt(state.duration)}</span>
@@ -1027,21 +1053,21 @@ export function MixPanel(): JSX.Element {
 
           {/* Up next queue */}
           <div data-tour="session-queue" className="flex items-center justify-between px-4 pt-3 pb-1.5 shrink-0">
-            <span className="text-[9px] uppercase tracking-widest text-gray-600">
-              Up Next {mixQueue.length > 0 && <span className="tracking-normal text-gray-700 normal-case">· {mixQueue.length}</span>}
+            <span className="text-[9px] uppercase tracking-widest text-gray-500">
+              Up Next {mixQueue.length > 0 && <span className="tracking-normal text-gray-600 normal-case">· {mixQueue.length}</span>}
             </span>
             <div className="flex items-center gap-2">
               {mixQueue.length > 0 && (
                 openingMix ? (
                   <button type="button" onClick={cancelOpenInMix}
-                    className="flex items-center gap-1 text-[10px] text-gray-600 hover:text-gray-400 transition-colors">
+                    className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-400 transition-colors">
                     <svg className="w-2.5 h-2.5 animate-spin" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M6 1v2M6 9v2M1 6h2M9 6h2" /></svg>
                     Cancel
                   </button>
                 ) : (
                   <button type="button" onClick={handleOpenInMix}
                     title="Open the current queue as an editable timeline in Mix"
-                    className="flex items-center gap-1 text-[10px] text-gray-600 hover:text-gray-300 transition-colors">
+                    className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-300 transition-colors">
                     <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M1 3h10M1 6h10M1 9h6" />
                     </svg>
@@ -1052,7 +1078,7 @@ export function MixPanel(): JSX.Element {
               {mixQueue.length > 0 && (
                 <>
                   <span className="w-px h-3 bg-gray-700 shrink-0" />
-                  <button type="button" onClick={() => clearQueue()} className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors">Clear</button>
+                  <button type="button" onClick={() => clearQueue()} className="text-[10px] text-gray-500 hover:text-gray-400 transition-colors">Clear</button>
                 </>
               )}
             </div>
@@ -1068,13 +1094,13 @@ export function MixPanel(): JSX.Element {
                 className="m-4 flex flex-col items-center justify-center py-6 border-2 border-dashed rounded-lg gap-1.5 transition-colors"
                 style={{ borderColor: queueDragOver ? '#6366f1' : '#2a2a3a', background: queueDragOver ? 'rgba(99,102,241,0.06)' : 'transparent' }}
               >
-                <svg className="w-6 h-6 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                <svg className="w-6 h-6 text-gray-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M8 6h13M8 12h13M8 18h13" /><path d="M3 6h.01M3 12h.01M3 18h.01" />
                 </svg>
-                <span className="text-[11px] text-gray-600 text-center">
+                <span className="text-[11px] text-gray-500 text-center">
                   {queueDragOver ? 'Drop to add to queue' : 'Drag tracks here to queue them'}
                 </span>
-                <span className="text-[10px] text-gray-700">Playing randomly from pool ({pool.length})</span>
+                <span className="text-[10px] text-gray-600">Playing randomly from pool ({pool.length})</span>
               </div>
             ) : (
               <QueueList items={mixQueue} fileById={fileById} tagPreviews={tagPreviews} selectedId={selectedId}
@@ -1082,7 +1108,7 @@ export function MixPanel(): JSX.Element {
                 onPlayUpcoming={playUpcomingTrack} onSetMatch={setQueueItemMatch} onSetDuration={setQueueItemDuration}
                 onShowMore={showMoreUpcoming} onShuffleUpcoming={shuffleUpcoming} onReorderUpcoming={reorderUpcoming} />
             )}
-            <div className="px-4 py-2 text-[10px] text-gray-700">
+            <div className="px-4 py-2 text-[10px] text-gray-600">
               then: {mixTailTags ? `random from ${mixTailTags.join(', ')}` : `random from pool (${pool.length})`}
             </div>
           </div>
@@ -1131,14 +1157,14 @@ export function MixPanel(): JSX.Element {
               <div className="flex items-center gap-1 text-[10px]">
                 {(['any', 'all'] as const).map((m) => (
                   <button key={m} type="button" onClick={() => setMixMatchMode(m)}
-                    className={`px-1.5 py-0.5 rounded transition-colors ${mixMatchMode === m ? 'text-accent bg-accent/10' : 'text-gray-600 hover:text-gray-400'}`}>
+                    className={`px-1.5 py-0.5 rounded transition-colors ${mixMatchMode === m ? 'text-accent bg-accent/10' : 'text-gray-500 hover:text-gray-400'}`}>
                     {m === 'any' ? 'Any' : 'All'}
                   </button>
                 ))}
               </div>
               {(mixTags.length > 0 || featureTargetEntries.length > 0) && (
                 <div className="flex items-center gap-3 ml-auto">
-                  {mixTags.length > 0 && <button type="button" onClick={() => clearMixTags()} className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors">Clear</button>}
+                  {mixTags.length > 0 && <button type="button" onClick={() => clearMixTags()} className="text-[10px] text-gray-500 hover:text-gray-400 transition-colors">Clear</button>}
                   <button type="button" onClick={() => addQueueTags(mixTags, mixMatchMode, mixFeatureTargets)}
                     className="text-[10px] px-2.5 py-1 rounded border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 transition-colors disabled:opacity-40 shrink-0"
                     title="Add these tags + the current Feel EQ to Up Next as a generator">
@@ -1160,7 +1186,7 @@ export function MixPanel(): JSX.Element {
                       onDoubleClick={() => { startTagNow(tag); setTagQuery(''); setPickerOpen(false) }}
                       title="Add more tags to filter available tracks · double-click to play this tag now"
                       className="w-full flex items-center justify-between px-2.5 py-1 text-left text-[11px] text-gray-400 hover:bg-surface-hover hover:text-gray-200 transition-colors">
-                      <span className="truncate">{tag}</span><span className="text-[10px] text-gray-600 tabular-nums ml-2">{count}</span>
+                      <span className="truncate">{tag}</span><span className="text-[10px] text-gray-500 tabular-nums ml-2">{count}</span>
                     </button>
                   ))}
                 </div>
@@ -1190,8 +1216,8 @@ export function MixPanel(): JSX.Element {
                   })}
                 </div>
                 <div className="flex items-center justify-between pt-2 mt-1 border-t border-surface-border">
-                  <p className="text-[9px] text-gray-600 leading-tight max-w-[70%]">Boost (up) or cut (down) each dimension — center is off. Steers the pool &amp; the random pick.</p>
-                  {featureTargetEntries.length > 0 && <button type="button" onClick={() => clearMixFeatureTargets()} className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors shrink-0">Reset</button>}
+                  <p className="text-[9px] text-gray-500 leading-tight max-w-[70%]">Boost (up) or cut (down) each dimension — center is off. Steers the pool &amp; the random pick.</p>
+                  {featureTargetEntries.length > 0 && <button type="button" onClick={() => clearMixFeatureTargets()} className="text-[10px] text-gray-500 hover:text-gray-400 transition-colors shrink-0">Reset</button>}
                 </div>
               </div>
             )}
@@ -1215,28 +1241,28 @@ export function MixPanel(): JSX.Element {
               /* Free tier: locked "Add a playlist" — disabled look, opens the Pro upsell. */
               <div className="flex items-center gap-2 mt-2">
                 <button type="button" onClick={() => setUpsellOpen(true)} title="Adding a playlist is a Pro feature"
-                  className="flex-1 min-w-0 flex items-center justify-between gap-2 bg-surface-panel border border-surface-border rounded px-2 py-1 text-[11px] text-gray-600 opacity-70 hover:opacity-100 hover:text-accent hover:border-accent/50 transition-colors">
+                  className="flex-1 min-w-0 flex items-center justify-between gap-2 bg-surface-panel border border-surface-border rounded px-2 py-1 text-[11px] text-gray-500 opacity-70 hover:opacity-100 hover:text-accent hover:border-accent/50 transition-colors">
                   <span className="truncate">Add a playlist…</span>
                   <svg className="w-3 h-3 text-accent shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><rect x="2.5" y="5.5" width="7" height="5" rx="1" /><path d="M4 5.5V4a2 2 0 014 0v1.5" /></svg>
                 </button>
-                <span className="text-[10px] px-2.5 py-1 rounded border border-surface-border text-gray-700 shrink-0 cursor-default select-none">Add to queue</span>
+                <span className="text-[10px] px-2.5 py-1 rounded border border-surface-border text-gray-600 shrink-0 cursor-default select-none">Add to queue</span>
               </div>
             )}
           </div>
 
           {/* Available pool */}
           <div className="flex items-center justify-between px-4 pt-3 pb-1.5 shrink-0">
-            <span className="text-[9px] uppercase tracking-widest text-gray-600">Available <span className="tracking-normal text-gray-700 normal-case">· {filteredPool.length}{featureTargetEntries.length > 0 ? ' · sorted by feel' : ''}</span></span>
+            <span className="text-[9px] uppercase tracking-widest text-gray-500">Available <span className="tracking-normal text-gray-600 normal-case">· {filteredPool.length}{featureTargetEntries.length > 0 ? ' · sorted by feel' : ''}</span></span>
           </div>
           <div className="flex items-center gap-1.5 mx-3 mb-2 px-2 py-1 rounded border border-surface-border bg-surface-panel/40 shrink-0">
-            <svg className="w-3 h-3 text-gray-600 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="5" cy="5" r="3.5" /><path d="M8 8l2.5 2.5" /></svg>
+            <svg className="w-3 h-3 text-gray-500 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="5" cy="5" r="3.5" /><path d="M8 8l2.5 2.5" /></svg>
             <input type="text" value={poolQuery} onChange={(e) => setPoolQuery(e.target.value)} placeholder="Search tracks…"
               className="flex-1 min-w-0 bg-transparent text-[11px] text-gray-300 placeholder-gray-700 outline-none" />
-            {poolQuery && <button type="button" onClick={() => setPoolQuery('')} className="text-gray-600 hover:text-gray-400 shrink-0"><svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 2l8 8M10 2l-8 8" /></svg></button>}
+            {poolQuery && <button type="button" onClick={() => setPoolQuery('')} className="text-gray-500 hover:text-gray-400 shrink-0"><svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 2l8 8M10 2l-8 8" /></svg></button>}
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto" onScroll={onPoolScroll}>
             {filteredPool.length === 0 ? (
-              <p className="px-4 py-6 text-[11px] text-gray-600 text-center">{pool.length === 0 ? 'No tracks match these tags.' : `No tracks match “${poolQuery}”.`}</p>
+              <p className="px-4 py-6 text-[11px] text-gray-500 text-center">{pool.length === 0 ? 'No tracks match these tags.' : `No tracks match “${poolQuery}”.`}</p>
             ) : (
               <PoolList items={visiblePool} selectedId={selectedId} infoId={selectedFileId} previewFileId={previewFileId} onAdd={addQueueTrack} onSelect={setSelectedId} onInfo={selectFile} onPreview={handlePreviewRequest} poolIds={poolIds} />
             )}
@@ -1264,7 +1290,7 @@ export function MixPanel(): JSX.Element {
         {/* Centre — transport buttons */}
         <div className="flex items-center gap-1 shrink-0">
           <button type="button" disabled={!canPlay} onClick={() => eng()?.toggle()}
-            className={`flex items-center justify-center w-9 h-9 mx-1 rounded-full transition-colors ${!canPlay ? 'text-gray-600 cursor-not-allowed bg-surface-hover' : state.playing ? 'text-white bg-accent hover:bg-accent/80' : 'text-gray-300 bg-surface-hover hover:bg-accent hover:text-white'}`}
+            className={`flex items-center justify-center w-9 h-9 mx-1 rounded-full transition-colors ${!canPlay ? 'text-gray-500 cursor-not-allowed bg-surface-hover' : state.playing ? 'text-white bg-accent hover:bg-accent/80' : 'text-gray-300 bg-surface-hover hover:bg-accent hover:text-white'}`}
             title={state.playing ? 'Pause' : 'Play'}>
             {state.playing
               ? <svg className="w-3.5 h-3.5" viewBox="0 0 10 10" fill="currentColor"><rect x="1.5" y="1" width="2.5" height="8" rx="0.5" /><rect x="6" y="1" width="2.5" height="8" rx="0.5" /></svg>
@@ -1289,7 +1315,7 @@ export function MixPanel(): JSX.Element {
             </span>
           ) : (
             <button type="button" onClick={() => setUpsellOpen(true)} title="Recording is a Pro feature"
-              className="relative flex items-center justify-center w-8 h-8 text-gray-600 transition-colors border rounded-full border-surface-border hover:text-accent hover:border-accent/50 hover:bg-accent/10 shrink-0">
+              className="relative flex items-center justify-center w-8 h-8 text-gray-500 transition-colors border rounded-full border-surface-border hover:text-accent hover:border-accent/50 hover:bg-accent/10 shrink-0">
               <span className="w-2.5 h-2.5 bg-gray-600 rounded-full" />
               <svg className="absolute -top-1 -right-1 w-3.5 h-3.5 text-accent bg-surface-panel rounded-full p-px" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2.5" y="5.5" width="7" height="5" rx="1" /><path d="M4 5.5V4a2 2 0 014 0v1.5" />
@@ -1388,7 +1414,7 @@ export function MixPanel(): JSX.Element {
 function PreviewIconButton({ onClick }: { onClick: (e: React.MouseEvent) => void }): JSX.Element {
   return (
     <button type="button" onClick={onClick} title="Preview / set fade-in point"
-      className="flex items-center justify-center w-4 h-4 text-gray-600 transition-all opacity-0 shrink-0 group-hover:opacity-100 hover:text-accent">
+      className="flex items-center justify-center w-4 h-4 text-gray-500 transition-all opacity-0 shrink-0 group-hover:opacity-100 hover:text-accent">
       <svg className="w-3 h-3" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round">
         <path d="M1 7h1.5M11.5 7H13M4 4v6M6 2.5v9M8 4.5v5M10 3.5v7" />
       </svg>
@@ -1427,7 +1453,7 @@ const PoolList = memo(function PoolList({ items, selectedId, infoId, previewFile
             setQueuedIds((prev) => new Set(prev).add(f.id))
             setTimeout(() => setQueuedIds((prev) => { const next = new Set(prev); next.delete(f.id); return next }), 1200)
           }}
-            className={`flex items-center justify-center w-4 h-4 transition-colors rounded shrink-0 ${justQueued ? 'text-accent' : 'text-gray-600 hover:text-accent hover:bg-accent/10'}`} title="Add to queue">
+            className={`flex items-center justify-center w-4 h-4 transition-colors rounded shrink-0 ${justQueued ? 'text-accent' : 'text-gray-500 hover:text-accent hover:bg-accent/10'}`} title="Add to queue">
             {justQueued ? (
               <svg className="w-2.5 h-2.5" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M1.5 5.5l2.5 2.5 4.5-5" /></svg>
             ) : (
@@ -1435,7 +1461,7 @@ const PoolList = memo(function PoolList({ items, selectedId, infoId, previewFile
             )}
           </button>
           <button type="button" onClick={(e) => { e.stopPropagation(); isPreviewing ? onPreview(null, []) : onPreview(f.id, poolIds) }}
-            className={`flex items-center justify-center w-4 h-4 rounded-full border transition-colors shrink-0 ${isPreviewing ? 'opacity-100 border-accent text-accent' : 'text-gray-600 border-gray-600 opacity-0 group-hover:opacity-100 hover:border-accent hover:text-accent'}`}
+            className={`flex items-center justify-center w-4 h-4 rounded-full border transition-colors shrink-0 ${isPreviewing ? 'opacity-100 border-accent text-accent' : 'text-gray-500 border-gray-600 opacity-0 group-hover:opacity-100 hover:border-accent hover:text-accent'}`}
             title={isPreviewing ? 'Stop preview' : 'Preview track'}>
             {isPreviewing ? (
               <svg className="w-2 h-2" viewBox="0 0 10 10" fill="currentColor"><rect x="1.5" y="1" width="2.5" height="8" rx="0.5" /><rect x="6" y="1" width="2.5" height="8" rx="0.5" /></svg>
@@ -1449,12 +1475,12 @@ const PoolList = memo(function PoolList({ items, selectedId, infoId, previewFile
               <span className="w-8 h-1 overflow-hidden rounded bg-surface-border">
                 <span className="block h-full bg-accent" style={{ width: `${feel * 100}%` }} />
               </span>
-              <span className="w-6 text-right text-[9px] tabular-nums text-gray-600">{Math.round(feel * 100)}%</span>
+              <span className="w-6 text-right text-[9px] tabular-nums text-gray-500">{Math.round(feel * 100)}%</span>
             </span>
           )}
-          {feel == null && f.artist && <span className="truncate text-gray-600 max-w-[34%]">{f.artist}</span>}
+          {feel == null && f.artist && <span className="truncate text-gray-500 max-w-[34%]">{f.artist}</span>}
           <button type="button" onClick={(e) => { e.stopPropagation(); onInfo(isInfo ? null : f.id) }}
-            className={`flex items-center justify-center w-4 h-4 rounded-full border transition-all shrink-0 ${isInfo ? 'opacity-100 border-accent text-accent' : 'text-gray-600 border-transparent opacity-0 group-hover:opacity-100 hover:text-accent'}`}
+            className={`flex items-center justify-center w-4 h-4 rounded-full border transition-all shrink-0 ${isInfo ? 'opacity-100 border-accent text-accent' : 'text-gray-500 border-transparent opacity-0 group-hover:opacity-100 hover:text-accent'}`}
             title={isInfo ? 'Hide track details' : 'Show track details'}>
             <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="6" r="5" /><path d="M6 5.2v3" /><circle cx="6" cy="3.4" r="0.5" fill="currentColor" stroke="none" /></svg>
           </button>
@@ -1523,12 +1549,12 @@ const QueueList = memo(function QueueList({ items, fileById, tagPreviews, select
               className={`group flex items-center gap-2 px-4 py-1.5 text-[11px] cursor-grab active:cursor-grabbing transition-colors ${
                 selectedId && file?.id === selectedId ? 'bg-accent/10 text-gray-200' : 'text-gray-400 hover:bg-surface-hover'
               } ${overId === item.id && dragId && dragId !== item.id ? 'border-t border-accent' : 'border-t border-transparent'} ${dragId === item.id ? 'opacity-40' : ''}`}>
-              <svg className="w-3 h-3 text-gray-700 shrink-0" viewBox="0 0 12 12" fill="currentColor"><circle cx="4" cy="3" r="1" /><circle cx="8" cy="3" r="1" /><circle cx="4" cy="6" r="1" /><circle cx="8" cy="6" r="1" /><circle cx="4" cy="9" r="1" /><circle cx="8" cy="9" r="1" /></svg>
-              <span className="w-4 text-right text-gray-700 tabular-nums">{i + 1}</span>
+              <svg className="w-3 h-3 text-gray-600 shrink-0" viewBox="0 0 12 12" fill="currentColor"><circle cx="4" cy="3" r="1" /><circle cx="8" cy="3" r="1" /><circle cx="4" cy="6" r="1" /><circle cx="8" cy="6" r="1" /><circle cx="4" cy="9" r="1" /><circle cx="8" cy="9" r="1" /></svg>
+              <span className="w-4 text-right text-gray-600 tabular-nums">{i + 1}</span>
               {item.kind === 'track' ? (
                 <>
-                  <span className="flex-1 truncate">{file ? (file.trackTitle || file.fileName) : <span className="italic text-gray-700">missing track</span>}</span>
-                  {file?.artist && <span className="truncate text-gray-600 max-w-[30%]">{file.artist}</span>}
+                  <span className="flex-1 truncate">{file ? (file.trackTitle || file.fileName) : <span className="italic text-gray-600">missing track</span>}</span>
+                  {file?.artist && <span className="truncate text-gray-500 max-w-[30%]">{file.artist}</span>}
                   {file && <PreviewIconButton onClick={(e) => { e.stopPropagation(); onSelect(file.id) }} />}
                 </>
               ) : (
@@ -1536,7 +1562,7 @@ const QueueList = memo(function QueueList({ items, fileById, tagPreviews, select
                   {preview && preview.tracks.length > 0 ? (
                     <button type="button" onClick={(e) => { e.stopPropagation(); setCollapsed((c) => ({ ...c, [item.id]: !c[item.id] })) }}
                       onDoubleClick={(e) => e.stopPropagation()}
-                      className="text-gray-600 transition-colors shrink-0 hover:text-accent"
+                      className="text-gray-500 transition-colors shrink-0 hover:text-accent"
                       title={collapsed[item.id] ? 'Show queued tracks' : 'Hide queued tracks'}>
                       <svg className={`w-2.5 h-2.5 transition-transform ${collapsed[item.id] ? '' : 'rotate-90'}`} viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3.5 2l4 3-4 3" /></svg>
                     </button>
@@ -1581,20 +1607,20 @@ const QueueList = memo(function QueueList({ items, fileById, tagPreviews, select
                         {item.durationMin == null ? '∞' : `${item.durationMin}m`}
                       </button>
                       <button type="button" onClick={(e) => { e.stopPropagation(); setDurDraft(item.durationMin?.toString() ?? ''); setDurEditId(item.id) }}
-                        className="flex items-center px-0.5 rounded-r border border-l-0 border-surface-border text-gray-600 hover:text-accent bg-surface-panel transition-colors"
+                        className="flex items-center px-0.5 rounded-r border border-l-0 border-surface-border text-gray-500 hover:text-accent bg-surface-panel transition-colors"
                         title="Type a specific length in minutes (e.g. 8)">
                         <svg className="w-2.5 h-2.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"><path d="M8.5 1.5l2 2L4 10l-2.5.5L2 8z" /></svg>
                       </button>
                     </span>
                   )}
-                  <span className="text-gray-700 shrink-0 tabular-nums"
+                  <span className="text-gray-600 shrink-0 tabular-nums"
                     title={preview ? `${preview.count} matching track${preview.count === 1 ? '' : 's'} in your library` : 'Random tracks from the pool (no tag filter)'}>
                     {preview ? `${preview.count}` : 'random'}
                   </span>
                 </span>
               )}
               <button type="button" onClick={(e) => { e.stopPropagation(); onRemove(item.id) }}
-                className="flex items-center justify-center w-4 h-4 text-gray-700 transition-all opacity-0 shrink-0 group-hover:opacity-100 hover:text-gray-300" title="Remove">
+                className="flex items-center justify-center w-4 h-4 text-gray-600 transition-all opacity-0 shrink-0 group-hover:opacity-100 hover:text-gray-300" title="Remove">
                 <svg className="w-2.5 h-2.5" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 2l6 6M8 2l-6 6" /></svg>
               </button>
             </div>
@@ -1605,11 +1631,11 @@ const QueueList = memo(function QueueList({ items, fileById, tagPreviews, select
               const canShowMore = shown < preview.count
               return (
                 <div className="pb-1.5 pl-10 pr-4">
-                  <div className="flex items-center gap-1.5 py-0.5 text-[9px] text-gray-700">
+                  <div className="flex items-center gap-1.5 py-0.5 text-[9px] text-gray-600">
                     <span className="tracking-wide uppercase">Next {visible.length}{preview.count > preview.tracks.length ? ` of ${preview.count}` : ''}</span>
                     {preview.tracks.length > 1 && (
                       <button type="button" onClick={(e) => { e.stopPropagation(); onShuffleUpcoming(item.id) }}
-                        className="inline-flex items-center gap-1 px-1 ml-auto text-gray-600 transition-colors border rounded hover:text-accent bg-surface-panel border-surface-border" title="Shuffle these tracks">
+                        className="inline-flex items-center gap-1 px-1 ml-auto text-gray-500 transition-colors border rounded hover:text-accent bg-surface-panel border-surface-border" title="Shuffle these tracks">
                         <span aria-hidden>⟳</span> Random
                       </button>
                     )}
@@ -1628,14 +1654,14 @@ const QueueList = memo(function QueueList({ items, fileById, tagPreviews, select
                       onDragOver={(e) => { if (upDrag?.itemId === item.id) { e.preventDefault(); e.stopPropagation(); if (upOverId !== f.id) setUpOverId(f.id) } }}
                       onDrop={(e) => { if (upDrag?.itemId === item.id) { e.preventDefault(); e.stopPropagation(); if (upDrag.fromId !== f.id) onReorderUpcoming(item.id, upDrag.fromId, f.id) } setUpDrag(null); setUpOverId(null) }}
                       onDragEnd={() => { setUpDrag(null); setUpOverId(null) }}
-                      className={`group flex items-center gap-2 py-0.5 text-[10px] text-gray-600 hover:text-gray-300 cursor-grab active:cursor-grabbing transition-colors ${
+                      className={`group flex items-center gap-2 py-0.5 text-[10px] text-gray-500 hover:text-gray-300 cursor-grab active:cursor-grabbing transition-colors ${
                         upDrag?.itemId === item.id && upOverId === f.id && upDrag.fromId !== f.id ? 'border-t border-accent' : 'border-t border-transparent'
                       } ${upDrag?.fromId === f.id ? 'opacity-40' : ''}`}
                       title="Double-click to play now · drag to reorder or onto Now Playing">
-                      <svg className="w-2.5 h-2.5 text-gray-700 transition-opacity opacity-40 shrink-0 group-hover:opacity-70" viewBox="0 0 12 12" fill="currentColor"><circle cx="4" cy="3" r="1" /><circle cx="8" cy="3" r="1" /><circle cx="4" cy="6" r="1" /><circle cx="8" cy="6" r="1" /><circle cx="4" cy="9" r="1" /><circle cx="8" cy="9" r="1" /></svg>
-                      <span className="w-4 text-right text-gray-700 tabular-nums text-[9px] shrink-0">{idx + 1}</span>
+                      <svg className="w-2.5 h-2.5 text-gray-600 transition-opacity opacity-40 shrink-0 group-hover:opacity-70" viewBox="0 0 12 12" fill="currentColor"><circle cx="4" cy="3" r="1" /><circle cx="8" cy="3" r="1" /><circle cx="4" cy="6" r="1" /><circle cx="8" cy="6" r="1" /><circle cx="4" cy="9" r="1" /><circle cx="8" cy="9" r="1" /></svg>
+                      <span className="w-4 text-right text-gray-600 tabular-nums text-[9px] shrink-0">{idx + 1}</span>
                       <span className="truncate">{f.trackTitle || f.fileName}</span>
-                      {f.artist && <span className="truncate text-gray-700 max-w-[34%]">{f.artist}</span>}
+                      {f.artist && <span className="truncate text-gray-600 max-w-[34%]">{f.artist}</span>}
                     </div>
                   ))}
                   {canShowMore && (
@@ -1646,7 +1672,7 @@ const QueueList = memo(function QueueList({ items, fileById, tagPreviews, select
                         setShownCount((s) => ({ ...s, [item.id]: next }))
                         if (next > preview.tracks.length) onShowMore(item.id)
                       }}
-                      className="mt-0.5 pl-4 text-[9px] text-gray-600 hover:text-accent transition-colors">
+                      className="mt-0.5 pl-4 text-[9px] text-gray-500 hover:text-accent transition-colors">
                       Show 10 more
                     </button>
                   )}
