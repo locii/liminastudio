@@ -85,18 +85,22 @@ export interface ExportConfig {
   format: 'wav' | 'mp3'
   sampleRate: 44100 | 48000
   bitrate?: 128 | 192 | 320
+  /** Chapter markers: embedded in MP3 exports, and/or written to a .cue sheet. */
+  chapters?: { title: string; start: number; end: number }[]
+  writeCueSheet?: boolean
 }
 
 export interface ElectronAPI {
   // File
   openAudioFiles: () => Promise<AudioFileMeta[]>
-  readAudioFile: (filePath: string) => Promise<Uint8Array>
   getAudioMetadata: (filePath: string) => Promise<AudioFileMeta | null>
 
   // Waveform — peaks are flat interleaved [min, max] pairs in normalized [-1, 1].
   // Returned length is numPeaks * 2.
   getWaveformPeaks: (filePath: string, numPeaks?: number) => Promise<number[]>
   getPeakLevel: (filePath: string) => Promise<number>
+  /** Integrated loudness (LUFS) and true peak (dBTP), EBU R128. Cached on disk. */
+  getLoudness: (filePath: string) => Promise<{ integratedLufs: number; truePeakDb: number }>
   exportWaveformData: (json: string, defaultName?: string) => Promise<string | null>
 
   // Session
@@ -119,11 +123,16 @@ export interface ElectronAPI {
   // Export
   showSaveAudio: (format: 'wav' | 'mp3') => Promise<string | null>
   exportMix: (config: ExportConfig) => Promise<string>
+  /** Abort the running export; exportMix then rejects with 'EXPORT_CANCELLED'. */
+  cancelExport: () => Promise<void>
+  /** Native OK/Cancel prompt for destructive actions; resolves true on confirm. */
+  confirm: (opts: { message: string; detail?: string; confirmLabel?: string }) => Promise<boolean>
   onExportProgress: (callback: (pct: number) => void) => () => void
   exportTracklistPDF: (html: string) => Promise<string | null>
 
   // Audio server
-  getAudioServerPort: () => Promise<number>
+  /** `http://127.0.0.1:<port>/<token>` — prefix for audio-server file URLs. */
+  getAudioServerBase: () => Promise<string>
 
   /** Resolve the absolute path of a dropped/selected DOM File (Electron webUtils). */
   getPathForFile: (file: File) => string
@@ -131,6 +140,11 @@ export interface ElectronAPI {
   openExternal: (url: string) => Promise<void>
   /** Returns the subset of the given paths that do NOT exist on disk. */
   checkFilesExist: (paths: string[]) => Promise<string[]>
+  /** Classify each path: on disk, online-only cloud placeholder, 0-byte, or missing. */
+  checkFilesReady: (paths: string[]) => Promise<{ path: string; status: 'ok' | 'cloud' | 'empty' | 'missing' }[]>
+  /** Read each online-only file so the sync app downloads it. */
+  makeFilesAvailable: (paths: string[]) => Promise<{ path: string; ok: boolean }[]>
+  onMakeAvailableProgress: (callback: (p: { done: number; total: number; path: string; ok: boolean }) => void) => () => void
   readClipboardPath: () => Promise<string | null>
   lookupLibraryFile: (filePath: string) => Promise<LibraryMfbData | null>
   importFile: () => Promise<{ content: string; filePath: string; ext: string } | null>

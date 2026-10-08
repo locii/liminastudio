@@ -7,7 +7,9 @@ const pkg = JSON.parse(readFileSync('./package.json', 'utf-8')) as { version: st
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    // music-metadata v8+ is ESM-only; bundle it into the CJS main build rather
+    // than require()-ing it at runtime.
+    plugins: [externalizeDepsPlugin({ exclude: ['music-metadata'] })],
   },
   preload: {
     plugins: [externalizeDepsPlugin()],

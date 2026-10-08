@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { audioFileUrl, getAudioServerBase } from '../lib/audioStreamUrl'
 import { useLibraryStore } from '../store/libraryStore'
 import { syncLibraryToMfb } from '../lib/syncLibrary'
 
@@ -20,10 +21,10 @@ export function IndexingLog({ onClose, onSelectFile }: Props): JSX.Element {
 
   const [playingFileId, setPlayingFileId] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
-  const audioPortRef = useRef<number>(0)
+  const audioBaseRef = useRef<string>('')
 
   useEffect(() => {
-    window.electronAPI.getAudioServerPort().then((p) => { audioPortRef.current = p })
+    getAudioServerBase().then((b) => { audioBaseRef.current = b })
   }, [])
 
   useEffect(() => () => { audioRef.current?.pause() }, [])
@@ -34,7 +35,7 @@ export function IndexingLog({ onClose, onSelectFile }: Props): JSX.Element {
       setPlayingFileId(null)
     } else {
       if (audioRef.current) { audioRef.current.pause(); audioRef.current = null }
-      const audio = new Audio(`http://127.0.0.1:${audioPortRef.current}${encodeURI(filePath)}`)
+      const audio = new Audio(audioFileUrl(audioBaseRef.current, filePath))
       audio.onended = () => setPlayingFileId(null)
       audio.play().catch(console.error)
       audioRef.current = audio
@@ -63,10 +64,10 @@ export function IndexingLog({ onClose, onSelectFile }: Props): JSX.Element {
         <div className="flex justify-between items-center px-4 py-3 border-b border-surface-border shrink-0">
           <span className="text-[11px] font-semibold text-gray-300 uppercase tracking-wider">MFB Indexing Log</span>
           <div className="flex gap-3 items-center">
-            <span className="text-[10px] text-gray-600 tabular-nums">
+            <span className="text-[10px] text-gray-500 tabular-nums">
               {matchCount} matched · {indexed.length - matchCount} no match · {queue.length} queued
             </span>
-            <button type="button" onClick={onClose} className="text-gray-500 transition-colors hover:text-gray-400">
+            <button type="button" onClick={onClose} aria-label="Close" title="Close" className="text-gray-500 transition-colors hover:text-gray-300">
               <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                 <path d="M2 2l8 8M10 2l-8 8" />
               </svg>
@@ -79,7 +80,7 @@ export function IndexingLog({ onClose, onSelectFile }: Props): JSX.Element {
           {/* Full indexed list */}
           {indexed.length > 0 && (
             <section>
-              <p className="px-4 pt-3 pb-1 text-[10px] text-gray-600 uppercase tracking-wider">
+              <p className="px-4 pt-3 pb-1 text-[10px] text-gray-500 uppercase tracking-wider">
                 Indexed — {indexed.length}
               </p>
               {[...indexed].reverse().map((f) => {
@@ -117,7 +118,7 @@ export function IndexingLog({ onClose, onSelectFile }: Props): JSX.Element {
                         className={`w-5 h-5 flex items-center justify-center rounded-full border transition-colors ${
                           playingFileId === f.id
                             ? 'border-accent text-accent !opacity-100'
-                            : 'border-gray-600 text-gray-600 hover:border-accent hover:text-accent'
+                            : 'border-gray-600 text-gray-500 hover:border-accent hover:text-accent'
                         }`}
                       >
                         {playingFileId === f.id ? (
@@ -143,7 +144,7 @@ export function IndexingLog({ onClose, onSelectFile }: Props): JSX.Element {
                           <button
                             type="button"
                             onClick={() => clearPendingMatch(f.id)}
-                            className="px-2 py-0.5 text-[10px] rounded border border-surface-border text-gray-600 hover:text-gray-400 transition-colors"
+                            className="px-2 py-0.5 text-[10px] rounded border border-surface-border text-gray-500 hover:text-gray-400 transition-colors"
                           >
                             Skip
                           </button>
@@ -170,13 +171,13 @@ export function IndexingLog({ onClose, onSelectFile }: Props): JSX.Element {
           {/* Queue — truncated */}
           {queue.length > 0 && (
             <section>
-              <p className="px-4 pt-3 pb-1 text-[10px] text-gray-600 uppercase tracking-wider">
+              <p className="px-4 pt-3 pb-1 text-[10px] text-gray-500 uppercase tracking-wider">
                 Up Next — {queue.length}
               </p>
               {queue.slice(0, 5).map((f, i) => (
                 <div key={f.id} className="flex items-center gap-2.5 px-4 py-1.5 group">
                   <span className="text-[10px] text-gray-500 tabular-nums w-4 shrink-0 text-right">{i + 1}</span>
-                  <p className="text-[11px] text-gray-600 truncate flex-1 min-w-0">{f.fileName}</p>
+                  <p className="text-[11px] text-gray-500 truncate flex-1 min-w-0">{f.fileName}</p>
                   <div className="flex gap-1 items-center opacity-0 transition-opacity shrink-0 group-hover:opacity-100">
                     <button
                       type="button"
@@ -185,7 +186,7 @@ export function IndexingLog({ onClose, onSelectFile }: Props): JSX.Element {
                       className={`w-5 h-5 flex items-center justify-center rounded-full border transition-colors ${
                         playingFileId === f.id
                           ? 'border-accent text-accent !opacity-100'
-                          : 'border-gray-600 text-gray-600 hover:border-accent hover:text-accent'
+                          : 'border-gray-600 text-gray-500 hover:border-accent hover:text-accent'
                       }`}
                     >
                       {playingFileId === f.id ? (

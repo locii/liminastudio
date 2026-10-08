@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useLibraryStore } from '../store/libraryStore'
-import { audioStreamUrl } from '../lib/audioStreamUrl'
+import { audioStreamUrl, getAudioServerBase } from '../lib/audioStreamUrl'
 
 interface Props {
   fileId: string
@@ -47,13 +47,13 @@ export function WaveformPreview({ fileId, filePath, duration, peaks, sampleRate,
 
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
-  const [port, setPort] = useState<number | null>(null)
+  const [port, setPort] = useState<string | null>(null)
   const [loadingPeaks, setLoadingPeaks] = useState(false)
   const [canvasWidth, setCanvasWidth] = useState(0)
 
   // Get audio server port once
   useEffect(() => {
-    window.electronAPI.getAudioServerPort().then(setPort)
+    getAudioServerBase().then(setPort)
   }, [])
 
   // Track canvas size so the draw effect re-fires once layout is complete
@@ -223,7 +223,7 @@ export function WaveformPreview({ fileId, filePath, duration, peaks, sampleRate,
             </svg>
           )}
         </button>
-        <span className="font-mono text-[10px] tabular-nums text-gray-600">
+        <span className="font-mono text-[10px] tabular-nums text-gray-500">
           {formatTime(currentTime)}
           <span className="mx-1 text-gray-500">/</span>
           {formatTime(duration)}

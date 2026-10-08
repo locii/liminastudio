@@ -7,13 +7,13 @@ const api: ElectronAPI = {
   // the only way to resolve a dropped/selected file's absolute path.
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   openAudioFiles: () => ipcRenderer.invoke('file:openAudioFiles'),
-  readAudioFile: (filePath) => ipcRenderer.invoke('file:readAudioFile', filePath),
   getAudioMetadata: (filePath) => ipcRenderer.invoke('file:getAudioMetadata', filePath),
 
   // Waveform
   getWaveformPeaks: (filePath, numPeaks) =>
     ipcRenderer.invoke('audio:getWaveformPeaks', filePath, numPeaks),
   getPeakLevel: (filePath) => ipcRenderer.invoke('audio:getPeakLevel', filePath),
+  getLoudness: (filePath) => ipcRenderer.invoke('audio:getLoudness', filePath),
   exportWaveformData: (json, defaultName) =>
     ipcRenderer.invoke('audio:exportWaveformData', json, defaultName),
 
@@ -37,6 +37,8 @@ const api: ElectronAPI = {
   // Export
   showSaveAudio: (format) => ipcRenderer.invoke('dialog:showSaveAudio', format),
   exportMix: (config: ExportConfig) => ipcRenderer.invoke('export:mix', config),
+  cancelExport: () => ipcRenderer.invoke('export:cancel'),
+  confirm: (opts) => ipcRenderer.invoke('ui:confirm', opts),
   exportTracklistPDF: (html: string) => ipcRenderer.invoke('export:tracklistPDF', html),
   onExportProgress: (callback) => {
     const handler = (_: unknown, pct: number): void => callback(pct)
@@ -45,11 +47,18 @@ const api: ElectronAPI = {
   },
 
   // Audio server
-  getAudioServerPort: () => ipcRenderer.invoke('audio:getServerPort'),
+  getAudioServerBase: () => ipcRenderer.invoke('audio:getServerBase'),
 
   showInFolder: (filePath) => ipcRenderer.invoke('shell:showInFolder', filePath),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   checkFilesExist: (paths) => ipcRenderer.invoke('file:checkExist', paths),
+  checkFilesReady: (paths) => ipcRenderer.invoke('file:checkReady', paths),
+  makeFilesAvailable: (paths) => ipcRenderer.invoke('file:makeAvailable', paths),
+  onMakeAvailableProgress: (callback) => {
+    const handler = (_: Electron.IpcRendererEvent, p: { done: number; total: number; path: string; ok: boolean }): void => callback(p)
+    ipcRenderer.on('file:makeAvailableProgress', handler)
+    return () => { ipcRenderer.removeListener('file:makeAvailableProgress', handler) }
+  },
   readClipboardPath: () => ipcRenderer.invoke('shell:readClipboardPath'),
 
   lookupLibraryFile: (filePath) => ipcRenderer.invoke('library:lookupFile', filePath),

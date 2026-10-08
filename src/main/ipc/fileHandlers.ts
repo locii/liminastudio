@@ -4,6 +4,7 @@ import { spawn } from 'child_process'
 import { basename, join } from 'path'
 import * as mm from 'music-metadata'
 import ffmpegPath from 'ffmpeg-static'
+import { safeOpenExternal } from '../safeOpenExternal'
 
 export interface LibraryMfbData {
   mfbTrackId: number
@@ -43,17 +44,13 @@ export function registerFileHandlers(): void {
     return metas
   })
 
-  ipcMain.handle('file:readAudioFile', async (_, filePath: string): Promise<Buffer> => {
-    return fs.readFile(filePath)
-  })
-
   ipcMain.handle(
     'file:getAudioMetadata',
     async (_, filePath: string): Promise<AudioFileMeta | null> => parseMeta(filePath)
   )
 
   ipcMain.handle('shell:showInFolder', (_e, filePath: string) => shell.showItemInFolder(filePath))
-  ipcMain.handle('shell:openExternal', (_e, url: string) => shell.openExternal(url))
+  ipcMain.handle('shell:openExternal', (_e, url: string) => safeOpenExternal(url))
 
   // Given a list of file paths, return only those that are missing on disk.
   // Used by Mix to flag clips whose audio can't be found so the session still
@@ -66,6 +63,53 @@ export function registerFileHandlers(): void {
       })
     )
     return missing
+  })
+
+  // Pre-session check: is each file actually on this disk? Cloud-synced folders
+  // (Dropbox, iCloud) leave "online-only" placeholders that look present but
+  // read as silence or 0 duration mid-session.
+  //   ok      — readable, data on disk
+  //   cloud   — placeholder with a size but no blocks allocated (dataless);
+  //             reading it makes the sync app download it
+  //   empty   — 0 bytes; nothing to download from here
+  //   missing — not found
+  ipcMain.handle('file:checkReady', async (_e, paths: string[]): Promise<{ path: string; status: 'ok' | 'cloud' | 'empty' | 'missing' }[]> => {
+    return Promise.all(paths.map(async (p) => {
+      try {
+        const st = await fs.stat(p)
+        if (st.size === 0) return { path: p, status: 'empty' as const }
+        if (st.blocks === 0) return { path: p, status: 'cloud' as const }
+        return { path: p, status: 'ok' as const }
+      } catch {
+        return { path: p, status: 'missing' as const }
+      }
+    }))
+  })
+
+  // Ask the sync app to download online-only files by reading from each one —
+  // the OS blocks the read until the file is materialised. One at a time (they
+  // can be large), each capped so a stuck download can't hang the queue.
+  // Progress is reported per file on 'file:makeAvailableProgress'.
+  ipcMain.handle('file:makeAvailable', async (e, paths: string[]): Promise<{ path: string; ok: boolean }[]> => {
+    const results: { path: string; ok: boolean }[] = []
+    let done = 0
+    for (const p of paths) {
+      const ok = await new Promise<boolean>((resolve) => {
+        const timer = setTimeout(() => resolve(false), 5 * 60_000)
+        ;(async () => {
+          const fh = await fs.open(p, 'r')
+          try { await fh.read(Buffer.alloc(65536), 0, 65536, 0) } finally { await fh.close() }
+          const st = await fs.stat(p)
+          return st.size > 0 && st.blocks > 0
+        })()
+          .then((v) => { clearTimeout(timer); resolve(v) })
+          .catch(() => { clearTimeout(timer); resolve(false) })
+      })
+      results.push({ path: p, ok })
+      done++
+      if (!e.sender.isDestroyed()) e.sender.send('file:makeAvailableProgress', { done, total: paths.length, path: p, ok })
+    }
+    return results
   })
 
   const AUDIO_EXTS = new Set(['.mp3', '.wav', '.flac', '.aiff', '.aif', '.m4a', '.ogg'])

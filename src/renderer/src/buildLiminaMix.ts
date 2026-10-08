@@ -1,5 +1,6 @@
 import type { LibraryFile } from './library/types'
 import type { SessionPlayedTrack } from './library/store/libraryStore'
+import { audioStreamUrl, getAudioServerBase } from './library/lib/audioStreamUrl'
 
 /**
  * Builds an editable Mix session (two alternating tracks, A/B, with cue-point /
@@ -32,10 +33,10 @@ function windowRMS(data: Float32Array, startSample: number, windowSamples: numbe
   return Math.sqrt(sum / (end - startSample))
 }
 
-async function analyzeTransitions(filePath: string, sampleRate: number, port: number): Promise<{ fadeIn: number; fadeOut: number }> {
+async function analyzeTransitions(filePath: string, sampleRate: number, serverBase: string): Promise<{ fadeIn: number; fadeOut: number }> {
   const defaults = { fadeIn: 3, fadeOut: 8 }
   const work = async (): Promise<{ fadeIn: number; fadeOut: number }> => {
-    const res = await fetch(`http://127.0.0.1:${port}${encodeURI(filePath)}?sr=${sampleRate}`)
+    const res = await fetch(audioStreamUrl(serverBase, filePath, sampleRate))
     const arrayBuffer = await res.arrayBuffer()
     const ctx = new AudioContext()
     const audio = await ctx.decodeAudioData(arrayBuffer)
@@ -119,7 +120,7 @@ export interface SegmentSpan {
  */
 export async function buildTwoTrackMix(items: MixItem[], segmentSpans?: SegmentSpan[]): Promise<object> {
   const orderedFiles = items.map((it) => it.file)
-  const port = await window.electronAPI.getAudioServerPort()
+  const serverBase = await getAudioServerBase()
 
   // True durations (ffmpeg — WAV RIFF headers lie) + transition analysis, in parallel.
   const [trueDurations, analyses] = await Promise.all([
@@ -135,7 +136,7 @@ export async function buildTwoTrackMix(items: MixItem[], segmentSpans?: SegmentS
           fadeOut: (clipEndMs - f.outroStartMs) / 1000,
         })
       }
-      return analyzeTransitions(f.filePath, f.sampleRate, port)
+      return analyzeTransitions(f.filePath, f.sampleRate, serverBase)
     })),
   ])
 

@@ -13,7 +13,9 @@ export function registerPdfHandlers(getMainWindow: () => BrowserWindow | null): 
 
     const hidden = new BrowserWindow({
       show: false,
-      webPreferences: { sandbox: true },
+      // The HTML embeds track/playlist names from files and the MFB API — no
+      // script should ever run while rendering it.
+      webPreferences: { sandbox: true, javascript: false },
     })
     await hidden.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
     // printBackground defaults to false in Electron; without it any shaded rows,

@@ -3,3 +3,6 @@ dist/
 out/
 *.tsbuildinfo
 .DS_Store
+
+# Personal session files (contain absolute local paths)
+*.limina

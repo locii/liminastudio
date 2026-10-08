@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { audioFileUrl, getAudioServerBase } from '../lib/audioStreamUrl'
 import { useLibraryStore } from '../store/libraryStore'
 import type { LibraryFile } from '../types'
 import { pickColor } from './WaveformPreview'
+import { useDialog } from '../../useDialog'
 
 interface Props {
   file: LibraryFile
@@ -87,6 +89,7 @@ function drawFadeShape(
 }
 
 export function MixCueEditorModal({ file, onSave, onClose }: Props): JSX.Element {
+  const { ref: dialogRef, dialogProps } = useDialog(true, onClose)
   const updateFile = useLibraryStore((s) => s.updateFile)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [canvasW, setCanvasW] = useState(0)
@@ -104,7 +107,7 @@ export function MixCueEditorModal({ file, onSave, onClose }: Props): JSX.Element
   const [viewStart, setViewStart] = useState(0)
   const [viewEnd, setViewEnd] = useState(1)
 
-  const [serverPort, setServerPort] = useState<number | null>(null)
+  const [serverBase, setServerBase] = useState<string | null>(null)
   const [playing, setPlaying] = useState(false)
   const [playheadTime, setPlayheadTime] = useState<number | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -132,7 +135,7 @@ export function MixCueEditorModal({ file, onSave, onClose }: Props): JSX.Element
   const duration = file.duration
 
   useEffect(() => {
-    window.electronAPI.getAudioServerPort().then(setServerPort)
+    getAudioServerBase().then(setServerBase)
     return () => {
       audioRef.current?.pause()
       audioRef.current = null
@@ -148,7 +151,7 @@ export function MixCueEditorModal({ file, onSave, onClose }: Props): JSX.Element
   }, [])
 
   const togglePlay = useCallback(() => {
-    if (!serverPort) return
+    if (!serverBase) return
     const audio = audioRef.current
     if (audio && !audio.paused) {
       audio.pause()
@@ -157,7 +160,7 @@ export function MixCueEditorModal({ file, onSave, onClose }: Props): JSX.Element
       return
     }
     const clipStartS = clipStartRef.current != null ? clipStartRef.current / 1000 : 0
-    const src = `http://127.0.0.1:${serverPort}${encodeURI(file.filePath)}`
+    const src = audioFileUrl(serverBase, file.filePath)
     const newAudio = audio ?? new Audio(src)
     if (!audio) {
       newAudio.src = src
@@ -171,7 +174,7 @@ export function MixCueEditorModal({ file, onSave, onClose }: Props): JSX.Element
     }).catch(console.error)
     const onEnded = (): void => { setPlaying(false); if (rafRef.current) cancelAnimationFrame(rafRef.current) }
     newAudio.addEventListener('ended', onEnded, { once: true })
-  }, [serverPort, file.filePath, tickPlayhead])
+  }, [serverBase, file.filePath, tickPlayhead])
 
   useEffect(() => {
     const onOtherAudio = (e: Event): void => {
@@ -526,15 +529,15 @@ export function MixCueEditorModal({ file, onSave, onClose }: Props): JSX.Element
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
-      <div className="relative bg-surface-panel rounded-xl shadow-2xl w-full max-w-4xl flex flex-col overflow-hidden">
+      <div ref={dialogRef} {...dialogProps} aria-labelledby="cue-editor-title" className="relative bg-surface-panel rounded-xl shadow-2xl w-full max-w-4xl flex flex-col overflow-hidden">
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-surface-border shrink-0">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-white">Mix Cue Editor</h2>
+            <h2 id="cue-editor-title" className="text-sm font-semibold text-white">Mix Cue Editor</h2>
             <p className="text-[11px] text-gray-500 mt-0.5 truncate">{file.trackTitle || file.fileName}</p>
           </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors ml-4 shrink-0">
+          <button onClick={onClose} aria-label="Close" title="Close" className="text-gray-500 hover:text-white transition-colors ml-4 shrink-0">
             <svg className="w-4 h-4" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
               <path d="M2 2l8 8M10 2l-8 8" />
             </svg>
@@ -555,7 +558,7 @@ export function MixCueEditorModal({ file, onSave, onClose }: Props): JSX.Element
             <button
               type="button"
               onClick={togglePlay}
-              disabled={!serverPort}
+              disabled={!serverBase}
               className={`flex items-center justify-center w-6 h-6 rounded-full border transition-colors disabled:opacity-40 ${
                 playing
                   ? 'border-accent text-accent'
@@ -574,7 +577,7 @@ export function MixCueEditorModal({ file, onSave, onClose }: Props): JSX.Element
                 </svg>
               )}
             </button>
-            <p className="text-[10px] text-gray-600 select-none">
+            <p className="text-[10px] text-gray-500 select-none">
               Scroll to zoom · Drag to pan · Drag handles to adjust
               {loadingPeaks && <span className="ml-2 text-gray-500">Loading waveform…</span>}
             </p>
@@ -613,9 +616,9 @@ export function MixCueEditorModal({ file, onSave, onClose }: Props): JSX.Element
             )}
 
             {introEnd != null && (
-              <p className="text-[10px] text-gray-600 mt-0.5">
+              <p className="text-[10px] text-gray-500 mt-0.5">
                 Curve: <span className="text-teal-500">{curveLabel(fadeInCurve)}</span>
-                <span className="text-gray-700 ml-1">— drag the circle on the waveform</span>
+                <span className="text-gray-600 ml-1">— drag the circle on the waveform</span>
               </p>
             )}
           </div>
@@ -648,9 +651,9 @@ export function MixCueEditorModal({ file, onSave, onClose }: Props): JSX.Element
             )}
 
             {outroStart != null && (
-              <p className="text-[10px] text-gray-600 mt-0.5">
+              <p className="text-[10px] text-gray-500 mt-0.5">
                 Curve: <span className="text-orange-500">{curveLabel(fadeOutCurve)}</span>
-                <span className="text-gray-700 ml-1">— drag the circle on the waveform</span>
+                <span className="text-gray-600 ml-1">— drag the circle on the waveform</span>
               </p>
             )}
           </div>
@@ -718,7 +721,7 @@ export function MixCueEditorModal({ file, onSave, onClose }: Props): JSX.Element
 
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 mt-1 border-t border-surface-border shrink-0">
-          <div className="flex items-center gap-4 text-[10px] text-gray-600">
+          <div className="flex items-center gap-4 text-[10px] text-gray-500">
             <span className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-400 inline-block" />Clip
             </span>

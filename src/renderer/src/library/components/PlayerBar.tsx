@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useLibraryStore } from '../store/libraryStore'
 import { useUpdaterStore } from '../store/updaterStore'
-import { audioStreamUrl } from '../lib/audioStreamUrl'
+import { audioStreamUrl, getAudioServerBase } from '../lib/audioStreamUrl'
 import { NowPlayingOverlay } from './NowPlayingOverlay'
 
 const WAVEFORM_COLORS: [string, string][] = [
@@ -52,7 +52,7 @@ export function PlayerBar(): JSX.Element | null {
   const playingRef = useRef(false)
   playingRef.current = playing
   const [currentTime, setCurrentTime] = useState(0)
-  const [port, setPort] = useState<number | null>(null)
+  const [port, setPort] = useState<string | null>(null)
   const [canvasWidth, setCanvasWidth] = useState(0)
   const [loadingPeaks, setLoadingPeaks] = useState(false)
   const [shuffle, setShuffle] = useState(false)
@@ -61,7 +61,7 @@ export function PlayerBar(): JSX.Element | null {
   const [overlayOpen, setOverlayOpen] = useState(false)
 
   useEffect(() => {
-    window.electronAPI.getAudioServerPort().then(setPort)
+    getAudioServerBase().then(setPort)
   }, [])
 
   // Track canvas width for redraw
@@ -229,6 +229,9 @@ export function PlayerBar(): JSX.Element | null {
       if (!file) return
       const tag = (e.target as HTMLElement).tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      // In Session Mode the arrows belong to the live session (MixPanel's
+      // ArrowRight = next track); don't also step the preview.
+      if (useLibraryStore.getState().mixMode) return
       if (e.key === 'ArrowLeft') { e.preventDefault(); navigate(-1) }
       else if (e.key === 'ArrowRight') { e.preventDefault(); navigate(1) }
     }
@@ -282,15 +285,15 @@ export function PlayerBar(): JSX.Element | null {
       {downloadPercent > 0 ? `${downloadPercent}%` : '…'}
     </div>
   ) : checkState === 'checking' ? (
-    <span className="text-[10px] text-gray-600 shrink-0">checking…</span>
+    <span className="text-[10px] text-gray-500 shrink-0">checking…</span>
   ) : checkState === 'upToDate' ? (
-    <span className="text-[10px] text-gray-600 shrink-0">up to date</span>
+    <span className="text-[10px] text-gray-500 shrink-0">up to date</span>
   ) : (
     <button
       type="button"
       onClick={handleCheckForUpdates}
       title="Check for updates"
-      className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors tabular-nums shrink-0"
+      className="text-[10px] text-gray-500 hover:text-gray-400 transition-colors tabular-nums shrink-0"
     >
       v{__APP_VERSION__}
     </button>
@@ -356,7 +359,7 @@ export function PlayerBar(): JSX.Element | null {
           onClick={() => setShuffle((v) => !v)}
           title={shuffle ? 'Shuffle on' : 'Shuffle off'}
           className={`flex justify-center items-center w-6 h-6 rounded transition-colors ml-0.5 ${
-            shuffle ? 'text-accent' : 'text-gray-600 hover:text-gray-300'
+            shuffle ? 'text-accent' : 'text-gray-500 hover:text-gray-300'
           }`}
         >
           <svg className="w-3.5 h-3.5" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
@@ -377,7 +380,7 @@ export function PlayerBar(): JSX.Element | null {
             <img src={albumImageUrl} alt="" className="object-cover w-10 h-10 rounded" />
           ) : (
             <div className="w-10 h-10 rounded bg-surface-hover flex items-center justify-center">
-              <svg className="w-4 h-4 text-gray-600" viewBox="0 0 24 24" fill="currentColor">
+              <svg className="w-4 h-4 text-gray-500" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 3v10.55A4 4 0 1014 17V7h4V3h-6z" />
               </svg>
             </div>
@@ -403,9 +406,9 @@ export function PlayerBar(): JSX.Element | null {
       />
 
       {/* Time */}
-      <span className="font-mono text-[10px] tabular-nums text-gray-600 shrink-0 text-right w-20">
+      <span className="font-mono text-[10px] tabular-nums text-gray-500 shrink-0 text-right w-20">
         {formatTime(currentTime)}
-        <span className="mx-0.5 text-gray-700">/</span>
+        <span className="mx-0.5 text-gray-600">/</span>
         {formatTime(file.duration)}
       </span>
 
@@ -417,7 +420,7 @@ export function PlayerBar(): JSX.Element | null {
         type="button"
         onClick={close}
         title="Close player"
-        className="flex justify-center items-center w-5 h-5 text-gray-600 rounded transition-colors shrink-0 hover:text-gray-300"
+        className="flex justify-center items-center w-5 h-5 text-gray-500 rounded transition-colors shrink-0 hover:text-gray-300"
       >
         <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
           <path d="M2 2l8 8M10 2l-8 8" />

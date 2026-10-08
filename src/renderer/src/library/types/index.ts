@@ -17,4 +17,4 @@ export type {
   SessionPresetPayload,
 } from '../../../../shared/types'
 
-export { BREATHWORK_PHASES, PHASE_COLORS, phaseColorForTag, mfbTrackUrl, appleMusicDeepLink } from '../../../../shared/types'
+export { BREATHWORK_PHASES, PHASE_COLORS, phaseColorForTag, mfbTrackUrl, appleMusicDeepLink, escapeHtml } from '../../../../shared/types'

@@ -1,4 +1,5 @@
 import { MixEngine } from './mixEngine'
+import { getAudioServerBase } from './audioStreamUrl'
 import { useLibraryStore } from '../store/libraryStore'
 import { makeMixProvider, activeGroupTimerElapsed } from './mixSelection'
 
@@ -31,6 +32,6 @@ export function getMixEngine(): MixEngine {
     const id = s.current?.id ?? null
     if (id && id !== lastPlayedId) { lastPlayedId = id; store.markPlayed(id) }
   })
-  window.electronAPI.getAudioServerPort().then((p) => e.setPort(p))
+  getAudioServerBase().then((b) => e.setServerBase(b))
   return e
 }

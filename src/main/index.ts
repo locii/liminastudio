@@ -1,9 +1,10 @@
-import { app, shell, BrowserWindow, Menu, ipcMain, clipboard, nativeImage } from 'electron'
+import { app, BrowserWindow, Menu, ipcMain, clipboard, nativeImage, dialog } from 'electron'
 import type { MenuItemConstructorOptions } from 'electron'
 import { join, extname, basename } from 'path'
 import { promises as fs, createReadStream, readFileSync } from 'fs'
 import { createServer } from 'http'
 import { spawn } from 'child_process'
+import { randomBytes, timingSafeEqual } from 'crypto'
 import ffmpegPath from 'ffmpeg-static'
 import type { AddressInfo } from 'net'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -95,19 +96,59 @@ async function inspectWavFormat(filePath: string): Promise<{ formatCode: number;
 }
 
 let audioServerPort = 0
+const activeTranscodes = new Set<import('child_process').ChildProcess>()
+
+// Never leave transcodes running after the app quits.
+app.on('will-quit', () => {
+  for (const ff of activeTranscodes) ff.kill('SIGKILL')
+})
+
+// Per-launch secret that every audio-server URL must carry as its first path
+// segment ("/<token>/Users/…/track.mp3"). Without it, any web page open in the
+// user's browser could probe 127.0.0.1 ports and read arbitrary local files
+// through this server.
+const audioServerToken = randomBytes(32).toString('hex')
+const audioServerTokenBuf = Buffer.from(audioServerToken)
+
+// Only audio is ever served — refuse anything else even with a valid token.
+const SERVABLE_AUDIO_EXTS = new Set([
+  'mp3', 'wav', 'flac', 'aiff', 'aif', 'm4a', 'mp4', 'aac', 'ogg', 'oga', 'opus', 'webm', 'wma', 'caf', 'alac',
+])
+
+function hasValidAudioToken(segment: string): boolean {
+  const buf = Buffer.from(segment)
+  return buf.length === audioServerTokenBuf.length && timingSafeEqual(buf, audioServerTokenBuf)
+}
 
 function startAudioServer(): void {
   const ffmpeg = (ffmpegPath as string).replace('app.asar', 'app.asar.unpacked')
 
   const server = createServer(async (req, res) => {
+    // Reject DNS-rebinding requests: only the literal loopback host is valid.
+    if (req.headers.host !== `127.0.0.1:${audioServerPort}`) {
+      res.writeHead(403); res.end(); return
+    }
+
+    const url = new URL('http://x' + (req.url ?? ''))
+    const slash = url.pathname.indexOf('/', 1)
+    if (slash < 0 || !hasValidAudioToken(url.pathname.slice(1, slash))) {
+      res.writeHead(403); res.end(); return
+    }
+
     res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Accept-Ranges', 'bytes')
 
-    const url = new URL('http://x' + (req.url ?? ''))
-    let filePath = decodeURIComponent(url.pathname)
+    let filePath: string
+    try { filePath = decodeURIComponent(url.pathname.slice(slash)) } catch {
+      res.writeHead(400); res.end(); return
+    }
     // Windows drive paths arrive as "/C:/a/b.mp3" — drop the leading slash so
     // fs/ffmpeg get a valid "C:/a/b.mp3". POSIX paths ("/Users/…") are untouched.
     if (/^\/[A-Za-z]:\//.test(filePath)) filePath = filePath.slice(1)
+
+    if (!SERVABLE_AUDIO_EXTS.has(extname(filePath).slice(1).toLowerCase())) {
+      res.writeHead(403); res.end(); return
+    }
 
     let size = 0
     try { size = (await fs.stat(filePath)).size } catch {
@@ -167,9 +208,15 @@ function startAudioServer(): void {
     ]
     res.writeHead(200, { 'Content-Type': 'audio/flac' })
     const ff = spawn(ffmpeg, ffArgs)
+    activeTranscodes.add(ff)
+    ff.on('exit', () => activeTranscodes.delete(ff))
     ff.stdout.pipe(res)
     ff.stderr.resume()
-    req.on('close', () => ff.kill())
+    // Kill on the RESPONSE closing (client gone or stream finished). The old
+    // `req.on('close')` doesn't reliably fire when an <audio> element drops the
+    // connection, and ffmpeg then blocked forever writing to a dead pipe —
+    // installs left open for weeks accumulated dozens of stuck processes.
+    res.on('close', () => { if (ff.exitCode === null) ff.kill('SIGKILL') })
     ff.on('error', () => { res.end() })
   })
 
@@ -204,6 +251,7 @@ function createDragIcon(): Electron.NativeImage {
 }
 
 import { registerFileHandlers } from './ipc/fileHandlers'
+import { safeOpenExternal } from './safeOpenExternal'
 import { registerAudioHandlers } from './ipc/audioHandlers'
 import { registerFfmpegHandlers } from './ipc/ffmpegHandlers'
 import { registerSessionHandlers, getRecent } from './ipc/sessionHandlers'
@@ -262,6 +310,7 @@ async function createAppMenu(): Promise<void> {
         { label: 'Save As New Project…', accelerator: 'CmdOrCtrl+Shift+S', click: () => send('menu:saveProject') },
         { label: 'Revert to Backup…', click: () => send('menu:revertBackup') },
         { type: 'separator' },
+        { label: 'Pre-session Check…', click: () => send('menu:readyCheck') },
         { label: 'Export Mix…', accelerator: 'CmdOrCtrl+E', click: () => send('menu:export') },
         {
           label: 'Share',
@@ -275,6 +324,7 @@ async function createAppMenu(): Promise<void> {
         {
           label: 'Utilities',
           submenu: [
+            { label: 'Match Loudness of All Clips', click: () => send('menu:matchLoudness') },
             { label: 'Rebuild Waveforms', click: () => send('menu:rebuildWaveforms') },
             { label: 'Export Waveform Data…', click: () => send('menu:exportWaveformData') },
             { label: 'Sync MFB Data', click: () => send('menu:syncMfbData') },
@@ -290,6 +340,13 @@ async function createAppMenu(): Promise<void> {
         { label: 'Undo', accelerator: 'CmdOrCtrl+Z', click: () => send('menu:undo') },
         { label: 'Redo', accelerator: 'CmdOrCtrl+Shift+Z', click: () => send('menu:redo') },
         { type: 'separator' },
+        // macOS only routes Cmd+X/C/V to text fields through these roles. Mix's
+        // clip cut/copy/paste preventDefault()s the keydown outside text fields,
+        // which stops these from firing there.
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { type: 'separator' },
         // No accelerator: a plain-Backspace menu accelerator fires globally and
         // hijacks Backspace inside text inputs (can't delete typed text). The
         // renderer's own input-aware keydown handler covers Delete/Backspace on
@@ -302,7 +359,7 @@ async function createAppMenu(): Promise<void> {
       label: 'Help',
       submenu: [
         {
-          label: 'About Limina Mix',
+          label: 'About Limina Studio',
           click: () => {
             const version = app.getVersion()
             const year = new Date().getFullYear()
@@ -364,13 +421,13 @@ async function createAppMenu(): Promise<void> {
   button:hover { background: #3f3f46; color: #e5e7eb; }
 </style>
 </head><body>
-  ${logoSrc ? `<img src="${logoSrc}" alt="Limina Mix logo" />` : ''}
-  <h1>Limina Mix</h1>
+  ${logoSrc ? `<img src="${logoSrc}" alt="Limina Studio logo" />` : ''}
+  <h1>Limina Studio</h1>
   <div class="version">v${version}</div>
   <div class="divider"></div>
-  <p class="desc">A multitrack audio editor for Holotropic Breathwork facilitators.</p>
+  <p class="desc">Library, session player &amp; multitrack mixer for breathwork facilitators.</p>
   <div class="divider"></div>
-  <div class="meta">&copy; ${year} Anthony Olsen &nbsp;&middot;&nbsp; Built with Electron &amp; Tone.js</div>
+  <div class="meta">&copy; ${year} Anthony Olsen &nbsp;&middot;&nbsp; Built with Electron</div>
   <button onclick="window.close()">Close</button>
 <script>document.addEventListener('keydown', e => { if (e.key === 'Escape') window.close() })</script>
 </body></html>`
@@ -395,12 +452,15 @@ function createWindow(): void {
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
+      // Mix still starts clips with timers; never let Chromium throttle them
+      // when the window is hidden or minimised mid-session.
+      backgroundThrottling: false,
     },
   })
 
   mainWindow.on('ready-to-show', () => {
     mainWindow!.show()
-    mainWindow!.setTitle('Limina Mix')
+    mainWindow!.setTitle('Limina Studio')
     mainWindow!.webContents.setVisualZoomLevelLimits(1, 1)
     if (pendingOpenFile) {
       mainWindow!.webContents.send('session:fileOpened', pendingOpenFile)
@@ -409,7 +469,7 @@ function createWindow(): void {
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    void safeOpenExternal(details.url)
     return { action: 'deny' }
   })
 
@@ -455,7 +515,8 @@ app.whenReady().then(() => {
   }
 
   startAudioServer()
-  ipcMain.handle('audio:getServerPort', () => audioServerPort)
+  // Base URL (port + secret token) the renderer prefixes onto file paths.
+  ipcMain.handle('audio:getServerBase', () => `http://127.0.0.1:${audioServerPort}/${audioServerToken}`)
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -489,6 +550,22 @@ app.whenReady().then(() => {
   ipcMain.on('library:startDrag', (event, filePath: string) => {
     event.sender.startDrag({ file: filePath, icon: createDragIcon() })
     event.returnValue = null // required for sendSync
+  })
+
+  // Native confirmation for destructive actions. Resolves true on confirm.
+  ipcMain.handle('ui:confirm', async (_, opts: { message: string; detail?: string; confirmLabel?: string }): Promise<boolean> => {
+    const options = {
+      type: 'warning' as const,
+      message: String(opts.message),
+      detail: opts.detail ? String(opts.detail) : undefined,
+      buttons: [String(opts.confirmLabel ?? 'Delete'), 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+    }
+    const { response } = mainWindow
+      ? await dialog.showMessageBox(mainWindow, options)
+      : await dialog.showMessageBox(options)
+    return response === 0
   })
 
   // Copy a library file's path to the clipboard.

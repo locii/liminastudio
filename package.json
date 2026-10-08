@@ -10,19 +10,18 @@
     "preview": "electron-vite preview",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "package": "npm run build && electron-builder --config electron-builder.yml",
     "publish": "npm run build && electron-builder --config electron-builder.yml --publish always"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.0",
     "@electron-toolkit/utils": "^3.0.0",
-    "electron-updater": "^6.8.3",
+    "electron-updater": "^6.8.9",
     "ffmpeg-static": "^5.2.0",
-    "music-metadata": "^7.14.0",
+    "music-metadata": "^11.16.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "tone": "^14.7.77",
-    "wavesurfer.js": "^7.8.2",
     "zustand": "^4.5.4"
   },
   "devDependencies": {
@@ -33,7 +32,7 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.19",
-    "electron": "^43.3.0",
+    "electron": "^43.7.9",
     "electron-builder": "^24.13.3",
     "electron-vite": "^2.3.0",
     "postcss": "^8.4.39",

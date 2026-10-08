@@ -50,7 +50,7 @@ const FIRST_FADE_MS = 2000
 const AUDIO_SOURCE_ID = 'mix'
 
 export class MixEngine {
-  private port: number | null = null
+  private serverBase: string | null = null
   private decks: [HTMLAudioElement, HTMLAudioElement]
   private active: 0 | 1 = 0
   private xfadeVer = 0
@@ -103,7 +103,8 @@ export class MixEngine {
 
   // --- public API -----------------------------------------------------------
 
-  setPort(port: number): void { this.port = port }
+  /** Audio-server base URL (`http://127.0.0.1:<port>/<token>`). */
+  setServerBase(base: string): void { this.serverBase = base }
 
   /** Host supplies the next track given the id currently playing (or null). */
   setQueueProvider(fn: (currentId: string | null) => NextTrack | null): void {
@@ -159,7 +160,7 @@ export class MixEngine {
   get position(): number { return (this.decks[this.active].currentTime || 0) + this.currentStartS }
 
   play(): void {
-    if (this.port === null) return
+    if (this.serverBase === null) return
     this.ensureGraph()
     if (this.current) {
       // Resume the loaded deck.
@@ -239,13 +240,13 @@ export class MixEngine {
    * startup transient), then unmuted and faded up from 0 once playback begins.
    */
   private startDeck(idx: 0 | 1, file: LibraryFile, fadeMs: number, startMsOverride?: number): void {
-    if (this.port === null) return
+    if (this.serverBase === null) return
     this.ensureGraph()
     const el = this.decks[idx]
     const startMs = Math.max(0, startMsOverride != null ? startMsOverride : this.startMsFor(file))
     this.currentStartS = startMs / 1000
     this.setGain(idx, 0)
-    el.src = audioStreamUrl(this.port, file.filePath, file.sampleRate, startMs)
+    el.src = audioStreamUrl(this.serverBase, file.filePath, file.sampleRate, startMs)
     el.load()
     const ver = ++this.xfadeVer
     this.whenReady(el, ver, () => {
@@ -258,7 +259,7 @@ export class MixEngine {
 
   /** Load `file` onto the active deck and fade it in over `fadeMs`. */
   private load(file: LibraryFile, fadeMs = FIRST_FADE_MS, startMsOverride?: number, holdMs?: number): void {
-    if (this.port === null) return
+    if (this.serverBase === null) return
     this.startDeck(this.active, file, fadeMs, startMsOverride)
     this.current = file
     this.outroArmed = false
@@ -268,7 +269,7 @@ export class MixEngine {
   }
 
   private advance(mode: AdvanceMode): void {
-    if (this.port === null) return
+    if (this.serverBase === null) return
     const next = this.provider(this.current?.id ?? null)
     if (!next) return // nothing queued — let the current track ride out
 
@@ -287,7 +288,7 @@ export class MixEngine {
    * was triggered during a long 20s crossfade.
    */
   private crossfadeTo(next: LibraryFile, ms: number, offsetMs?: number, holdMs?: number): void {
-    if (this.port === null) return
+    if (this.serverBase === null) return
     this.ensureGraph()
 
     // Interrupting an in-progress crossfade: fade from whichever deck is currently
@@ -319,8 +320,8 @@ export class MixEngine {
     this.currentStartS = startMs / 1000
 
     const swapAndStart = (): void => {
-      if (this.port === null || ver !== this.xfadeVer) return
-      incoming.src = audioStreamUrl(this.port, next.filePath, next.sampleRate, startMs)
+      if (this.serverBase === null || ver !== this.xfadeVer) return
+      incoming.src = audioStreamUrl(this.serverBase, next.filePath, next.sampleRate, startMs)
       incoming.load()
       this.setGain(nextIdx, 0)
       this.whenReady(incoming, ver, () => {
@@ -360,7 +361,7 @@ export class MixEngine {
 
   /** Fade a specific track in now (e.g. dragged onto Now Playing, or preview). */
   fadeTo(file: LibraryFile): void {
-    if (this.port === null) return
+    if (this.serverBase === null) return
     // Respect the configured crossfade length, even when nothing's playing yet.
     if (!this.current) { this.setPlaying(true); this.load(file, this.xfadeMs); return }
     if (!this._playing) this.setPlaying(true)
@@ -369,7 +370,7 @@ export class MixEngine {
 
   /** Cue the current track to a new position (seconds) and crossfade into it. */
   seekFadeTo(sec: number): void {
-    if (this.port === null || !this.current) return
+    if (this.serverBase === null || !this.current) return
     if (!this._playing) this.setPlaying(true)
     this.crossfadeTo(this.current, this.xfadeMs, Math.max(0, sec * 1000))
   }
@@ -459,11 +460,20 @@ export class MixEngine {
 
   private startProgress(): void {
     if (this.progressRaf !== null) return
-    const tick = (): void => {
+    // Cue/outro checks run every frame, but pushing state to listeners (the
+    // library store → every subscribed component) is throttled to ~15Hz: a
+    // progress bar can't show sub-pixel moves, and per-frame store updates
+    // re-rendered the session UI 60x a second. Crossfades emit every frame so
+    // their animation stays smooth.
+    let lastEmit = 0
+    const tick = (now: number): void => {
       this.checkHold()
       this.checkGroupTimer()
       this.checkOutro()
-      this.emit()
+      if (this._fading || now - lastEmit >= 66) {
+        lastEmit = now
+        this.emit()
+      }
       this.progressRaf = requestAnimationFrame(tick)
     }
     this.progressRaf = requestAnimationFrame(tick)
