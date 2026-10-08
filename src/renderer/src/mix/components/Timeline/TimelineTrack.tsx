@@ -5,8 +5,8 @@ import { ClipBlock } from './ClipBlock'
 import { AutomationLane } from './AutomationLane'
 import { useDragContext } from './DragContext'
 import type { Clip, Track } from '../../types'
+import { applyAutoGain } from '../../utils/autoGain'
 
-const TARGET_PEAK_LINEAR = Math.pow(10, -0.5 / 20)
 
 function peaksForClip(duration: number, zoom: number): number {
   return Math.min(Math.ceil(duration * zoom), 50_000)
@@ -66,9 +66,7 @@ export function TimelineTrack({ track, tracks, clips, zoom, height, onHeightChan
     window.electronAPI.getWaveformPeaks(filePath, peaksForClip(meta.duration, zoom))
       .then((peaks) => setWaveform(filePath, { peaks, loading: false }))
       .catch(console.error)
-    window.electronAPI.getPeakLevel(filePath)
-      .then((peak) => { if (peak > 0) updateClip(clip.id, { volume: Math.min(2, TARGET_PEAK_LINEAR / peak) }) })
-      .catch(() => {})
+    applyAutoGain(clip.id, filePath)
   }, [track.id, zoom, addClipToTrack, updateClip, setWaveform, toast])
 
 
@@ -133,10 +131,7 @@ export function TimelineTrack({ track, tracks, clips, zoom, height, onHeightChan
         .getWaveformPeaks(filePath, peaksForClip(meta.duration, zoom))
         .then((peaks) => setWaveform(filePath, { peaks, loading: false }))
         .catch(console.error)
-      window.electronAPI
-        .getPeakLevel(filePath)
-        .then((peak) => { if (peak > 0) updateClip(clip.id, { volume: Math.min(2, TARGET_PEAK_LINEAR / peak) }) })
-        .catch(() => {})
+      applyAutoGain(clip.id, filePath)
       window.electronAPI
         .lookupLibraryFile(filePath)
         .then((data) => {
@@ -202,7 +197,7 @@ export function TimelineTrack({ track, tracks, clips, zoom, height, onHeightChan
             onClick={() => handlePasteFromClipboard(ctxMenu.atTime)}
           >
             Paste from Clipboard
-            <span className="float-right text-gray-600 ml-4">⌘V</span>
+            <span className="float-right text-gray-500 ml-4">⌘V</span>
           </button>
         </div>
       )}

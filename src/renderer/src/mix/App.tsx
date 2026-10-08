@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { TransportBar } from './components/TransportBar'
 import { Timeline } from './components/Timeline'
 import { MasterChannel } from './components/MasterChannel'
@@ -25,8 +25,10 @@ import type { Track, Clip } from './types'
 import { parseSesxSession } from './utils/importers/sesxImporter'
 import { parseAudacitySession } from './utils/importers/audacityImporter'
 import { markTriedMix } from '../OnboardingWizard'
+import { isEditableFocused } from '../isEditableFocused'
+import { ReadyCheckDialog } from '../ReadyCheckDialog'
+import { applyAutoGain, autoGainFor, matchLoudnessAll } from './utils/autoGain'
 
-const TARGET_PEAK_LINEAR = Math.pow(10, -0.5 / 20) // -0.5 dBFS
 
 // Extract peaks at the timeline's MAXIMUM zoom (not the current zoom) so zooming
 // in stays crisp without re-fetching per clip. 1 peak ≈ 1px at max zoom; capped so
@@ -47,6 +49,24 @@ export default function App(): JSX.Element {
   const [exportOpen, setExportOpen] = useState(false)
   const [exportFormat, setExportFormat] = useState<'wav' | 'mp3'>('wav')
   const [pdfOpen, setPdfOpen] = useState(false)
+  const [readyCheckOpen, setReadyCheckOpen] = useState(false)
+  const handleMatchLoudness = useCallback(async (): Promise<void> => {
+    if (useSessionStore.getState().clips.length === 0) return
+    toast('Measuring loudness…', 'info')
+    const { changed, failed } = await matchLoudnessAll()
+    toast(
+      `Matched loudness on ${changed} clip${changed !== 1 ? 's' : ''}${failed ? ` · ${failed} couldn't be measured` : ''} (undo with ⌘Z)`,
+      failed ? 'error' : 'success',
+    )
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  // Snapshot the clips when the check opens (Mix App doesn't subscribe to clips).
+  const readyCheckItems = useMemo(
+    () => (readyCheckOpen
+      ? useSessionStore.getState().clips.map((c) => ({ filePath: c.filePath, label: c.fileName.replace(/\.[^.]+$/, '') }))
+      : []),
+    [readyCheckOpen],
+  )
   const [importOpen, setImportOpen] = useState(false)
   const [tourOpen, setTourOpen] = useState(false)
   const mixOpenLibraryOnMount = useUIStore((s) => s.mixOpenLibraryOnMount)
@@ -93,7 +113,6 @@ export default function App(): JSX.Element {
   const addEmptyTrack = useSessionStore((s) => s.addEmptyTrack)
   const newSession = useSessionStore((s) => s.newSession)
   const setCurrentFile = useSessionStore((s) => s.setCurrentFile)
-  const setSessionLabel = useSessionStore((s) => s.setSessionLabel)
   const markClean = useSessionStore((s) => s.markClean)
   const toast = useToastStore((s) => s.add)
   const { setDownloading, setReady } = useUpdaterStore()
@@ -182,7 +201,7 @@ export default function App(): JSX.Element {
 
   // Sync window title
   useEffect(() => {
-    const base = 'Limina Mix'
+    const base = 'Limina Studio'
     const name = currentFilePath
       ? currentFilePath.split('/').pop()?.replace(/\.limina$/, '') ?? base
       : base
@@ -644,10 +663,7 @@ export default function App(): JSX.Element {
           console.error('[waveform] extraction failed for', file.path, err)
           setWaveform(file.path, { peaks: [], loading: false })
         })
-      window.electronAPI
-        .getPeakLevel(file.path)
-        .then((peak) => { if (peak > 0) updateClip(clip.id, { volume: Math.min(2, TARGET_PEAK_LINEAR / peak) }) })
-        .catch(() => {})
+      applyAutoGain(clip.id, file.path)
       window.electronAPI
         .lookupLibraryFile(file.path)
         .then((data) => {
@@ -706,13 +722,12 @@ export default function App(): JSX.Element {
       let done = 0
       await Promise.all(
         uniquePaths.map(async (filePath) => {
-          const [peaks, peak] = await Promise.all([
+          const [peaks, vol] = await Promise.all([
             window.electronAPI.getWaveformPeaks(filePath, peaksForClip(clips.find(c => c.filePath === filePath)?.duration ?? 300, useTransportStore.getState().zoom)).catch(() => [] as number[]),
-            window.electronAPI.getPeakLevel(filePath).catch(() => 0),
+            autoGainFor(filePath),
           ])
           setWaveform(filePath, { peaks, loading: false })
-          if (peak > 0) {
-            const vol = Math.min(2, TARGET_PEAK_LINEAR / peak)
+          if (vol != null) {
             clips.filter((c) => c.filePath === filePath).forEach((c) => updateClip(c.id, { volume: vol }))
           }
           done++
@@ -736,9 +751,11 @@ export default function App(): JSX.Element {
   useEffect(() => {
     const handler = async (e: KeyboardEvent): Promise<void> => {
       const mod = e.metaKey || e.ctrlKey
-      const activeEl = document.activeElement as HTMLElement | null
-      const tag = activeEl?.tagName
-      const inInput = tag === 'INPUT' || tag === 'TEXTAREA' || (activeEl?.isContentEditable ?? false)
+      const inInput = isEditableFocused()
+
+      // In a text field, undo/cut/copy/paste must edit the text — leave the
+      // event alone so the native Edit menu roles handle it.
+      if (inInput && mod && ['z', 'c', 'x', 'v'].includes(e.key.toLowerCase())) return
 
       if (mod && !e.shiftKey && e.key === 's') { e.preventDefault(); await saveSession(); return }
       if (mod && e.shiftKey && e.key === 's') { e.preventDefault(); await saveAsProject(); return }
@@ -771,9 +788,7 @@ export default function App(): JSX.Element {
                 window.electronAPI.getWaveformPeaks(filePath, peaksForClip(meta.duration, useTransportStore.getState().zoom))
                   .then((peaks) => setWaveform(filePath, { peaks, loading: false }))
                   .catch(console.error)
-                window.electronAPI.getPeakLevel(filePath)
-                  .then((peak) => { if (peak > 0) updateClip(clip.id, { volume: Math.min(2, 1 / peak) }) })
-                  .catch(() => {})
+                applyAutoGain(clip.id, filePath)
               }
             }
           }
@@ -869,10 +884,14 @@ export default function App(): JSX.Element {
       window.electronAPI.onMenu('menu:import', () => setImportOpen(true)),
       window.electronAPI.onMenu('menu:export', () => { setExportFormat('wav'); setExportOpen(true) }),
       window.electronAPI.onMenu('menu:exportPDF', () => setPdfOpen(true)),
+      window.electronAPI.onMenu('menu:readyCheck', () => setReadyCheckOpen(true)),
+      window.electronAPI.onMenu('menu:matchLoudness', () => { void handleMatchLoudness() }),
       window.electronAPI.onMenu('menu:collect', () => handleCollect()),
       window.electronAPI.onMenu('menu:exportZip', () => handleExportZip()),
-      window.electronAPI.onMenu('menu:undo', () => undo()),
-      window.electronAPI.onMenu('menu:redo', () => redo()),
+      // Menu-driven undo (Edit menu click, or Cmd+Z the keydown handler left
+      // for a focused text field) — undo the text edit there, the session otherwise.
+      window.electronAPI.onMenu('menu:undo', () => { if (isEditableFocused()) document.execCommand('undo'); else undo() }),
+      window.electronAPI.onMenu('menu:redo', () => { if (isEditableFocused()) document.execCommand('redo'); else redo() }),
       window.electronAPI.onMenu('menu:addTrack', () => handleAddTrack()),
       window.electronAPI.onMenu('menu:deleteClip', () => { if (selectedClipId) removeClip(selectedClipId) }),
       window.electronAPI.onMenu('menu:rebuildWaveforms', () => handleRebuildWaveforms()),
@@ -925,6 +944,8 @@ export default function App(): JSX.Element {
         onCollect={handleCollect}
         onExportZip={handleExportZip}
         onRebuildWaveforms={handleRebuildWaveforms}
+        onReadyCheck={() => setReadyCheckOpen(true)}
+        onMatchLoudness={handleMatchLoudness}
         onExportWaveformData={handleExportWaveformData}
         onOpenRecent={openRecentSession}
         onFitToWindow={() => fitToWindowRef.current?.()}
@@ -965,9 +986,10 @@ export default function App(): JSX.Element {
 
       <BottomTransport />
 
-      <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} defaultFormat={exportFormat} />
+      <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} defaultFormat={exportFormat} onReadyCheck={() => setReadyCheckOpen(true)} />
       <ImportDialog open={importOpen} onClose={() => setImportOpen(false)} onImport={handleImport} />
       <TracklistPDFDialog open={pdfOpen} onClose={() => setPdfOpen(false)} />
+      <ReadyCheckDialog open={readyCheckOpen} onClose={() => setReadyCheckOpen(false)} subject="this mix" items={readyCheckItems} />
 
       {autosave && (
         <AutosaveRestoreModal

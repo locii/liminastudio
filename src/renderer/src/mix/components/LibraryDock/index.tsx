@@ -4,6 +4,7 @@ import type { LibraryFile } from '../../../library/types'
 import { useSessionStore } from '../../store/sessionStore'
 import { useTransportStore } from '../../store/transportStore'
 import { useToastStore } from '../../store/toastStore'
+import { applyAutoGain } from '../../utils/autoGain'
 
 // Ensure the catalogue is loaded once per app run, even if the user opens Mix
 // before ever visiting Library (Library's App loads it on its own mount).
@@ -35,7 +36,6 @@ function displayTitle(f: LibraryFile): string {
  * tag-filterable list of catalogue tracks you can drag onto the timeline.
  * (Mix's TimelineTrack already ingests the native file drag + MFB enrichment.)
  */
-const TARGET_PEAK_LINEAR = Math.pow(10, -0.5 / 20)
 function peaksForClip(duration: number, zoom: number): number {
   return Math.min(Math.ceil(duration * zoom), 50_000)
 }
@@ -83,10 +83,7 @@ export function LibraryDock({ open, onOpenChange }: { open: boolean; onOpenChang
       .getWaveformPeaks(f.filePath, peaksForClip(f.duration, zoom))
       .then((peaks) => setWaveform(f.filePath, { peaks, loading: false }))
       .catch(() => setWaveform(f.filePath, { peaks: [], loading: false }))
-    window.electronAPI
-      .getPeakLevel(f.filePath)
-      .then((peak) => { if (peak > 0) updateClip(clip.id, { volume: Math.min(2, TARGET_PEAK_LINEAR / peak) }) })
-      .catch(() => {})
+    applyAutoGain(clip.id, f.filePath)
     window.electronAPI
       .lookupLibraryFile(f.filePath)
       .then((data) => {
@@ -179,7 +176,7 @@ export function LibraryDock({ open, onOpenChange }: { open: boolean; onOpenChang
             {pickerOpen ? 'Close tags' : 'Add tag'}
           </button>
           {selectedTags.length > 0 && (
-            <button type="button" onClick={clearSelectedTags} className="ml-auto text-[10px] text-gray-600 hover:text-gray-400 transition-colors">Clear</button>
+            <button type="button" onClick={clearSelectedTags} className="ml-auto text-[10px] text-gray-500 hover:text-gray-400 transition-colors">Clear</button>
           )}
         </div>
 
@@ -191,7 +188,7 @@ export function LibraryDock({ open, onOpenChange }: { open: boolean; onOpenChang
             />
             <div className="py-1 overflow-y-auto max-h-40">
               {tagCounts.length === 0 ? (
-                <p className="px-2.5 py-1 text-[10px] leading-relaxed text-gray-600">Tags appear once tracks are matched to Music for Breathwork in the Library.</p>
+                <p className="px-2.5 py-1 text-[10px] leading-relaxed text-gray-500">Tags appear once tracks are matched to Music for Breathwork in the Library.</p>
               ) : (
                 tagCounts
                   .filter(([t]) => !selectedTags.includes(t) && t.toLowerCase().includes(tagQuery.toLowerCase()))
@@ -202,7 +199,7 @@ export function LibraryDock({ open, onOpenChange }: { open: boolean; onOpenChang
                       onClick={() => { toggleSelectedTag(tag); setTagQuery('') }}
                       className="w-full flex items-center justify-between px-2.5 py-1 text-left text-[11px] text-gray-400 hover:bg-surface-hover hover:text-gray-200 transition-colors"
                     >
-                      <span className="truncate">{tag}</span><span className="text-[10px] text-gray-600 tabular-nums ml-2">{count}</span>
+                      <span className="truncate">{tag}</span><span className="text-[10px] text-gray-500 tabular-nums ml-2">{count}</span>
                     </button>
                   ))
               )}
@@ -222,9 +219,9 @@ export function LibraryDock({ open, onOpenChange }: { open: boolean; onOpenChang
         }}
       >
         {files.length === 0 ? (
-          <p className="p-3 text-[10px] leading-relaxed text-gray-600 text-center">Your library is empty. Add folders in the Library view.</p>
+          <p className="p-3 text-[10px] leading-relaxed text-gray-500 text-center">Your library is empty. Add folders in the Library view.</p>
         ) : visible.length === 0 ? (
-          <p className="p-3 text-[10px] text-gray-600 text-center">No tracks match.</p>
+          <p className="p-3 text-[10px] text-gray-500 text-center">No tracks match.</p>
         ) : (
           visible.slice(0, visibleCount).map((f) => {
             const justAdded = addedIds.has(f.id)
@@ -240,7 +237,7 @@ export function LibraryDock({ open, onOpenChange }: { open: boolean; onOpenChang
                 type="button"
                 onClick={(e) => { e.stopPropagation(); void handleAdd(f) }}
                 title="Add as new track"
-                className={`shrink-0 w-4 h-4 flex items-center justify-center rounded transition-colors ${justAdded ? 'text-accent' : 'text-gray-600 hover:text-accent'}`}
+                className={`shrink-0 w-4 h-4 flex items-center justify-center rounded transition-colors ${justAdded ? 'text-accent' : 'text-gray-500 hover:text-accent'}`}
               >
                 {justAdded ? (
                   <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -263,7 +260,7 @@ export function LibraryDock({ open, onOpenChange }: { open: boolean; onOpenChang
       </div>
 
       {files.length > 0 && (
-        <div className="px-2.5 py-1 border-t text-[10px] text-gray-600 border-surface-border shrink-0">
+        <div className="px-2.5 py-1 border-t text-[10px] text-gray-500 border-surface-border shrink-0">
           {visible.length} of {files.length}
         </div>
       )}

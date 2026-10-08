@@ -5,8 +5,8 @@ import { useTransportStore } from '../../store/transportStore'
 import { useToastStore } from '../../store/toastStore'
 import { TrackVUMeter } from './TrackVUMeter'
 import type { Track, Clip } from '../../types'
+import { applyAutoGain } from '../../utils/autoGain'
 
-const TARGET_PEAK_LINEAR = Math.pow(10, -0.5 / 20)
 
 function volAtPlayhead(clips: Clip[], playhead: number): number {
   const clip = clips.find((c) => {
@@ -59,13 +59,13 @@ export function TrackHeader({ track, clips, height, onHeightChange, laneHeight, 
     setTimeout(() => nameInputRef.current?.select(), 0)
   }
   const addClipToTrack = useSessionStore((s) => s.addClipToTrack)
-  const updateClip = useSessionStore((s) => s.updateClip)
   const setWaveform = useSessionStore((s) => s.setWaveform)
   const selectTrack = useSessionStore((s) => s.selectTrack)
   const selectedTrackId = useSessionStore((s) => s.selectedTrackId)
   const toast = useToastStore((s) => s.add)
-  const playhead = useTransportStore((s) => s.playhead)
-  const volPct = Math.round(volAtPlayhead(clips, playhead) * 100)
+  // Select the derived percentage, not the raw playhead, so the header only
+  // re-renders when the displayed number changes rather than every frame.
+  const volPct = useTransportStore((s) => Math.round(volAtPlayhead(clips, s.playhead) * 100))
   const isSelected = selectedTrackId === track.id
 
   const onResizeMouseDown = useCallback((e: React.MouseEvent) => {
@@ -96,10 +96,7 @@ export function TrackHeader({ track, clips, height, onHeightChange, laneHeight, 
         .getWaveformPeaks(file.path, 1200)
         .then((peaks) => setWaveform(file.path, { peaks, loading: false }))
         .catch(() => toast('Failed to load waveform', 'error'))
-      window.electronAPI
-        .getPeakLevel(file.path)
-        .then((peak) => { if (peak > 0) updateClip(clip.id, { volume: Math.min(2, TARGET_PEAK_LINEAR / peak) }) })
-        .catch(() => {})
+      applyAutoGain(clip.id, file.path)
     }
   }
 
@@ -154,12 +151,12 @@ export function TrackHeader({ track, clips, height, onHeightChange, laneHeight, 
             </span>
           )}
           <button onClick={handleAddClip}
-            className="text-gray-600 hover:text-accent transition-colors text-xs leading-none px-0.5"
+            className="text-gray-500 hover:text-accent transition-colors text-xs leading-none px-0.5"
             title="Add clip to this track">
             ＋
           </button>
           <button onClick={() => removeTrack(track.id)}
-            className="text-gray-600 hover:text-red-400 transition-colors text-xs leading-none px-0.5"
+            className="text-gray-500 hover:text-red-400 transition-colors text-xs leading-none px-0.5"
             title="Remove track">
             ✕
           </button>

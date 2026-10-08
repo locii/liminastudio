@@ -2,8 +2,8 @@ import { useSessionStore } from '../store/sessionStore'
 import { useTransportStore } from '../store/transportStore'
 import { useToastStore } from '../store/toastStore'
 import type { LibraryFile } from '../../library/types'
+import { applyAutoGain } from './autoGain'
 
-const TARGET_PEAK_LINEAR = Math.pow(10, -0.5 / 20)
 function peaksForClip(duration: number, zoom: number): number {
   return Math.min(Math.ceil(duration * zoom), 50_000)
 }
@@ -49,10 +49,7 @@ export async function addLibraryFileToMix(f: LibraryFile, opts?: { silent?: bool
     .getWaveformPeaks(f.filePath, peaksForClip(duration, zoom))
     .then((peaks) => useSessionStore.getState().setWaveform(f.filePath, { peaks, loading: false }))
     .catch(() => useSessionStore.getState().setWaveform(f.filePath, { peaks: [], loading: false }))
-  window.electronAPI
-    .getPeakLevel(f.filePath)
-    .then((peak) => { if (peak > 0) useSessionStore.getState().updateClip(clip.id, { volume: Math.min(2, TARGET_PEAK_LINEAR / peak) }) })
-    .catch(() => {})
+  applyAutoGain(clip.id, f.filePath)
   window.electronAPI
     .lookupLibraryFile(f.filePath)
     .then((data) => {

@@ -8,6 +8,10 @@ import { TimelineTrack } from './TimelineTrack'
 import { TimeRuler } from './TimeRuler'
 import { DragProvider } from './DragContext'
 import { SegmentLaneContent, SegmentLaneHeader } from './SegmentLane'
+import { EnergyArcLane, EnergyArcHeader, isArcMetric } from './EnergyArcLane'
+import type { ArcMetric } from './EnergyArcLane'
+import { useLibraryStore } from '../../../library/store/libraryStore'
+import type { MfbAudioFeatures } from '../../../../../shared/types'
 import type { Clip } from '../../types'
 import { SEGMENT_COLORS } from '../../types'
 
@@ -16,6 +20,16 @@ const TRACK_HEIGHT = 100
 const MIN_TRACK_HEIGHT = 48
 const MAX_TRACK_HEIGHT = 240
 const LANE_HEIGHT = 48
+const ARC_HEIGHT = 44
+const ARC_VISIBLE_KEY = 'mix-arc-visible'
+const ARC_METRIC_KEY = 'mix-arc-metric'
+
+function readPref<T extends string>(key: string, fallback: T): T {
+  try { return (localStorage.getItem(key) as T | null) ?? fallback } catch { return fallback }
+}
+function writePref(key: string, value: string): void {
+  try { localStorage.setItem(key, value) } catch { /* noop */ }
+}
 const MIN_LANE_HEIGHT = 32
 const MAX_LANE_HEIGHT = 160
 
@@ -36,15 +50,14 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
   const segmentLaneHeight = useSessionStore((s) => s.segmentLaneHeight)
   const segmentLaneCollapsed = useSessionStore((s) => s.segmentLaneCollapsed)
   const setSegmentLaneHeight = useSessionStore((s) => s.setSegmentLaneHeight)
-  const setSegmentLaneCollapsed = useSessionStore((s) => s.setSegmentLaneCollapsed)
   const trackHeights = useSessionStore((s) => s.trackHeights)
   const laneHeights = useSessionStore((s) => s.laneHeights)
   const setTrackHeight = useSessionStore((s) => s.setTrackHeight)
   const setLaneHeight = useSessionStore((s) => s.setLaneHeight)
   const zoom = useTransportStore((s) => s.zoom)
   const setZoom = useTransportStore((s) => s.setZoom)
-  const playhead = useTransportStore((s) => s.playhead)
   const setScrollX = useTransportStore((s) => s.setScrollX)
+  const setViewportWidth = useTransportStore((s) => s.setViewportWidth)
 
   const getHeight = useCallback((id: string) => trackHeights[id] ?? TRACK_HEIGHT, [trackHeights])
   const handleHeightChange = useCallback((id: string, h: number) => {
@@ -61,24 +74,65 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
   const headerRef = useRef<HTMLDivElement>(null)
   const rulerContentRef = useRef<HTMLDivElement>(null)
   const segmentContentRef = useRef<HTMLDivElement>(null)
+  const arcContentRef = useRef<HTMLDivElement>(null)
+
+  // Energy arc: visibility + metric persist across launches.
+  const [arcVisible, setArcVisible] = useState(() => readPref(ARC_VISIBLE_KEY, '1') === '1')
+  const [arcMetric, setArcMetric] = useState<ArcMetric>(() => {
+    const saved = readPref(ARC_METRIC_KEY, 'affective_intensity')
+    return isArcMetric(saved) ? saved : 'affective_intensity'
+  })
+  const toggleArc = useCallback(() => {
+    setArcVisible((v) => { writePref(ARC_VISIBLE_KEY, v ? '0' : '1'); return !v })
+  }, [])
+  const changeArcMetric = useCallback((m: ArcMetric) => { setArcMetric(m); writePref(ARC_METRIC_KEY, m) }, [])
+  // Lanes shown after scrolling must start at the current horizontal offset.
+  useEffect(() => {
+    const x = timelineRef.current?.scrollLeft ?? 0
+    for (const r of [arcContentRef, segmentContentRef]) {
+      if (r.current) r.current.style.transform = `translateX(-${x}px)`
+    }
+  }, [arcVisible, segmentLaneCollapsed])
+  const libraryFiles = useLibraryStore((s) => s.files)
+  const featuresByPath = useMemo(() => {
+    const m = new Map<string, MfbAudioFeatures>()
+    for (const f of libraryFiles) if (f.audioFeatures) m.set(f.filePath, f.audioFeatures)
+    return m
+  }, [libraryFiles])
   const zoomRef = useRef(zoom)
   useEffect(() => { zoomRef.current = zoom }, [zoom])
 
   // Scroll to centre on playhead only when it lands outside the visible area.
   // This way ruler clicks keep the view still; prev/next jumps to off-screen
-  // clips still bring them into view.
-  const prevPlayheadRef = useRef(playhead)
+  // clips still bring them into view. Subscribes outside React so playback
+  // (which moves the playhead every frame) doesn't re-render the timeline.
   useEffect(() => {
-    const prev = prevPlayheadRef.current
-    prevPlayheadRef.current = playhead
-    if (Math.abs(playhead - prev) < 1) return
+    let prev = useTransportStore.getState().playhead
+    return useTransportStore.subscribe((s) => {
+      const playhead = s.playhead
+      if (playhead === prev) return
+      const jumped = Math.abs(playhead - prev) >= 1
+      prev = playhead
+      if (!jumped) return
+      const el = timelineRef.current
+      if (!el) return
+      const playheadPx = playhead * zoomRef.current
+      const { scrollLeft, clientWidth } = el
+      if (playheadPx >= scrollLeft && playheadPx <= scrollLeft + clientWidth) return
+      el.scrollLeft = Math.max(0, playheadPx - clientWidth / 2)
+    })
+  }, [])
+
+  // Publish the visible timeline width — clip waveforms only draw what's on screen.
+  // (The scroll container only exists once there are tracks, hence the dep.)
+  const hasTracks = tracks.length > 0
+  useEffect(() => {
     const el = timelineRef.current
     if (!el) return
-    const playheadPx = playhead * zoomRef.current
-    const { scrollLeft, clientWidth } = el
-    if (playheadPx >= scrollLeft && playheadPx <= scrollLeft + clientWidth) return
-    el.scrollLeft = Math.max(0, playheadPx - clientWidth / 2)
-  }, [playhead])
+    const ro = new ResizeObserver(() => setViewportWidth(el.clientWidth))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [setViewportWidth, hasTracks])
 
   // Track the center time continuously so resize can restore it.
   const centerTimeRef = useRef(0)
@@ -122,6 +176,9 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
     }
     if (segmentContentRef.current) {
       segmentContentRef.current.style.transform = `translateX(-${el.scrollLeft}px)`
+    }
+    if (arcContentRef.current) {
+      arcContentRef.current.style.transform = `translateX(-${el.scrollLeft}px)`
     }
     setScrollX(el.scrollLeft)
     centerTimeRef.current = (el.scrollLeft + el.clientWidth / 2) / zoomRef.current
@@ -324,7 +381,7 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
 
   if (tracks.length === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-600">
+      <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-500">
         <svg className="w-12 h-12 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1}
             d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z" />
@@ -335,8 +392,6 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
       </div>
     )
   }
-
-  const playheadPx = playhead * zoom
 
   return (
     <DragProvider>
@@ -360,7 +415,8 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
           ))}
         </div>
         {/* Track view controls — fit / reset row heights */}
-        <TrackViewButtons headerRef={headerRef} />
+        <TrackViewButtons headerRef={headerRef} arcVisible={arcVisible} onToggleArc={toggleArc} />
+        {arcVisible && <EnergyArcHeader height={ARC_HEIGHT} metric={arcMetric} onMetricChange={changeArcMetric} />}
         {/* Segment lane header */}
         <SegmentLaneHeader
           height={segmentLaneHeight}
@@ -388,19 +444,7 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
           >
             <TimeRuler zoom={zoom} duration={totalDuration} height={RULER_HEIGHT} />
             {/* Playhead triangle lives here so it translates with the ruler */}
-            <div
-              className="absolute top-0 pointer-events-none z-50 -translate-x-1/2"
-              style={{ left: `${playheadPx}px` }}
-            >
-              <div
-                style={{
-                  width: 0, height: 0,
-                  borderLeft: '5px solid transparent',
-                  borderRight: '5px solid transparent',
-                  borderTop: `${RULER_HEIGHT}px solid #ef4444`,
-                }}
-              />
-            </div>
+            <RulerPlayhead />
           </div>
         </div>
 
@@ -442,15 +486,24 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
             )}
 
             {/* Playhead vertical line in the track area */}
-            <div
-              className="absolute top-0 bottom-0 pointer-events-none z-50"
-              style={{ left: `${playheadPx}px` }}
-            >
-              <div className="absolute top-0 bottom-0 left-0 w-px bg-red-500" />
-            </div>
+            <TrackPlayhead />
 
           </div>
         </div>
+
+        {/* Energy arc — pinned below the tracks, scrolls horizontally with them */}
+        {arcVisible && (
+          <EnergyArcLane
+            contentRef={arcContentRef}
+            clips={clips}
+            featuresByPath={featuresByPath}
+            metric={arcMetric}
+            zoom={zoom}
+            totalWidth={totalWidth}
+            totalDuration={totalDuration}
+            height={ARC_HEIGHT}
+          />
+        )}
 
         {/* Segment lane — pinned below scrollable tracks, always visible */}
         {!segmentLaneCollapsed && (
@@ -470,7 +523,49 @@ export function Timeline({ fitToWindowRef, scrollToPlayheadRef, focusPlayheadRef
   )
 }
 
-function TrackViewButtons({ headerRef }: { headerRef: React.RefObject<HTMLDivElement> }): JSX.Element {
+// The playhead moves every animation frame during playback. Keeping it in these
+// two tiny components means only they re-render per frame — not the ruler,
+// every track header, clip and automation lane.
+function usePlayheadPx(): number {
+  return useTransportStore((s) => s.playhead * s.zoom)
+}
+
+function RulerPlayhead(): JSX.Element {
+  const playheadPx = usePlayheadPx()
+  return (
+    <div
+      className="absolute top-0 pointer-events-none z-50 -translate-x-1/2"
+      style={{ left: `${playheadPx}px` }}
+    >
+      <div
+        style={{
+          width: 0, height: 0,
+          borderLeft: '5px solid transparent',
+          borderRight: '5px solid transparent',
+          borderTop: `${RULER_HEIGHT}px solid #ef4444`,
+        }}
+      />
+    </div>
+  )
+}
+
+function TrackPlayhead(): JSX.Element {
+  const playheadPx = usePlayheadPx()
+  return (
+    <div
+      className="absolute top-0 bottom-0 pointer-events-none z-50"
+      style={{ left: `${playheadPx}px` }}
+    >
+      <div className="absolute top-0 bottom-0 left-0 w-px bg-red-500" />
+    </div>
+  )
+}
+
+function TrackViewButtons({ headerRef, arcVisible, onToggleArc }: {
+  headerRef: React.RefObject<HTMLDivElement>
+  arcVisible: boolean
+  onToggleArc: () => void
+}): JSX.Element {
   const tracks = useSessionStore((s) => s.tracks)
   const laneHeights = useSessionStore((s) => s.laneHeights)
   const trackHeights = useSessionStore((s) => s.trackHeights)
@@ -546,6 +641,17 @@ function TrackViewButtons({ headerRef }: { headerRef: React.RefObject<HTMLDivEle
           <rect x="1" y="7" width="10" height="3" rx="0.5" stroke="currentColor" strokeWidth="1.2" opacity={segmentLaneCollapsed ? '0.3' : '1'}/>
         </svg>
         <span className="text-[8px] font-bold tracking-wider uppercase">Seg</span>
+      </button>
+      <div className="w-px bg-surface-border" />
+      <button
+        onClick={onToggleArc}
+        title={arcVisible ? 'Hide energy arc' : 'Show energy arc'}
+        className="flex-1 flex items-center justify-center py-2 text-gray-500 hover:text-gray-200 hover:bg-surface-hover transition-colors gap-1.5"
+      >
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <path d="M1 9 C3 9 3.5 3 6 3 S9 7 11 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity={arcVisible ? '1' : '0.35'} />
+        </svg>
+        <span className="text-[8px] font-bold tracking-wider uppercase">Arc</span>
       </button>
     </div>
   )

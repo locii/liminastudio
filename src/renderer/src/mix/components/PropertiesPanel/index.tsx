@@ -4,6 +4,7 @@ import { useSessionStore } from '../../store/sessionStore'
 import { useLibraryStore } from '../../../library/store/libraryStore'
 import { MixCueEditorModal } from '../../../library/components/MixCueEditorModal'
 import { showFilePathInLibrary } from '../../../navigate'
+import { autoGainFor } from '../../utils/autoGain'
 
 /** The cue-point payload emitted by MixCueEditorModal.onSave. */
 type CueUpdates = {
@@ -31,8 +32,6 @@ function formatCueMs(ms: number): string {
   return `${m}:${sec.padStart(4, '0')}`
 }
 
-const TARGET_PEAK_DBFS = -0.5
-const TARGET_PEAK_LINEAR = Math.pow(10, TARGET_PEAK_DBFS / 20)
 
 export function PropertiesPanel(): JSX.Element {
   const selectedClipId = useSessionStore((s) => s.selectedClipId)
@@ -130,11 +129,8 @@ export function PropertiesPanel(): JSX.Element {
     if (!clip || autoGainPending) return
     setAutoGainPending(true)
     try {
-      const peak = await window.electronAPI.getPeakLevel(clip.filePath)
-      if (peak > 0) {
-        const suggested = Math.min(2, TARGET_PEAK_LINEAR / peak)
-        updateClip(clip.id, { volume: suggested })
-      }
+      const suggested = await autoGainFor(clip.filePath)
+      if (suggested != null) updateClip(clip.id, { volume: suggested })
     } finally {
       setAutoGainPending(false)
     }
@@ -246,7 +242,7 @@ export function PropertiesPanel(): JSX.Element {
                 type="button"
                 onClick={() => selectClip(null)}
                 title="Close"
-                className="flex items-center justify-center w-5 h-5 text-gray-600 hover:text-gray-300 transition-colors shrink-0"
+                className="flex items-center justify-center w-5 h-5 text-gray-500 hover:text-gray-300 transition-colors shrink-0"
                 style={noDrag}
               >
                 <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -270,7 +266,7 @@ export function PropertiesPanel(): JSX.Element {
               {/* File name (when MFB data is present, show as secondary) */}
               {clip.mfbTrackId != null && (
                 <Section label="File">
-                  <span className="text-[10px] text-gray-600 truncate" title={clip.filePath}>{clip.fileName}</span>
+                  <span className="text-[10px] text-gray-500 truncate" title={clip.filePath}>{clip.fileName}</span>
                 </Section>
               )}
 
@@ -314,7 +310,7 @@ export function PropertiesPanel(): JSX.Element {
                 <button
                   onClick={handleAutoGain}
                   disabled={autoGainPending}
-                  title="Set gain so peak hits -0.5 dBFS"
+                  title="Match loudness to −16 LUFS (true peak capped at −1 dBTP)"
                   className="self-start mt-1 px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider rounded border border-surface-border text-gray-400 hover:text-accent hover:border-accent disabled:opacity-40 transition-colors"
                 >
                   {autoGainPending ? '…' : 'Auto Gain'}
@@ -350,7 +346,7 @@ export function PropertiesPanel(): JSX.Element {
                     Edit Cue Points
                   </button>
                 ) : (
-                  <span className="text-[10px] text-gray-600 mt-1">
+                  <span className="text-[10px] text-gray-500 mt-1">
                     Not in your Library — cue points can’t be edited here.
                   </span>
                 )}
@@ -398,7 +394,7 @@ export function PropertiesPanel(): JSX.Element {
                       className="w-full px-2 py-1 text-[11px] rounded border border-surface-border bg-surface-hover text-gray-200 placeholder-gray-600 focus:outline-none focus:border-accent"
                     />
                     {searchPending && (
-                      <span className="text-[10px] text-gray-600">Searching…</span>
+                      <span className="text-[10px] text-gray-500">Searching…</span>
                     )}
                     {!searchPending && searchResults.length > 0 && (
                       <div className="flex flex-col gap-0.5">
@@ -416,12 +412,12 @@ export function PropertiesPanel(): JSX.Element {
                       </div>
                     )}
                     {!searchPending && searchQuery && searchResults.length === 0 && (
-                      <span className="text-[10px] text-gray-600">No results</span>
+                      <span className="text-[10px] text-gray-500">No results</span>
                     )}
                     <button
                       type="button"
                       onClick={() => setSearchOpen(false)}
-                      className="self-start text-[10px] text-gray-600 hover:text-gray-400 transition-colors"
+                      className="self-start text-[10px] text-gray-500 hover:text-gray-400 transition-colors"
                     >
                       Cancel
                     </button>
@@ -437,11 +433,11 @@ export function PropertiesPanel(): JSX.Element {
                 )}
                 {mfbUser && (
                   <div className="flex items-center justify-between mt-2">
-                    <span className="text-[10px] text-gray-600">{mfbUser.name}</span>
+                    <span className="text-[10px] text-gray-500">{mfbUser.name}</span>
                     <button
                       type="button"
                       onClick={handleMfbLogout}
-                      className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors"
+                      className="text-[10px] text-gray-500 hover:text-gray-400 transition-colors"
                     >
                       Log out
                     </button>

@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- **A simpler way around the app** — The top bar is now Library, Playlists, Mix Mode and Session Mode, each with a dropdown that jumps straight in: a folder or tag, a playlist, a recent mix, or a recent session. Collections is split into Playlists and Sessions (templates and recorded sessions), and Home has a fresh look.
+- **Quick jump (⌘K)** — Press ⌘K anywhere to search tracks, playlists, sessions, templates, recent mixes, tags and folders, and jump straight there. ⌘1–4 switch between the four workspaces.
+- **Pre-session check** — Before a live session or export, check that every track is really on this Mac and not an online-only cloud placeholder that would play as silence. Online-only files can be downloaded in one click. Find it in Mix's File menu and as "Check files" in Session Mode; Export also warns if anything isn't ready.
+- **Loudness matching** — Auto-gain now matches how loud tracks sound (−16 LUFS) instead of their peaks, so a quiet ambient piece and a dense drum track sit at the same level. "Match Loudness of All Clips" (File › Utilities) re-levels an existing mix in one undoable step.
+- **Chapters and cue sheets** — Exports can carry chapter markers by section or by track: embedded in MP3s, and optionally saved as a .cue sheet next to the file.
+- **Energy arc** — A new lane under the Mix timeline shows the shape of the journey — affective intensity, activating intensity, tension or spaciousness — across the whole set. Toggle it with ARC.
+- **Library health** — One place to apply waiting matches, find unlinked tracks, tidy duplicates (keeping the best copy), estimate missing audio features and see which files are actually on this Mac.
+- **Smoother playback and editing** — The timeline no longer redraws everything during playback, waveforms only draw what's on screen, and editing a clip while it plays no longer interrupts the rest of the mix. Waveforms are cached, so sessions reopen faster.
+- **More dependable** — Fixed a leak where audio conversions could pile up while the app stayed open for days, library edits during a session are saved straight away, and adding a big folder no longer drops tracks.
+- **Security** — Hardened the local audio server so only Limina can use it, links from the catalogue only open web pages, and track names are escaped in tracklist PDFs. Electron and the audio-metadata reader are updated.
+- **Fixes and polish** — Copy and paste work in text fields; the "Unmatched only" filter turns off again; removing a folder no longer removes similarly-named ones and now asks first; double-clicking a Library track plays it; dialogs close with Escape; export shows durations as h:mm:ss with a Cancel button; clearer text contrast; "What's New" now shows Limina Studio's own notes.
+
 ## v1.3.0
 
 - **Sign in through your browser** — Connecting your Music for Breathwork account no longer asks for your email and password inside Limina Studio. Click "Sign in with Music for Breathwork" and a browser window opens where you approve access on musicforbreathwork.com — the same place you already sign in, with your password manager and any two-step verification you use. Limina Studio never sees your password, and if you're already signed in on the site it's a single click to authorize. You can revoke access at any time from your account settings.

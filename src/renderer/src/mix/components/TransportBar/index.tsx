@@ -19,6 +19,8 @@ interface Props {
   onExportZip: () => void
   onRebuildWaveforms: () => void
   onExportWaveformData: () => void
+  onReadyCheck: () => void
+  onMatchLoudness: () => void
   onOpenRecent: (filePath: string) => void
   onFitToWindow: () => void
   onFocusPlayhead: () => void
@@ -31,7 +33,7 @@ interface Props {
 export function TransportBar({
   onAddTrack, onAddEmptyTrack, onExportMix, onExportPDF,
   onNewSession, onOpen, onImport, onSave, onSaveAs, onRevertBackup, onCollect, onExportZip,
-  onRebuildWaveforms, onExportWaveformData, onOpenRecent,
+  onRebuildWaveforms, onExportWaveformData, onReadyCheck, onMatchLoudness, onOpenRecent,
   onFitToWindow, onFocusPlayhead, onZoomIn, onZoomOut, libraryOpen, onToggleLibrary,
 }: Props): JSX.Element {
   const playing = useTransportStore((s) => s.playing)
@@ -167,7 +169,7 @@ export function TransportBar({
                     <MenuItem label="Open Session…" shortcut="⌘O" onClick={menuAction(onOpen)} />
                      <MenuItem label="Import session" onClick={menuAction(onImport)} />
                     <Divider />
-                    <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-gray-600">Recent</div>
+                    <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-gray-500">Recent</div>
                     {recentSessions.length > 0 ? recentSessions.map((filePath) => {
                       const name = filePath.split(/[\\/]/).pop()?.replace(/\.limina$/, '') ?? filePath
                       return (
@@ -178,11 +180,11 @@ export function TransportBar({
                           className="w-full flex flex-col px-3 py-1.5 text-left hover:bg-surface-hover transition-colors"
                         >
                           <span className="text-gray-300 truncate">{name}</span>
-                          <span className="text-gray-600 text-[10px] truncate">{filePath}</span>
+                          <span className="text-gray-500 text-[10px] truncate">{filePath}</span>
                         </button>
                       )
                     }) : (
-                      <div className="px-3 py-1.5 text-gray-600">No recent sessions</div>
+                      <div className="px-3 py-1.5 text-gray-500">No recent sessions</div>
                     )}
                   </div>
                 )}
@@ -197,6 +199,7 @@ export function TransportBar({
               <MenuItem label="Save As New Project…" shortcut="⌘⇧S" onClick={menuAction(onSaveAs)} />
               <MenuItem label="Revert to Backup…" onClick={menuAction(onRevertBackup)} />
               <Divider />
+              <MenuItem label="Pre-session Check…" onClick={menuAction(onReadyCheck)} />
               <MenuItem label="Export Mix…" shortcut="⌘E" onClick={menuAction(onExportMix)} />
               <Submenu label="Share">
                 <MenuItem label="Collect Project Files" onClick={menuAction(onCollect)} />
@@ -205,6 +208,7 @@ export function TransportBar({
               </Submenu>
               <Divider />
               <Submenu label="Utilities">
+                <MenuItem label="Match Loudness of All Clips" onClick={menuAction(onMatchLoudness)} />
                 <MenuItem label="Rebuild Waveforms" onClick={menuAction(onRebuildWaveforms)} />
                 <MenuItem label="Export Waveform Data…" onClick={menuAction(onExportWaveformData)} />
               </Submenu>
@@ -261,11 +265,11 @@ export function TransportBar({
               onDoubleClick={startRename}
               title="Double-click to rename"
             >
-              <span className="text-gray-600">Session:</span> {sessionName}
+              <span className="text-gray-500">Session:</span> {sessionName}
             </span>
             <button
               onClick={startRename}
-              className="text-gray-600 transition-colors hover:text-gray-300"
+              className="text-gray-500 transition-colors hover:text-gray-300"
               title="Rename session"
             >
               <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -345,7 +349,7 @@ function MenuItem({ label, shortcut, onClick, highlight }: {
       }`}
     >
       <span>{label}</span>
-      {shortcut && <span className="text-gray-600 text-[10px]">{shortcut}</span>}
+      {shortcut && <span className="text-gray-500 text-[10px]">{shortcut}</span>}
     </button>
   )
 }
