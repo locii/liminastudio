@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.4.0
+## v1.4.1
 
 - **A simpler way around the app** — The top bar is now Library, Playlists, Mix Mode and Session Mode, each with a dropdown that jumps straight in: a folder or tag, a playlist, a recent mix, or a recent session. Collections is split into Playlists and Sessions (templates and recorded sessions), and Home has a fresh look.
 - **Quick jump (⌘K)** — Press ⌘K anywhere to search tracks, playlists, sessions, templates, recent mixes, tags and folders, and jump straight there. ⌘1–4 switch between the four workspaces.
@@ -13,6 +13,7 @@
 - **More dependable** — Fixed a leak where audio conversions could pile up while the app stayed open for days, library edits during a session are saved straight away, and adding a big folder no longer drops tracks.
 - **Security** — Hardened the local audio server so only Limina can use it, links from the catalogue only open web pages, and track names are escaped in tracklist PDFs. Electron and the audio-metadata reader are updated.
 - **Fixes and polish** — Copy and paste work in text fields; the "Unmatched only" filter turns off again; removing a folder no longer removes similarly-named ones and now asks first; double-clicking a Library track plays it; dialogs close with Escape; export shows durations as h:mm:ss with a Cancel button; clearer text contrast; "What's New" now shows Limina Studio's own notes.
+- **Under the hood** — Updated the build tools (electron-builder 26) so signed Mac builds work on the latest macOS.
 
 ## v1.3.0
 
