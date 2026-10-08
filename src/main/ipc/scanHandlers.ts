@@ -1,6 +1,6 @@
 import { ipcMain, dialog } from 'electron'
 import { promises as fs } from 'fs'
-import { join, extname, basename, dirname, relative, normalize } from 'path'
+import { join, extname, basename, dirname, relative, normalize, sep } from 'path'
 import { homedir, platform } from 'os'
 import { exec } from 'child_process'
 import { promisify } from 'util'
@@ -119,6 +119,19 @@ async function buildLibraryFile(filePath: string, folderPath: string): Promise<L
   }
 }
 
+// Parsing every file of a 20k-track folder at once exhausted file handles
+// (EMFILE — those tracks were silently dropped into `errors`) and starved the
+// main process, which also serves audio, menus and IPC.
+const SCAN_CONCURRENCY = 12
+
+async function forEachLimited<T>(items: T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
+  let next = 0
+  const worker = async (): Promise<void> => {
+    while (next < items.length) await fn(items[next++])
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+}
+
 export function registerScanHandlers(): void {
   ipcMain.handle('library:pickFolder', async (): Promise<string | null> => {
     const result = await dialog.showOpenDialog({
@@ -133,15 +146,13 @@ export function registerScanHandlers(): void {
     const errors: string[] = []
     const paths = await walkDir(folderPath)
 
-    await Promise.all(
-      paths.map(async (filePath) => {
-        try {
-          files.push(await buildLibraryFile(filePath, folderPath))
-        } catch (e) {
-          errors.push(`${filePath}: ${e}`)
-        }
-      })
-    )
+    await forEachLimited(paths, SCAN_CONCURRENCY, async (filePath) => {
+      try {
+        files.push(await buildLibraryFile(filePath, folderPath))
+      } catch (e) {
+        errors.push(`${filePath}: ${e}`)
+      }
+    })
 
     return { files, errors }
   })
@@ -156,20 +167,19 @@ export function registerScanHandlers(): void {
     const diskPaths = await walkDir(folderPath)
     const diskSet = new Set(diskPaths.map(normalize))
     const added = diskPaths.filter((p) => !known.has(normalize(p)))
-    const root = normalize(folderPath)
+    // Trailing separator so /Music/Breath doesn't claim /Music/Breathwork2/…
+    const root = normalize(folderPath).replace(/[\\/]+$/, '') + sep
     const missing = knownPaths.filter((p) => normalize(p).startsWith(root) && !diskSet.has(normalize(p)))
 
     const files: LibraryFile[] = []
     const errors: string[] = []
-    await Promise.all(
-      added.map(async (filePath) => {
-        try {
-          files.push(await buildLibraryFile(filePath, folderPath))
-        } catch (e) {
-          errors.push(`${filePath}: ${e}`)
-        }
-      })
-    )
+    await forEachLimited(added, SCAN_CONCURRENCY, async (filePath) => {
+      try {
+        files.push(await buildLibraryFile(filePath, folderPath))
+      } catch (e) {
+        errors.push(`${filePath}: ${e}`)
+      }
+    })
 
     return { files, errors, missing }
   })

@@ -49,10 +49,24 @@ export function useCatalogueBootstrap(): void {
   }, [devSkipLoad])
 
   // Persist the catalogue whenever it changes — debounced so rapid updates don't race.
+  // Only persisted slices count: selection, search, previews and Auto-Mix playback
+  // (which updates every frame) used to keep resetting the debounce, so edits made
+  // during a session weren't written until playback stopped.
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null
-    return useLibraryStore.subscribe(() => {
-      if (!useLibraryStore.getState().catalogueLoaded) return
+    return useLibraryStore.subscribe((s, prev) => {
+      if (!s.catalogueLoaded) return
+      const changed =
+        s.watchedFolders !== prev.watchedFolders ||
+        s.files !== prev.files ||
+        s.removedFiles !== prev.removedFiles ||
+        s.playlistSessions !== prev.playlistSessions ||
+        s.mixFadeIns !== prev.mixFadeIns ||
+        s.mixFadeMs !== prev.mixFadeMs ||
+        s.savedMixes !== prev.savedMixes ||
+        s.mixSessions !== prev.mixSessions ||
+        s.catalogueLoaded !== prev.catalogueLoaded
+      if (!changed) return
       if (timer) clearTimeout(timer)
       timer = setTimeout(() => {
         window.electronAPI.saveCatalogue(useLibraryStore.getState().toCatalogue())

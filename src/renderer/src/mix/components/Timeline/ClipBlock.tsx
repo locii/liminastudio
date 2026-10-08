@@ -35,14 +35,15 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null)
   const { setDragState } = useDragContext()
   const isSelected = selectedClipIds.includes(clip.id)
-  const scrollX = useTransportStore((s) => s.scrollX)
 
   const effectiveDuration = clip.duration - clip.trimStart - clip.trimEnd
   const width = Math.max(4, effectiveDuration * zoom)
   const left = clip.startTime * zoom
 
-  // Sticky label: shift right when the clip's left edge is off-screen
-  const labelLeft = Math.max(10, scrollX - left + 10)
+  // Sticky label: shift right when the clip's left edge is off-screen.
+  // Selecting the derived offset (not raw scrollX) means only the clip that
+  // straddles the left edge re-renders while scrolling; the rest stay at 10.
+  const labelLeft = useTransportStore((s) => Math.max(10, s.scrollX - left + 10))
   const labelMaxWidth = Math.max(0, width - labelLeft - 10)
 
   const dragState = useRef({
@@ -397,6 +398,8 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
           trimStart={clip.trimStart}
           trimEnd={clip.trimEnd}
           gain={clip.volume}
+          clipLeft={left}
+          clipWidth={width}
         />
       )}
 
@@ -515,7 +518,7 @@ export function ClipBlock({ clip, track, tracks, zoom, trackHeight }: Props): JS
           onClick={() => { splitClip(clip.id, useTransportStore.getState().playhead); setCtxMenu(null) }}
         >
           <span>Split at Playhead</span>
-          <span className="text-gray-600 text-[10px]">S</span>
+          <span className="text-gray-500 text-[10px]">S</span>
         </button>
         <button
           className="w-full text-left px-3 py-1.5 hover:bg-surface-hover text-gray-300 transition-colors"

@@ -1,5 +1,6 @@
 import { useTransportStore } from '../store/transportStore'
 import type { Clip, Track } from '../types'
+import { audioFileUrl, getAudioServerBase } from '../../library/lib/audioStreamUrl'
 
 // scale lets callers produce curves in [0, scale] rather than [0, 1] so that
 // setValueCurveAtTime never jumps above the clip's intended baseGain.
@@ -21,14 +22,20 @@ class AudioEngine {
   private analyserL: AnalyserNode | null = null
   private analyserR: AnalyserNode | null = null
   private trackAnalysers = new Map<string, AnalyserNode>()
-  private audioServerPort = 0
+  private audioServerBase = ''
 
   // Per-clip state
   private activeElements = new Map<string, HTMLAudioElement>()
   private activeSources = new Map<string, MediaElementAudioSourceNode>()
   private activeGains = new Map<string, GainNode>()     // baseGain × automation
   private activeFadeGains = new Map<string, GainNode>() // fade curves (0–1)
-  private pendingTimeouts: ReturnType<typeof setTimeout>[] = []
+  private pendingTimeouts = new Map<string, ReturnType<typeof setTimeout>[]>() // per clip
+  // Scheduling signature of each active clip — lets softReload rebuild only the
+  // clips an edit actually affected instead of every playing element.
+  private activeSigs = new Map<string, string>()
+  // Clips that played to their end this run; released, and never rescheduled
+  // until the next play/seek/stop.
+  private finishedClips = new Set<string>()
   private reloadTimer: ReturnType<typeof setTimeout> | null = null
   private rafId: number | null = null
 
@@ -54,17 +61,27 @@ class AudioEngine {
   // during scheduling and warmup so one absent file never stalls the whole mix.
   private missingPaths = new Set<string>()
 
+  private addTimeout(clipId: string, tid: ReturnType<typeof setTimeout>): void {
+    const list = this.pendingTimeouts.get(clipId)
+    if (list) list.push(tid)
+    else this.pendingTimeouts.set(clipId, [tid])
+  }
+
+  // Everything that requires re-creating a clip's element/graph when it changes.
+  // Plain volume changes are excluded — updateVolume ramps those gaplessly —
+  // except on clips with automation, whose ramps bake in the base gain.
+  private clipSignature(clip: Clip, track: Track): string {
+    const hasAuto = !!clip.automation && clip.automation.length > 0
+    return JSON.stringify([
+      clip.trackId, clip.filePath, clip.startTime, clip.duration, clip.trimStart, clip.trimEnd,
+      clip.fadeIn, clip.fadeOut, clip.crossfadeIn, clip.crossfadeOut, clip.fadeInCurve, clip.fadeOutCurve,
+      hasAuto ? clip.automation : null,
+      hasAuto ? (track.muted ? 0 : track.volume * clip.volume) : null,
+    ])
+  }
+
   private localUrl(filePath: string): string {
-    // Windows paths ("C:\a\b.mp3") have no leading slash and use backslashes,
-    // which fused the drive letter onto the port and corrupted the URL — audio
-    // never loaded. Normalise to a URL path: backslashes → slashes, guarantee a
-    // leading slash, then encode per segment. macOS paths already start with /.
-    const slashed = filePath.replace(/\\/g, '/')
-    const urlPath = slashed.startsWith('/') ? slashed : `/${slashed}`
-    return (
-      `http://127.0.0.1:${this.audioServerPort}` +
-      urlPath.split('/').map(encodeURIComponent).join('/')
-    )
+    return audioFileUrl(this.audioServerBase, filePath)
   }
 
   private get ctx(): AudioContext {
@@ -191,6 +208,7 @@ class AudioEngine {
     clipFadeGain.connect(this.getOrCreateTrackAnalyser(track.id))
     this.activeGains.set(clip.id, clipAutoGain)
     this.activeFadeGains.set(clip.id, clipFadeGain)
+    this.activeSigs.set(clip.id, this.clipSignature(clip, track))
 
     // crossOrigin must be set BEFORE src — renderer (localhost) and local:// are different
     // origins, and a tainted element cannot be used with createMediaElementSource.
@@ -233,8 +251,7 @@ class AudioEngine {
       const doPlay = (): void => {
         audio.play().catch((e: Error) => { if (e.name !== 'AbortError') console.error('[audioEngine]', e) })
         if (stopMs > 0) {
-          const stopTid = setTimeout(() => { audio.pause() }, stopMs)
-          this.pendingTimeouts.push(stopTid)
+          this.addTimeout(clip.id, setTimeout(() => this.finishClip(clip.id), stopMs))
         }
       }
 
@@ -243,22 +260,19 @@ class AudioEngine {
       } else {
         // Wait for seek to finish, with a 1.5 s safety fallback.
         audio.addEventListener('seeked', doPlay, { once: true })
-        const fallbackTid = setTimeout(() => {
+        this.addTimeout(clip.id, setTimeout(() => {
           audio.removeEventListener('seeked', doPlay)
           doPlay()
-        }, 1500)
-        this.pendingTimeouts.push(fallbackTid)
+        }, 1500))
       }
     } else {
       // Future clip — fire 50 ms early so the element is warmed up and any
       // remaining buffering jitter is absorbed.
       const stopMs = (clipEnd - clip.startTime) * 1000
-      const tid = setTimeout(() => {
+      this.addTimeout(clip.id, setTimeout(() => {
         audio.play().catch((e: Error) => { if (e.name !== 'AbortError') console.error('[audioEngine]', e) })
-        const stopTid = setTimeout(() => { audio.pause() }, stopMs)
-        this.pendingTimeouts.push(stopTid)
-      }, Math.max(0, delayMs - 50))
-      this.pendingTimeouts.push(tid)
+        this.addTimeout(clip.id, setTimeout(() => this.finishClip(clip.id), stopMs))
+      }, Math.max(0, delayMs - 50)))
     }
   }
 
@@ -369,6 +383,7 @@ class AudioEngine {
     const hasSolo = this.lastTracks.some((t) => t.solo && !t.muted)
     for (const clip of this.lastClips) {
       if (this.activeElements.has(clip.id)) continue
+      if (this.finishedClips.has(clip.id)) continue
       if (this.missingPaths.has(clip.filePath)) continue  // file absent — skip, don't stall
       const clipEnd = clip.startTime + clip.duration - clip.trimStart - clip.trimEnd
       if (seekPos >= clipEnd) continue           // already past
@@ -397,8 +412,8 @@ class AudioEngine {
 
   async play(clips: Clip[], tracks: Track[]): Promise<void> {
     await this.ctx.resume()
-    if (this.audioServerPort === 0) {
-      this.audioServerPort = await window.electronAPI.getAudioServerPort()
+    if (!this.audioServerBase) {
+      this.audioServerBase = await getAudioServerBase()
     }
     this.lastClips = clips
     this.lastTracks = tracks
@@ -425,14 +440,29 @@ class AudioEngine {
       this.reloadTimer = null
       if (!useTransportStore.getState().playing) return
       const currentPos = this.getCurrentPosition()
-      this.clearSchedulerInterval()
-      this.clearActive()
-      this.playStartPosition = currentPos
-      this.playStartAudioTime = this.ctx.currentTime
+      // Rebuild only clips whose scheduling changed (moved, trimmed, re-faded,
+      // removed, or now silenced by mute/solo). Untouched clips keep playing
+      // without a gap; volume-only edits were already ramped by updateVolume.
+      const clipMap = new Map(this.lastClips.map((c) => [c.id, c]))
+      const trackMap = new Map(this.lastTracks.map((t) => [t.id, t]))
+      const hasSolo = this.lastTracks.some((t) => t.solo && !t.muted)
+      for (const id of [...this.activeElements.keys()]) {
+        const clip = clipMap.get(id)
+        const track = clip ? trackMap.get(clip.trackId) : undefined
+        const silenced = !track || track.muted || (hasSolo && !track.solo)
+        if (!clip || !track || silenced || this.activeSigs.get(id) !== this.clipSignature(clip, track)) {
+          this.releaseClip(id)
+        }
+      }
+      // An edit can make a finished clip relevant again (e.g. moved later). Keep
+      // the rest marked so clock drift can't re-trigger a few ms of their tail.
+      for (const id of [...this.finishedClips]) {
+        const clip = clipMap.get(id)
+        if (!clip || clip.startTime + clip.duration - clip.trimStart - clip.trimEnd > currentPos + 0.5) {
+          this.finishedClips.delete(id)
+        }
+      }
       this.scheduleWindowFrom(currentPos)
-      this.startSchedulerInterval()
-      useTransportStore.getState().setPlaying(true)
-      this.startRaf()
     }, 250)
   }
 
@@ -499,26 +529,37 @@ class AudioEngine {
     return this.playStartPosition + (this.ctx.currentTime - this.playStartAudioTime)
   }
 
-  private clearActive(): void {
-    for (const tid of this.pendingTimeouts) clearTimeout(tid)
-    this.pendingTimeouts = []
-    for (const audio of this.activeElements.values()) {
+  // Tear down one clip's element, graph nodes and timers.
+  private releaseClip(clipId: string): void {
+    for (const tid of this.pendingTimeouts.get(clipId) ?? []) clearTimeout(tid)
+    this.pendingTimeouts.delete(clipId)
+    const audio = this.activeElements.get(clipId)
+    if (audio) {
       audio.pause()
       audio.src = ''
     }
-    for (const source of this.activeSources.values()) {
-      try { source.disconnect() } catch { /* already disconnected */ }
+    for (const node of [this.activeSources.get(clipId), this.activeGains.get(clipId), this.activeFadeGains.get(clipId)]) {
+      try { node?.disconnect() } catch { /* already disconnected */ }
     }
-    for (const gain of this.activeGains.values()) {
-      try { gain.disconnect() } catch { /* already disconnected */ }
-    }
-    for (const gain of this.activeFadeGains.values()) {
-      try { gain.disconnect() } catch { /* already disconnected */ }
-    }
-    this.activeElements.clear()
-    this.activeSources.clear()
-    this.activeGains.clear()
-    this.activeFadeGains.clear()
+    this.activeElements.delete(clipId)
+    this.activeSources.delete(clipId)
+    this.activeGains.delete(clipId)
+    this.activeFadeGains.delete(clipId)
+    this.activeSigs.delete(clipId)
+  }
+
+  // A clip reached its end — release it so a 3-hour set doesn't keep every
+  // played element and its nodes alive until stop.
+  private finishClip(clipId: string): void {
+    this.finishedClips.add(clipId)
+    this.releaseClip(clipId)
+  }
+
+  private clearActive(): void {
+    for (const id of [...this.activeElements.keys()]) this.releaseClip(id)
+    for (const list of this.pendingTimeouts.values()) for (const tid of list) clearTimeout(tid)
+    this.pendingTimeouts.clear()
+    this.finishedClips.clear()
   }
 
   private startRaf(): void {
@@ -550,8 +591,8 @@ class AudioEngine {
     this.warmupCancelled = false
     if (filePaths.length === 0) { onProgress(0, 0); return }
 
-    if (this.audioServerPort === 0) {
-      this.audioServerPort = await window.electronAPI.getAudioServerPort()
+    if (!this.audioServerBase) {
+      this.audioServerBase = await getAudioServerBase()
     }
 
     let done = 0

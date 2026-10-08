@@ -1,20 +1,134 @@
-import { ipcMain, dialog } from 'electron'
+import { app, ipcMain, dialog } from 'electron'
 import { promises as fs } from 'fs'
 import { spawn } from 'child_process'
+import { createHash } from 'crypto'
+import { join } from 'path'
 import ffmpegPath from 'ffmpeg-static'
+
+// ── Peak cache ──────────────────────────────────────────────────────────────
+// Decoding a 3-hour set's worth of audio for waveforms took a long time on
+// every session open. Results are cached on disk keyed by path + size + mtime
+// (so an edited/replaced file re-extracts), identical in-flight requests share
+// one ffmpeg run, and at most FFMPEG_CONCURRENCY decodes run at once so a
+// session open doesn't starve the audio server and IPC.
+
+const FFMPEG_CONCURRENCY = 3
+const CACHE_MAX_FILES = 2000
+
+let running = 0
+const waiting: (() => void)[] = []
+
+async function withDecodeSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (running >= FFMPEG_CONCURRENCY) await new Promise<void>((r) => waiting.push(r))
+  running++
+  try { return await fn() } finally {
+    running--
+    waiting.shift()?.()
+  }
+}
+
+const inFlight = new Map<string, Promise<unknown>>()
+
+function cacheDir(): string {
+  return join(app.getPath('userData'), 'peak-cache')
+}
+
+async function cacheKey(filePath: string, kind: string): Promise<string | null> {
+  try {
+    const st = await fs.stat(filePath)
+    // Zero-byte files are cloud placeholders (e.g. Dropbox online-only) —
+    // never cache their empty result.
+    if (st.size === 0) return null
+    return createHash('sha1').update(`${filePath}\0${st.size}\0${st.mtimeMs}\0${kind}`).digest('hex')
+  } catch {
+    return null
+  }
+}
+
+async function cached<T>(
+  filePath: string,
+  kind: string,
+  encode: (v: T) => Buffer,
+  decode: (b: Buffer) => T,
+  compute: () => Promise<T>,
+  shouldCache: (v: T) => boolean = () => true,
+): Promise<T> {
+  const key = await cacheKey(filePath, kind)
+  if (!key) return withDecodeSlot(compute)
+  const existing = inFlight.get(key) as Promise<T> | undefined
+  if (existing) return existing
+  const p = (async (): Promise<T> => {
+    const file = join(cacheDir(), key)
+    try { return decode(await fs.readFile(file)) } catch { /* miss */ }
+    const value = await withDecodeSlot(compute)
+    if (shouldCache(value)) {
+      fs.mkdir(cacheDir(), { recursive: true })
+        .then(() => fs.writeFile(file, encode(value)))
+        .catch(() => {})
+    }
+    return value
+  })()
+  inFlight.set(key, p)
+  try { return await p } finally { inFlight.delete(key) }
+}
+
+const encodePeaks = (v: number[]): Buffer => Buffer.from(new Float32Array(v).buffer)
+const decodePeaks = (b: Buffer): number[] =>
+  Array.from(new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4))
+const encodeLevel = (v: number): Buffer => Buffer.from(String(v))
+const decodeLevel = (b: Buffer): number => {
+  const v = parseFloat(b.toString())
+  if (!Number.isFinite(v)) throw new Error('corrupt cache entry')
+  return v
+}
+
+// Keep the cache bounded: drop the least-recently-written entries.
+async function pruneCache(): Promise<void> {
+  const dir = cacheDir()
+  const names = await fs.readdir(dir).catch(() => [] as string[])
+  if (names.length <= CACHE_MAX_FILES) return
+  const entries = await Promise.all(names.map(async (n) => {
+    const st = await fs.stat(join(dir, n)).catch(() => null)
+    return { n, t: st?.mtimeMs ?? 0 }
+  }))
+  entries.sort((a, b) => a.t - b.t)
+  for (const { n } of entries.slice(0, entries.length - CACHE_MAX_FILES)) {
+    await fs.unlink(join(dir, n)).catch(() => {})
+  }
+}
 
 // Peaks are returned as a flat interleaved array of [min, max] pairs in
 // normalized [-1, 1] range. Length = numPeaks * 2.
 export function registerAudioHandlers(): void {
+  pruneCache().catch(() => {})
+
   ipcMain.handle(
     'audio:getWaveformPeaks',
     async (_, filePath: string, numPeaks = 1000): Promise<number[]> => {
-      return extractPeaks(filePath, numPeaks)
+      return cached(
+        filePath, `peaks:${numPeaks}`, encodePeaks, decodePeaks,
+        () => extractPeaks(filePath, numPeaks),
+        // All-zero = nothing decoded (cloud placeholder not yet downloaded) — retry next time.
+        (peaks) => peaks.some((v) => v !== 0),
+      )
     }
   )
 
   ipcMain.handle('audio:getPeakLevel', async (_, filePath: string): Promise<number> => {
-    return getPeakLevel(filePath)
+    return cached(filePath, 'peakLevel', encodeLevel, decodeLevel, () => getPeakLevel(filePath))
+  })
+
+  ipcMain.handle('audio:getLoudness', async (_, filePath: string): Promise<Loudness> => {
+    return cached(
+      filePath, 'loudness',
+      (v) => Buffer.from(JSON.stringify(v)),
+      (b) => {
+        const v = JSON.parse(b.toString()) as Loudness
+        if (!Number.isFinite(v.integratedLufs) || !Number.isFinite(v.truePeakDb)) throw new Error('corrupt cache entry')
+        return v
+      },
+      () => getLoudness(filePath),
+    )
   })
 
   ipcMain.handle(
@@ -144,6 +258,39 @@ function extractPeaks(filePath: string, numPeaks: number): Promise<number[]> {
         result[p * 2 + 1] = mx
       }
       resolve(result)
+    })
+  })
+}
+
+export interface Loudness {
+  /** Integrated loudness (EBU R128 / ITU-R BS.1770), LUFS. */
+  integratedLufs: number
+  /** True peak, dBTP. */
+  truePeakDb: number
+}
+
+// Perceived loudness via ffmpeg's ebur128 meter. Peak normalisation makes every
+// track hit the same *peak*, but a dense track then sounds far louder than a
+// sparse one; matching integrated loudness keeps a 3-hour set even.
+function getLoudness(filePath: string): Promise<Loudness> {
+  return new Promise((resolve, reject) => {
+    const bin = (ffmpegPath as string).replace('app.asar', 'app.asar.unpacked')
+    if (!bin) { reject(new Error('ffmpeg-static binary not found')); return }
+    const proc = spawn(bin, ['-hide_banner', '-nostats', '-i', filePath, '-vn', '-af', 'ebur128=peak=true', '-f', 'null', '-'])
+    let stderr = ''
+    proc.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString()
+      // Per-frame lines are long; only the trailing summary matters.
+      if (stderr.length > 64_000) stderr = stderr.slice(-16_000)
+    })
+    proc.on('error', reject)
+    proc.on('close', () => {
+      const summary = stderr.slice(stderr.lastIndexOf('Summary:'))
+      const i = summary.match(/I:\s*(-?[\d.]+|-inf)\s*LUFS/)
+      const p = summary.match(/Peak:\s*(-?[\d.]+|-inf)\s*dBFS/)
+      if (!i || !p) { reject(new Error('Could not parse loudness from ffmpeg output')); return }
+      const num = (s: string): number => (s === '-inf' ? -70 : parseFloat(s))
+      resolve({ integratedLufs: num(i[1]), truePeakDb: num(p[1]) })
     })
   })
 }

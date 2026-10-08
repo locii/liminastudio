@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { audioEngine } from '../../audio/audioEngine'
+import { useTransportStore } from '../../store/transportStore'
 
 const SEGMENTS = 32
 const DB_MIN = -60
@@ -53,8 +54,7 @@ export function TrackVUMeter({ trackId, height }: Props): JSX.Element {
     const PEAK_DECAY = 0.18
     const buf = new Float32Array(2048)
 
-    const tick = (): void => {
-      rafId.current = requestAnimationFrame(tick)
+    const frame = (): void => {
       const analyser = audioEngine.getTrackAnalyser(trackId)
       if (!analyser) {
         smooth.current *= RELEASE
@@ -123,8 +123,21 @@ export function TrackVUMeter({ trackId, height }: Props): JSX.Element {
       }
     }
 
-    rafId.current = requestAnimationFrame(tick)
-    return () => { if (rafId.current !== null) cancelAnimationFrame(rafId.current) }
+    // Full frame rate only while audio is playing or the meter is still
+    // decaying; idle meters drop to ~4fps instead of redrawing 60x a second.
+    let idleTimer: ReturnType<typeof setTimeout> | null = null
+    const loop = (): void => {
+      frame()
+      const idle = !useTransportStore.getState().playing && smooth.current < 1e-4 && peakHold.current <= 0
+      if (idle) idleTimer = setTimeout(() => { rafId.current = requestAnimationFrame(loop) }, 250)
+      else rafId.current = requestAnimationFrame(loop)
+    }
+
+    rafId.current = requestAnimationFrame(loop)
+    return () => {
+      if (rafId.current !== null) cancelAnimationFrame(rafId.current)
+      if (idleTimer !== null) clearTimeout(idleTimer)
+    }
   }, [trackId])
 
   return (

@@ -83,8 +83,8 @@ export function registerCatalogueHandlers(): void {
     // current catalogue, import it. Skipped if the flag file exists (already done).
     if (!(await migrationAlreadyDone())) {
       const legacy = await findLegacyCatalogue()
-      if (legacy && fileCount(legacy.catalogue) > fileCount(current ?? {})) {
-        console.log(`[catalogue] migrating from ${legacy.path} (${fileCount(legacy.catalogue)} files vs current ${fileCount(current ?? {})} files)`)
+      if (legacy && fileCount(legacy.catalogue) > (current ? fileCount(current) : 0)) {
+        console.log(`[catalogue] migrating from ${legacy.path} (${fileCount(legacy.catalogue)} files vs current ${(current ? fileCount(current) : 0)} files)`)
         // Back up the current catalogue before overwriting.
         if (current) rotateBackups(path).catch(() => {})
         const legacyJson = JSON.stringify(legacy.catalogue, null, 2)
@@ -122,7 +122,9 @@ export function registerCatalogueHandlers(): void {
     const path = cataloguePath()
     const tmp = `${path}.${Date.now()}.tmp`
     await fs.mkdir(join(path, '..'), { recursive: true })
-    await fs.writeFile(tmp, JSON.stringify(catalogue, null, 2), 'utf-8')
+    // Compact JSON: pretty-printing a 20k-track catalogue on the main thread
+    // roughly doubled the stringify time and file size.
+    await fs.writeFile(tmp, JSON.stringify(catalogue), 'utf-8')
     await fs.rename(tmp, path)
   })
 

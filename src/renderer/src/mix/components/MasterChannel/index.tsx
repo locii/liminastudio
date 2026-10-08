@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { audioEngine } from '../../audio/audioEngine'
+import { useTransportStore } from '../../store/transportStore'
  
 const SEGMENTS = 32
 const DB_MIN = -60
@@ -60,8 +61,7 @@ export function MasterChannel(): JSX.Element {
     const CLIP_H = 6   // height of the clip indicator square in CSS px
     const buf = new Float32Array(2048)
 
-    const tick = (): void => {
-      rafId.current = requestAnimationFrame(tick)
+    const frame = (): void => {
 
       const [aL, aR] = audioEngine.getAnalysers()
       aL.getFloatTimeDomainData(buf)
@@ -148,15 +148,28 @@ export function MasterChannel(): JSX.Element {
       }
     }
 
-    rafId.current = requestAnimationFrame(tick)
-    return () => { if (rafId.current !== null) cancelAnimationFrame(rafId.current) }
+    // Full frame rate only while audio is playing or the meter is still
+    // decaying; idle meters drop to ~4fps instead of redrawing 60x a second.
+    let idleTimer: ReturnType<typeof setTimeout> | null = null
+    const loop = (): void => {
+      frame()
+      const idle = !useTransportStore.getState().playing && smoothL.current < 1e-4 && smoothR.current < 1e-4 && peakL.current <= 0 && peakR.current <= 0
+      if (idle) idleTimer = setTimeout(() => { rafId.current = requestAnimationFrame(loop) }, 250)
+      else rafId.current = requestAnimationFrame(loop)
+    }
+
+    rafId.current = requestAnimationFrame(loop)
+    return () => {
+      if (rafId.current !== null) cancelAnimationFrame(rafId.current)
+      if (idleTimer !== null) clearTimeout(idleTimer)
+    }
   }, [])
 
   return (
     <div data-tour="master-vu" className="flex flex-col w-16 border-l select-none shrink-0 border-surface-border bg-surface-panel">
       <div className="flex flex-col gap-1 items-center pt-2 pb-1 shrink-0">
         <span className="text-[8px] font-bold tracking-widest text-gray-500 uppercase">Out</span>
-        <div className="flex w-full px-1 text-[7px] text-gray-700">
+        <div className="flex w-full px-1 text-[7px] text-gray-600">
           <span className="flex-1 text-center">L</span>
           <span className="flex-1 text-center">R</span>
         </div>
