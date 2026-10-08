@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useDialog } from '../../../useDialog'
 
 const FORMAT_LABELS: Record<string, string> = {
   sesx: 'Adobe Audition Session',
@@ -38,6 +39,8 @@ export function ImportDialog({ open, onClose, onImport }: Props): JSX.Element | 
       setImporting(false)
     }
   }, [open])
+
+  const { ref: dialogRef, dialogProps } = useDialog(open, onClose, !importing)
 
   if (!open) return null
 
@@ -87,8 +90,8 @@ export function ImportDialog({ open, onClose, onImport }: Props): JSX.Element | 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="flex flex-col gap-5 p-6 w-[480px] rounded-lg border bg-surface-panel border-surface-border shadow-2xl">
-        <h2 className="text-sm font-semibold text-gray-200">Import Session</h2>
+      <div ref={dialogRef} {...dialogProps} aria-labelledby="import-dialog-title" className="flex flex-col gap-5 p-6 w-[480px] rounded-lg border bg-surface-panel border-surface-border shadow-2xl">
+        <h2 id="import-dialog-title" className="text-sm font-semibold text-gray-200">Import Session</h2>
 
         {/* File picker */}
         <div className="flex flex-col gap-2">
@@ -107,7 +110,7 @@ export function ImportDialog({ open, onClose, onImport }: Props): JSX.Element | 
                 <p className="text-xs text-gray-500">{formatLabel}</p>
               </div>
             ) : (
-              <p className="text-sm text-gray-600">Supports .sesx · .aup</p>
+              <p className="text-sm text-gray-500">Supports .sesx · .aup</p>
             )}
           </div>
         </div>
@@ -140,7 +143,7 @@ export function ImportDialog({ open, onClose, onImport }: Props): JSX.Element | 
               {collectFolder ? (
                 <p className="text-xs text-gray-400 truncate min-w-0">{collectFolder}</p>
               ) : (
-                <p className="text-xs text-gray-600">No folder selected</p>
+                <p className="text-xs text-gray-500">No folder selected</p>
               )}
             </div>
           )}
@@ -151,7 +154,7 @@ export function ImportDialog({ open, onClose, onImport }: Props): JSX.Element | 
           <div className="flex flex-col gap-1.5">
             <div className="flex justify-between items-baseline">
               <span className="text-xs text-gray-400">{progressLabel}</span>
-              <span className="text-xs text-gray-600">{progress}%</span>
+              <span className="text-xs text-gray-500">{progress}%</span>
             </div>
             <div className="overflow-hidden h-1.5 rounded-full bg-surface-base">
               <div

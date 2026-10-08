@@ -51,7 +51,7 @@ export function PlaylistTrackSearch(): JSX.Element {
     <div className="flex overflow-hidden flex-col flex-1 min-w-0">
       {/* Header */}
       <div className="flex gap-2 items-center px-4 h-10 border-b shrink-0 border-surface-border bg-surface-panel">
-        <svg className="w-3.5 h-3.5 text-gray-600 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg className="w-3.5 h-3.5 text-gray-500 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="5" cy="5" r="3.5" />
           <path d="M8 8l2.5 2.5" />
         </svg>
@@ -59,14 +59,14 @@ export function PlaylistTrackSearch(): JSX.Element {
           {loading ? 'Searching…' : results.length > 0 ? `${results.length} track${results.length === 1 ? '' : 's'} found` : query.trim() ? 'No tracks found' : 'Find a track across all playlists'}
         </span>
         {loading && (
-          <svg className="w-3 h-3 text-gray-600 animate-spin shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+          <svg className="w-3 h-3 text-gray-500 animate-spin shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
             <path d="M6 1v2M6 9v2M1 6h2M9 6h2" />
           </svg>
         )}
       </div>
 
       {/* Column headers */}
-      <div className="flex items-center gap-2 px-3 h-7 border-b shrink-0 border-surface-border bg-surface-panel text-[10px] uppercase tracking-wider text-gray-600 select-none">
+      <div className="flex items-center gap-2 px-3 h-7 border-b shrink-0 border-surface-border bg-surface-panel text-[10px] uppercase tracking-wider text-gray-500 select-none">
         <span className="w-5 shrink-0" />
         <span className="flex-1 min-w-0">Title</span>
         <span className="hidden w-28 shrink-0 sm:block">Artist</span>
@@ -76,11 +76,11 @@ export function PlaylistTrackSearch(): JSX.Element {
       {/* Results */}
       <div className="overflow-y-auto flex-1 min-h-0">
         {!query.trim() ? (
-          <p className="px-4 py-6 text-[11px] text-gray-600 text-center">
+          <p className="px-4 py-6 text-[11px] text-gray-500 text-center">
             Type a track name in the sidebar to search
           </p>
         ) : !loading && results.length === 0 ? (
-          <p className="px-4 py-6 text-[11px] text-gray-600 text-center">No tracks found</p>
+          <p className="px-4 py-6 text-[11px] text-gray-500 text-center">No tracks found</p>
         ) : results.map((track) => {
           const inLibrary = inLibraryIds.has(track.id)
           return (
@@ -107,10 +107,10 @@ export function PlaylistTrackSearch(): JSX.Element {
                 </div>
 
                 {/* Artist */}
-                <span className="hidden w-28 shrink-0 text-[10px] text-gray-600 truncate sm:block">{track.artist}</span>
+                <span className="hidden w-28 shrink-0 text-[10px] text-gray-500 truncate sm:block">{track.artist}</span>
 
                 {/* Duration */}
-                <span className="w-10 shrink-0 text-right text-[10px] text-gray-600 tabular-nums">
+                <span className="w-10 shrink-0 text-right text-[10px] text-gray-500 tabular-nums">
                   {track.duration ? formatDuration(track.duration) : '—'}
                 </span>
               </div>

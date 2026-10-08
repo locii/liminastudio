@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { BREATHWORK_PHASES, mfbTrackUrl } from '../types'
 import type { BreathworkPhase, MfbAudioFeatures } from '../types'
 import { useLibraryStore } from '../store/libraryStore'
@@ -128,7 +128,7 @@ export function TrackLookup({ fileId, fileName, artist, folderArtist, folderAlbu
   if (!userAccount) {
     return (
       <div className="flex flex-col gap-2.5 p-3 border-b border-surface-border">
-        <span className="text-[10px] text-gray-600 uppercase tracking-wider font-medium">Music for Breathwork Match</span>
+        <span className="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Music for Breathwork Match</span>
         <div className="flex flex-col gap-2 rounded border border-surface-border bg-surface-base/50 px-3 py-3">
           <p className="text-[11px] text-gray-500 leading-relaxed">
             Sign in to match this track against the Music for Breathwork catalogue and unlock phase tags, audio features, and artist data.
@@ -148,11 +148,11 @@ export function TrackLookup({ fileId, fileName, artist, folderArtist, folderAlbu
   if (!expanded) {
     return (
       <div className="flex items-center justify-between px-3 py-2 border-b border-surface-border">
-        <span className="text-[10px] text-gray-600 uppercase tracking-wider font-medium">Music for Breathwork Match</span>
+        <span className="text-[10px] text-gray-500 uppercase tracking-wider font-medium">Music for Breathwork Match</span>
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className="text-[10px] text-gray-600 hover:text-accent transition-colors"
+          className="text-[10px] text-gray-500 hover:text-accent transition-colors"
         >
           Find a different match →
         </button>
@@ -170,7 +170,7 @@ export function TrackLookup({ fileId, fileName, artist, folderArtist, folderAlbu
             className="flex items-center gap-1 text-[10px] text-gray-500 uppercase tracking-wider font-medium hover:text-gray-300 transition-colors group"
             title="Collapse"
           >
-            <svg className="w-2.5 h-2.5 text-gray-600 group-hover:text-gray-400 transition-colors" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <svg className="w-2.5 h-2.5 text-gray-500 group-hover:text-gray-400 transition-colors" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
               <path d="M2 6.5l3-3 3 3" />
             </svg>
             Music for Breathwork Match
@@ -187,7 +187,7 @@ export function TrackLookup({ fileId, fileName, artist, folderArtist, folderAlbu
                     .then((res) => { setResults(res); setStatus('idle') })
                     .catch((e) => { setErrorMsg(String(e)); setStatus('error') })
                 }}
-                className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors"
+                className="text-[10px] text-gray-500 hover:text-gray-400 transition-colors"
               >
                 Re-run
               </button>
@@ -196,7 +196,7 @@ export function TrackLookup({ fileId, fileName, artist, folderArtist, folderAlbu
               <button
                 type="button"
                 onClick={() => { setDetail(null); setStatus('idle') }}
-                className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors"
+                className="text-[10px] text-gray-500 hover:text-gray-400 transition-colors"
               >
                 ← Back
               </button>
@@ -212,11 +212,11 @@ export function TrackLookup({ fileId, fileName, artist, folderArtist, folderAlbu
 
       {busy && (
         <div className="flex gap-2 items-center py-1">
-          <svg className="w-3 h-3 text-gray-600 animate-spin shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <svg className="w-3 h-3 text-gray-500 animate-spin shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M6 1v2M6 9v2M1 6h2M9 6h2" strokeLinecap="round" />
             <path d="M2.5 2.5l1.4 1.4M8.1 8.1l1.4 1.4M9.5 2.5L8.1 3.9M3.9 8.1L2.5 9.5" strokeLinecap="round" opacity="0.4" />
           </svg>
-          <span className="text-[10px] text-gray-600">{status === 'fetching' ? 'Loading…' : 'Matching…'}</span>
+          <span className="text-[10px] text-gray-500">{status === 'fetching' ? 'Loading…' : 'Matching…'}</span>
         </div>
       )}
 
@@ -235,7 +235,7 @@ export function TrackLookup({ fileId, fileName, artist, folderArtist, folderAlbu
             className="w-full text-[11px] bg-surface-hover border border-surface-border rounded px-2.5 py-1.5 outline-none focus:border-accent/50 text-gray-200 placeholder-gray-600"
           />
           {searching && (
-            <svg className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-600 animate-spin" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <svg className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-500 animate-spin" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M6 1v2M6 9v2M1 6h2M9 6h2" strokeLinecap="round" />
               <path d="M2.5 2.5l1.4 1.4M8.1 8.1l1.4 1.4M9.5 2.5L8.1 3.9M3.9 8.1L2.5 9.5" strokeLinecap="round" opacity="0.4" />
             </svg>
@@ -244,7 +244,7 @@ export function TrackLookup({ fileId, fileName, artist, folderArtist, folderAlbu
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400 transition-colors"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-400 transition-colors"
             >
               <svg className="w-3 h-3" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                 <path d="M2 2l6 6M8 2l-6 6" />
@@ -290,7 +290,7 @@ export function TrackLookup({ fileId, fileName, artist, folderArtist, folderAlbu
 
           {Object.entries(detail.tags).map(([cat, tags]) => (
             <div key={cat} className="flex flex-col gap-1">
-              <span className="text-[10px] text-gray-600 uppercase tracking-wider">{cat}</span>
+              <span className="text-[10px] text-gray-500 uppercase tracking-wider">{cat}</span>
               <div className="flex flex-wrap gap-1">
                 {tags.map((t) => (
                   <span
@@ -305,7 +305,7 @@ export function TrackLookup({ fileId, fileName, artist, folderArtist, folderAlbu
           ))}
 
           {detail.description && (
-            <p className="text-[10px] text-gray-600 leading-relaxed line-clamp-3">{detail.description}</p>
+            <p className="text-[10px] text-gray-500 leading-relaxed line-clamp-3">{detail.description}</p>
           )}
 
           <div className="flex gap-2">
@@ -358,10 +358,10 @@ function ResultRow({ title, sub, score, onSelect }: { title: string; sub: string
             </div>
           )}
         </div>
-        <p className="text-[10px] text-gray-600 truncate">{sub}</p>
+        <p className="text-[10px] text-gray-500 truncate">{sub}</p>
       </div>
       {score !== undefined && (
-        <span className="text-[9px] text-gray-600 font-mono tabular-nums pt-0.5 shrink-0">
+        <span className="text-[9px] text-gray-500 font-mono tabular-nums pt-0.5 shrink-0">
           {Math.round(score * 100)}%
         </span>
       )}
@@ -372,7 +372,7 @@ function ResultRow({ title, sub, score, onSelect }: { title: string; sub: string
 function DetailRow({ label, value }: { label: string; value: string }): JSX.Element {
   return (
     <div className="flex gap-2 justify-between items-baseline">
-      <span className="text-[10px] text-gray-600 uppercase tracking-wider shrink-0">{label}</span>
+      <span className="text-[10px] text-gray-500 uppercase tracking-wider shrink-0">{label}</span>
       <span className="text-[11px] text-gray-300 text-right truncate">{value}</span>
     </div>
   )

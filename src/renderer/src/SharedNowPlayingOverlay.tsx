@@ -240,7 +240,7 @@ export function SharedNowPlayingOverlay({
                 </span>
               )}
               {trackIndex != null && trackTotal != null && (
-                <span className="text-[10px] tabular-nums text-gray-600">{trackIndex} / {trackTotal}</span>
+                <span className="text-[10px] tabular-nums text-gray-500">{trackIndex} / {trackTotal}</span>
               )}
               {tags.slice(0, 6).map((tag) => (
                 <button
@@ -265,7 +265,7 @@ export function SharedNowPlayingOverlay({
                 style={{ width: `${(sessionProgress ?? 0) * 100}%`, background: 'rgba(255,255,255,0.3)' }}
               />
             </div>
-            <div className="flex justify-between text-[10px] font-mono tabular-nums text-gray-600">
+            <div className="flex justify-between text-[10px] font-mono tabular-nums text-gray-500">
               <span>{formatTime(currentTime)}</span>
               {timeRemaining != null && <span>−{formatTime(timeRemaining)}</span>}
             </div>

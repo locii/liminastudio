@@ -230,7 +230,7 @@ export function AutomationLane({ clips, zoom, color, height, onHeightChange, tra
         )}
       </svg>
 
-      <span className="absolute left-2 top-1 text-[9px] text-gray-700 uppercase tracking-wider pointer-events-none select-none">
+      <span className="absolute left-2 top-1 text-[9px] text-gray-600 uppercase tracking-wider pointer-events-none select-none">
         vol
       </span>
 

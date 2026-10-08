@@ -140,8 +140,8 @@ export function NextStepsCard(): JSX.Element | null {
   return (
     <div className="px-4 py-3 border-b shrink-0 bg-surface-panel border-surface-border">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] uppercase tracking-widest text-gray-600">You&rsquo;re all set — try these next</span>
-        <button type="button" onClick={dismiss} title="Dismiss" className="p-1 text-gray-600 hover:text-gray-400 transition-colors">
+        <span className="text-[10px] uppercase tracking-widest text-gray-500">You&rsquo;re all set — try these next</span>
+        <button type="button" onClick={dismiss} title="Dismiss" className="p-1 text-gray-500 hover:text-gray-400 transition-colors">
           <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M2 2l8 8M10 2l-8 8" /></svg>
         </button>
       </div>

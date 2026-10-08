@@ -35,7 +35,7 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }): J
           </button>
         )}
       </span>
-      <button onClick={onClose} className="text-xs leading-none text-gray-500 hover:text-gray-300">
+      <button onClick={onClose} aria-label="Dismiss" title="Dismiss" className="text-xs leading-none text-gray-500 hover:text-gray-300">
         ✕
       </button>
     </div>

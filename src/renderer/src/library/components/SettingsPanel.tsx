@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ACCENT_PRESETS, ZOOM_OPTIONS, type AppSettings } from '../lib/settings'
+import { useDialog } from '../../useDialog'
 
 interface Props {
   settings: AppSettings
@@ -9,6 +10,7 @@ interface Props {
 
 export function SettingsPanel({ settings, onClose, onChange }: Props): JSX.Element {
   const [draft, setDraft] = useState<AppSettings>(settings)
+  const { ref: dialogRef, dialogProps } = useDialog(true, onClose)
 
   function update(patch: Partial<AppSettings>): void {
     const next = { ...draft, ...patch }
@@ -19,6 +21,9 @@ export function SettingsPanel({ settings, onClose, onChange }: Props): JSX.Eleme
   return (
     <div className="flex fixed inset-0 z-50 justify-center items-center bg-black/60" onClick={onClose}>
       <div
+        ref={dialogRef}
+        {...dialogProps}
+        aria-label="Settings"
         className="flex flex-col gap-5 p-5 w-80 rounded-lg border shadow-xl border-surface-border bg-surface-panel"
         onClick={(e) => e.stopPropagation()}
       >
@@ -28,7 +33,9 @@ export function SettingsPanel({ settings, onClose, onChange }: Props): JSX.Eleme
           <button
             type="button"
             onClick={onClose}
-            className="text-gray-600 transition-colors hover:text-gray-400"
+            aria-label="Close"
+            title="Close"
+            className="text-gray-500 transition-colors hover:text-gray-300"
           >
             <svg className="w-3.5 h-3.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
               <path d="M2 2l8 8M10 2l-8 8" />
@@ -81,7 +88,7 @@ export function SettingsPanel({ settings, onClose, onChange }: Props): JSX.Eleme
             ))}
           </div>
           <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-[10px] text-gray-600">Custom</span>
+            <span className="text-[10px] text-gray-500">Custom</span>
             <input
               type="color"
               value={`#${draft.accentRgb.split(' ').map((n) => parseInt(n).toString(16).padStart(2, '0')).join('')}`}

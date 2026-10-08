@@ -1,5 +1,4 @@
 import { useEffect, useCallback, useRef, useState } from 'react'
-import libraryLogo from './assets/libraryLogo.png'
 import { useLibraryStore } from './store/libraryStore'
 import { FolderPanel } from './components/FolderPanel'
 import { FileList } from './components/FileList'
@@ -29,6 +28,7 @@ import { WorkspaceSwitcher } from '../WorkspaceSwitcher'
 import { requestNavigate } from '../navigate'
 import { MatchBanner, NextStepsCard } from '../OnboardingWizard'
 import { addFolder } from './lib/addFolder'
+import { isInFolder } from './lib/isInFolder'
 
 
 // The umbrella mounts/unmounts this app when switching surfaces. Guard once-per-run
@@ -228,7 +228,7 @@ export default function App(): JSX.Element {
     useUIStore.getState().setLibraryRevealFileId(null)
     const st = useLibraryStore.getState()
     const file = st.files.find((f) => f.id === fileId)
-    const folder = file ? st.watchedFolders.find((wf) => file.filePath.startsWith(wf.path)) : null
+    const folder = file ? st.watchedFolders.find((wf) => isInFolder(file.filePath, wf.path)) : null
     st.showFileInLibrary(folder?.id ?? null, fileId)
   }, [catalogueLoaded])
 
@@ -523,17 +523,17 @@ export default function App(): JSX.Element {
                 className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
                 title="View indexing log"
               >
-                <svg className="w-2.5 h-2.5 animate-spin text-gray-600" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <svg className="w-2.5 h-2.5 animate-spin text-gray-500" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
                   <path d="M6 1v2M6 9v2M1 6h2M9 6h2" strokeLinecap="round" />
                   <path d="M2.5 2.5l1.4 1.4M8.1 8.1l1.4 1.4M9.5 2.5L8.1 3.9M3.9 8.1L2.5 9.5" strokeLinecap="round" opacity="0.4" />
                 </svg>
-                <span className="text-[10px] text-gray-600">Indexing</span>
+                <span className="text-[10px] text-gray-500">Indexing</span>
               </button>
-              <span className="text-[10px] text-gray-700">·</span>
+              <span className="text-[10px] text-gray-600">·</span>
               <button
                 type="button"
                 onClick={cancelIndexing}
-                className="text-[10px] text-gray-600 hover:text-gray-300 transition-colors"
+                className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors"
               >
                 Cancel
               </button>
@@ -547,17 +547,17 @@ export default function App(): JSX.Element {
                 className="flex items-center gap-1.5 hover:opacity-80 transition-opacity"
                 title="View which tracks are being synced from Music for Breathwork"
               >
-                <svg className="w-2.5 h-2.5 animate-spin text-gray-600" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <svg className="w-2.5 h-2.5 animate-spin text-gray-500" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
                   <path d="M6 1v2M6 9v2M1 6h2M9 6h2" strokeLinecap="round" />
                   <path d="M2.5 2.5l1.4 1.4M8.1 8.1l1.4 1.4M9.5 2.5L8.1 3.9M3.9 8.1L2.5 9.5" strokeLinecap="round" opacity="0.4" />
                 </svg>
-                <span className="text-[10px] text-gray-600">Syncing{mfbRefresh.total > 0 ? ` ${mfbRefresh.done}/${mfbRefresh.total}` : ''}</span>
+                <span className="text-[10px] text-gray-500">Syncing{mfbRefresh.total > 0 ? ` ${mfbRefresh.done}/${mfbRefresh.total}` : ''}</span>
               </button>
-              <span className="text-[10px] text-gray-700">·</span>
+              <span className="text-[10px] text-gray-600">·</span>
               <button
                 type="button"
                 onClick={() => cancelMfbRefresh()}
-                className="text-[10px] text-gray-600 hover:text-gray-300 transition-colors"
+                className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors"
               >
                 Cancel
               </button>
@@ -622,7 +622,7 @@ export default function App(): JSX.Element {
           <div className="flex flex-col gap-3 p-4 border rounded-lg shadow-xl w-80 border-surface-border bg-surface-panel" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold text-gray-200 uppercase tracking-wider">Restore from Backup</span>
-              <button type="button" onClick={() => setShowBackups(false)} className="text-gray-600 transition-colors hover:text-gray-400">
+              <button type="button" onClick={() => setShowBackups(false)} className="text-gray-500 transition-colors hover:text-gray-400">
                 <svg className="w-3.5 h-3.5" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                   <path d="M2 2l8 8M10 2l-8 8" />
                 </svg>
@@ -640,7 +640,7 @@ export default function App(): JSX.Element {
                     <div key={b.slot} className="flex items-center justify-between gap-2 px-2.5 py-2 rounded border border-surface-border bg-surface-hover">
                       <div className="flex flex-col min-w-0">
                         <span className="text-[11px] text-gray-300">{label}</span>
-                        <span className="text-[10px] text-gray-600">{kb} KB · backup {b.slot}</span>
+                        <span className="text-[10px] text-gray-500">{kb} KB · backup {b.slot}</span>
                       </div>
                       <button
                         type="button"
@@ -655,7 +655,7 @@ export default function App(): JSX.Element {
                 })}
               </div>
             )}
-            <p className="text-[10px] text-gray-600 leading-relaxed">
+            <p className="text-[10px] text-gray-500 leading-relaxed">
               Backups are created automatically each time the app starts with saved data.
             </p>
           </div>
@@ -776,7 +776,7 @@ function ProgressLine({ done, active, text }: { done: boolean; active: boolean; 
       ) : (
         <span className="w-4 h-4 shrink-0" />
       )}
-      <span className={`text-[13px] ${done ? 'text-gray-500' : active ? 'text-gray-200' : 'text-gray-600'}`}>
+      <span className={`text-[13px] ${done ? 'text-gray-500' : active ? 'text-gray-200' : 'text-gray-500'}`}>
         {text}
       </span>
     </div>
@@ -866,7 +866,7 @@ function WelcomeScreen({ onAddFolder, hasContent, onClose, indexing }: {
               ) : fileCount === 0 ? (
                 <span className="text-gray-500">No audio files found in that folder — try another.</span>
               ) : (
-                <span className="text-gray-600">
+                <span className="text-gray-500">
                   {isWorking ? 'Matching with Music for Breathwork…' : 'Your library is ready.'}
                 </span>
               )}
@@ -957,11 +957,11 @@ function WelcomeScreen({ onAddFolder, hasContent, onClose, indexing }: {
                 <p className="text-[14px] font-medium text-gray-200">
                   {isDragOver ? 'Drop to add folder' : 'Drop a folder here'}
                 </p>
-                <p className="text-[12px] text-gray-600 mt-1">or click to browse</p>
+                <p className="text-[12px] text-gray-500 mt-1">or click to browse</p>
               </div>
             </button>
 
-            <p className="text-[11px] text-gray-700 tracking-wide">
+            <p className="text-[11px] text-gray-600 tracking-wide">
               WAV · MP3 · AIFF · FLAC · M4A · OGG
             </p>
           </>

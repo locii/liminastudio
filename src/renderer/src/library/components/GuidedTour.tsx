@@ -153,7 +153,7 @@ function TooltipBox({
     >
       <div className="flex items-center justify-between">
         <span className="text-[10px] text-gray-500 font-mono tabular-nums">{stepIndex + 1} / {total}</span>
-        <button type="button" onClick={onSkip} className="text-[10px] text-gray-600 hover:text-gray-300 transition-colors">
+        <button type="button" onClick={onSkip} className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors">
           Skip tour
         </button>
       </div>

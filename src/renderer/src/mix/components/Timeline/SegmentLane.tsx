@@ -1,7 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import type React from 'react'
 import type { Segment } from '../../types'
-import { SEGMENT_COLORS } from '../../types'
 
 const EDGE_HIT = 8
 const MIN_DURATION = 1  // seconds
@@ -228,13 +227,13 @@ export function SegmentLaneHeader({ height, collapsed, segmentCount, onHeightCha
           onMouseDown={onResizeDown}
         />
       )}
-      <span className="text-[9px] uppercase tracking-widest text-gray-600 select-none">
+      <span className="text-[9px] uppercase tracking-widest text-gray-500 select-none">
         Segments{segmentCount > 0 ? ` · ${segmentCount}` : ''}
       </span>
       {!collapsed && (
         <button
           onClick={onAdd}
-          className="text-gray-600 transition-colors hover:text-gray-300"
+          className="text-gray-500 transition-colors hover:text-gray-300"
           title="Add segment"
         >
           <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">

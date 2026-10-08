@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { BreathworkPhase, Catalogue, LibraryFile, MfbMatch, MfbPlaylist, MfbPlaylistDetail, MfbTag, WatchedFolder, SessionPresetDTO } from '../types'
 import type { MixEngineState } from '../lib/mixEngine'
 import { reconcileTags } from '../lib/mfbTags'
+import { isInFolder } from '../lib/isInFolder'
 
 /** One matched track's status during a background MFB resync pass. */
 export interface MfbRefreshItem {
@@ -354,7 +355,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     watchedFolders: s.watchedFolders.filter((f) => f.id !== id),
     files: s.files.filter((f) => {
       const folder = s.watchedFolders.find((w) => w.id === id)
-      return !folder || !f.filePath.startsWith(folder.path)
+      return !folder || !isInFolder(f.filePath, folder.path)
     }),
     selectedFolderId: s.selectedFolderId === id ? null : s.selectedFolderId,
   })),

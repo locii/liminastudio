@@ -113,7 +113,7 @@ export function BottomTransport(): JSX.Element {
               <img src={currentClip.mfbAlbumImageUrl} alt="" className="object-cover w-full h-full" />
             ) : (
               <div className="flex justify-center items-center w-full h-full rounded bg-surface-hover">
-                <svg className="w-3.5 h-3.5 text-gray-600" viewBox="0 0 12 12" fill="currentColor">
+                <svg className="w-3.5 h-3.5 text-gray-500" viewBox="0 0 12 12" fill="currentColor">
                   <path d="M5 2v6.55A2 2 0 1 0 7 10V4h2V2H5z" />
                 </svg>
               </div>
@@ -122,7 +122,7 @@ export function BottomTransport(): JSX.Element {
 
           <span className="font-mono text-xs tabular-nums text-gray-400 whitespace-nowrap pointer-events-none select-none">
             {formatTime(playhead)}
-            <span className="mx-1 text-gray-600">/</span>
+            <span className="mx-1 text-gray-500">/</span>
             <span className="text-gray-500">{formatTime(endTime)}</span>
           </span>
         </div>
@@ -148,7 +148,7 @@ export function BottomTransport(): JSX.Element {
             title={playing ? 'Stop (Space)' : 'Play (Space)'}
             className={`flex items-center justify-center w-9 h-9 mx-1 rounded-full transition-colors ${
               disabled
-                ? 'text-gray-600 cursor-not-allowed bg-surface-hover'
+                ? 'text-gray-500 cursor-not-allowed bg-surface-hover'
                 : playing
                 ? 'text-white bg-accent hover:bg-accent/80'
                 : 'text-gray-300 bg-surface-hover hover:bg-accent hover:text-white'
@@ -227,15 +227,15 @@ export function BottomTransport(): JSX.Element {
               {downloadPercent > 0 ? `${downloadPercent}%` : '…'}
             </div>
           ) : checkState === 'checking' ? (
-            <span className="text-[10px] text-gray-600">checking…</span>
+            <span className="text-[10px] text-gray-500">checking…</span>
           ) : checkState === 'upToDate' ? (
-            <span className="text-[10px] text-gray-600">up to date</span>
+            <span className="text-[10px] text-gray-500">up to date</span>
           ) : (
             <button
               type="button"
               onClick={handleCheckForUpdates}
               title="Check for updates"
-              className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors tabular-nums"
+              className="text-[10px] text-gray-500 hover:text-gray-400 transition-colors tabular-nums"
             >
               v{__APP_VERSION__}
             </button>
@@ -263,7 +263,7 @@ function TransportBtn({
       title={title}
       className={`flex items-center justify-center w-7 h-7 rounded transition-colors ${
         disabled
-          ? 'text-gray-700 cursor-not-allowed'
+          ? 'text-gray-600 cursor-not-allowed'
           : 'text-gray-400 hover:text-white hover:bg-surface-hover'
       }`}
     >

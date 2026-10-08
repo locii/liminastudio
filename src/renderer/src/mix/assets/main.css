@@ -52,3 +52,13 @@ body {
 .hour-cell { scrollbar-width: none; }
 .hour-cell::-webkit-scrollbar { display: none; width: 0; height: 0; }
 button:focus:not(:focus-visible) { outline: none; box-shadow: none; }
+
+/* Visible keyboard focus. Only :focus-visible (keyboard navigation), so mouse
+   clicks stay ring-free; element selectors outrank Tailwind's .outline-none. */
+button:focus-visible,
+a:focus-visible,
+[role='button']:focus-visible,
+[tabindex]:not([tabindex='-1']):focus-visible {
+  outline: 2px solid rgb(var(--accent) / 0.8);
+  outline-offset: 2px;
+}

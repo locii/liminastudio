@@ -154,7 +154,7 @@ export function MissingTrackPanel(): JSX.Element {
               type="button"
               onClick={() => window.open(mfbTrackUrl(track.id, track.title))}
               title="View on Music for Breathwork"
-              className="flex justify-center items-center w-6 h-6 text-gray-600 rounded transition-colors hover:text-accent hover:bg-surface-hover"
+              className="flex justify-center items-center w-6 h-6 text-gray-500 rounded transition-colors hover:text-accent hover:bg-surface-hover"
             >
               <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M7 3H3.5A1.5 1.5 0 0 0 2 4.5v8A1.5 1.5 0 0 0 3.5 14h8A1.5 1.5 0 0 0 13 12.5V9M9.5 2H14v4.5M14 2L7.5 8.5" />
@@ -163,7 +163,7 @@ export function MissingTrackPanel(): JSX.Element {
             <button
               type="button"
               onClick={() => selectMissingTrack(null)}
-              className="flex justify-center items-center w-6 h-6 text-gray-600 rounded transition-colors hover:text-gray-400 hover:bg-surface-hover"
+              className="flex justify-center items-center w-6 h-6 text-gray-500 rounded transition-colors hover:text-gray-400 hover:bg-surface-hover"
               title="Close"
             >
               <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -173,7 +173,7 @@ export function MissingTrackPanel(): JSX.Element {
           </div>
         </div>
         <div className="px-2 py-1.5 rounded bg-surface-hover border border-surface-border">
-          <p className="text-[10px] text-gray-600 uppercase tracking-wider mb-1">Not in library</p>
+          <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Not in library</p>
           <p className="text-[10px] text-gray-500 leading-relaxed">
             Find the matching file below and apply to link it.
           </p>
@@ -212,7 +212,7 @@ export function MissingTrackPanel(): JSX.Element {
       {/* File search */}
       <div className="flex flex-col flex-1 min-h-0">
         <div className="flex items-center gap-1.5 px-3 h-8 border-b border-surface-border shrink-0">
-          <svg className="w-3 h-3 text-gray-600 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg className="w-3 h-3 text-gray-500 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="5" cy="5" r="3.5" />
             <path d="M8 8l2.5 2.5" />
           </svg>
@@ -225,7 +225,7 @@ export function MissingTrackPanel(): JSX.Element {
             className="flex-1 bg-transparent text-[11px] text-gray-300 placeholder-gray-700 outline-none"
           />
           {query && (
-            <button onClick={() => setQuery('')} className="text-gray-600 transition-colors hover:text-gray-400">
+            <button onClick={() => setQuery('')} className="text-gray-500 transition-colors hover:text-gray-400">
               <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                 <path d="M2 2l8 8M10 2l-8 8" />
               </svg>
@@ -236,7 +236,7 @@ export function MissingTrackPanel(): JSX.Element {
             onClick={handleFindOnDisk}
             disabled={searching}
             title="Search for this track on disk"
-            className="shrink-0 flex items-center gap-1 px-1.5 py-px text-[9px] rounded border border-surface-border text-gray-600 hover:text-gray-300 hover:border-gray-500 transition-colors disabled:opacity-40"
+            className="shrink-0 flex items-center gap-1 px-1.5 py-px text-[9px] rounded border border-surface-border text-gray-500 hover:text-gray-300 hover:border-gray-500 transition-colors disabled:opacity-40"
           >
             {searching ? (
               <svg className="w-2.5 h-2.5 animate-spin" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -268,7 +268,7 @@ export function MissingTrackPanel(): JSX.Element {
           {/* Disk search results */}
           {diskResults.length > 0 && (
             <>
-              <p className="px-3 pt-2 pb-1 text-[9px] text-gray-600 uppercase tracking-wider">Found on disk</p>
+              <p className="px-3 pt-2 pb-1 text-[9px] text-gray-500 uppercase tracking-wider">Found on disk</p>
               {diskResults.map((p) => (
                 <DiskFileRow
                   key={p}
@@ -280,7 +280,7 @@ export function MissingTrackPanel(): JSX.Element {
             </>
           )}
           {diskSearched && diskResults.length === 0 && (
-            <p className="px-3 py-2 text-[10px] text-gray-600">No files found on disk</p>
+            <p className="px-3 py-2 text-[10px] text-gray-500">No files found on disk</p>
           )}
           {diskSearched && (
             <div className="px-3 py-2">
@@ -379,7 +379,7 @@ function LibraryFileRow({ file, picked, onPick }: { file: LibraryFile; picked: b
         )}
       </div>
       {(file.artist || file.artistPathGuess) && (
-        <span className="text-[10px] text-gray-600 truncate">{file.artist || file.artistPathGuess}</span>
+        <span className="text-[10px] text-gray-500 truncate">{file.artist || file.artistPathGuess}</span>
       )}
     </button>
   )
@@ -410,7 +410,7 @@ function DiskFileRow({ path, picked, onPick }: { path: string; picked: boolean; 
           </div>
         )}
       </div>
-      <span className="text-[10px] text-gray-600 truncate">{path}</span>
+      <span className="text-[10px] text-gray-500 truncate">{path}</span>
     </button>
   )
 }

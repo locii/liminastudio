@@ -115,7 +115,7 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
           <div className="absolute right-0 top-8 z-50 min-w-[220px] rounded border border-surface-border bg-surface-panel shadow-lg py-1 text-[11px]">
             <div className="px-3 py-2 border-b border-surface-border">
               <p className="font-medium text-gray-300 truncate">{userAccount.name}</p>
-              <p className="text-gray-600 truncate">{userAccount.email}</p>
+              <p className="text-gray-500 truncate">{userAccount.email}</p>
             </div>
             {pendingCount > 0 && onApplyPending && (
               <button
@@ -161,9 +161,9 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
                 Downloading{downloadPercent > 0 ? ` ${downloadPercent}%` : '…'}
               </div>
             ) : checkState === 'checking' ? (
-              <div className="px-3 py-1.5 text-gray-600 text-[11px]">Checking for updates…</div>
+              <div className="px-3 py-1.5 text-gray-500 text-[11px]">Checking for updates…</div>
             ) : checkState === 'upToDate' ? (
-              <div className="px-3 py-1.5 text-gray-600 text-[11px]">Up to date · v{__APP_VERSION__}</div>
+              <div className="px-3 py-1.5 text-gray-500 text-[11px]">Up to date · v{__APP_VERSION__}</div>
             ) : (
               <button
                 type="button"
@@ -186,7 +186,7 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
               <button
                 type="button"
                 onClick={() => { toggleDevForceEmpty(); setShowMenu(false) }}
-                className={`w-full text-left flex items-center gap-2 px-3 py-1.5 transition-colors ${devForceEmpty ? 'text-orange-400 hover:bg-surface-hover' : 'text-gray-600 hover:bg-surface-hover hover:text-gray-400'}`}
+                className={`w-full text-left flex items-center gap-2 px-3 py-1.5 transition-colors ${devForceEmpty ? 'text-orange-400 hover:bg-surface-hover' : 'text-gray-500 hover:bg-surface-hover hover:text-gray-400'}`}
               >
                 <span className="font-mono text-[12px] leading-none">∅</span>
                 {devForceEmpty ? 'Exit onboarding preview' : 'Preview onboarding (new user)'}
@@ -237,7 +237,7 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
               type="button"
               onClick={toggleDevForceEmpty}
               title={devForceEmpty ? 'Exit onboarding preview' : 'Preview onboarding (new user)'}
-              className={`flex items-center justify-center h-6 w-6 font-mono text-[12px] border rounded transition-colors ${devForceEmpty ? 'text-orange-400 border-orange-400/40 bg-orange-400/10' : 'text-gray-600 border-surface-border bg-surface-hover hover:text-gray-400'}`}
+              className={`flex items-center justify-center h-6 w-6 font-mono text-[12px] border rounded transition-colors ${devForceEmpty ? 'text-orange-400 border-orange-400/40 bg-orange-400/10' : 'text-gray-500 border-surface-border bg-surface-hover hover:text-gray-400'}`}
             >
               ∅
             </button>
@@ -273,7 +273,7 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
             {/* Left — benefits panel */}
             <div className="flex flex-col gap-5 p-8 w-60 shrink-0 bg-surface-base border-r border-surface-border">
               <div className="flex flex-col gap-1">
-                <span className="text-[11px] uppercase tracking-widest text-gray-600">Unlock with</span>
+                <span className="text-[11px] uppercase tracking-widest text-gray-500">Unlock with</span>
                 <span className="text-[14px] font-semibold text-gray-300 leading-snug">Music for Breathwork</span>
               </div>
               <div className="flex flex-col gap-4 mt-1">
@@ -290,7 +290,7 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
                 ))}
               </div>
               <div className="mt-auto pt-5 border-t border-surface-border">
-                <span className="text-[11px] text-gray-600 leading-snug block">No account?</span>
+                <span className="text-[11px] text-gray-500 leading-snug block">No account?</span>
                 <button
                   type="button"
                   onClick={() => window.open('https://musicforbreathwork.com', '_blank')}
@@ -305,13 +305,13 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
             <div className="flex flex-col flex-1 p-8 gap-6">
               <div className="flex justify-between items-start">
                 <div className="flex flex-col gap-1">
-                  <span className="text-[16px] font-semibold text-gray-100">Sign in <span className="text-[11px] font-normal text-gray-600">· optional</span></span>
-                  <span className="text-[11px] text-gray-600">Connect your Music for Breathwork account</span>
+                  <span className="text-[16px] font-semibold text-gray-100">Sign in <span className="text-[11px] font-normal text-gray-500">· optional</span></span>
+                  <span className="text-[11px] text-gray-500">Connect your Music for Breathwork account</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => { setShowModal(false); setError('') }}
-                  className="text-gray-600 transition-colors hover:text-gray-400 mt-0.5"
+                  className="text-gray-500 transition-colors hover:text-gray-400 mt-0.5"
                 >
                   <svg className="w-4 h-4" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                     <path d="M2 2l8 8M10 2l-8 8" />
@@ -339,7 +339,7 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
                   )}
                 </button>
                 {loading && (
-                  <p className="text-[11px] text-gray-600 leading-relaxed">
+                  <p className="text-[11px] text-gray-500 leading-relaxed">
                     Complete sign-in in the browser window that just opened, then return here.
                   </p>
                 )}
@@ -348,13 +348,13 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
                 )}
               </div>
 
-              <p className="text-[11px] text-gray-700 leading-relaxed">
+              <p className="text-[11px] text-gray-600 leading-relaxed">
                 Opens your browser to authorize securely — Limina Studio never sees your password.
                 Your account unlocks catalogue matching, phase tags, audio features, and playlist sync.
               </p>
 
               <div className="flex items-center gap-3 mt-auto pt-4 border-t border-surface-border">
-                <span className="text-[11px] text-gray-600">Just want to work with your own files?</span>
+                <span className="text-[11px] text-gray-500">Just want to work with your own files?</span>
                 <button
                   type="button"
                   onClick={() => { setShowModal(false); setError('') }}

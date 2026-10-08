@@ -6,6 +6,7 @@ import { runCueScan } from '../lib/cueScan'
 import { runFeatureScan } from '../lib/featureScan'
 import { getMixEngine } from '../lib/mixEngineSingleton'
 import type { MixSession } from '../store/libraryStore'
+import { isInFolder } from '../lib/isInFolder'
 
 interface Props {
   onAddFolder: (folderPath?: string) => void
@@ -35,7 +36,7 @@ const PRESET_HOUR_TAGS = [
   'Third Hour',
 ] as const
 
-function buildSidebarTags(files: { tags: readonly string[] }[]): [string, number][] {
+export function buildSidebarTags(files: { tags: readonly string[] }[]): [string, number][] {
   // Count case-insensitively; preserve original casing from first occurrence in files
   const counts = new Map<string, number>()
   const display = new Map<string, string>() // lower → display label
@@ -64,6 +65,14 @@ function buildSidebarTags(files: { tags: readonly string[] }[]): [string, number
 
 export function FolderPanel({ onAddFolder, onRescan }: Props): JSX.Element {
   const [mode, setMode] = useState<PanelMode>('tags')
+  // Follow selections made elsewhere (e.g. the Library tab's dropdown): a folder
+  // selection shows the Folders tab, a tag selection the Tags tab.
+  const extSelectedFolderId = useLibraryStore((s) => s.selectedFolderId)
+  const extSelectedTagCount = useLibraryStore((s) => s.selectedTags.length)
+  useEffect(() => {
+    if (extSelectedFolderId) setMode('folders')
+    else if (extSelectedTagCount > 0) setMode('tags')
+  }, [extSelectedFolderId, extSelectedTagCount])
   const [isDragOver, setIsDragOver] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; folderId: string } | null>(null)
   const [tagQuery, setTagQuery] = useState('')
@@ -98,6 +107,19 @@ export function FolderPanel({ onAddFolder, onRescan }: Props): JSX.Element {
     if (selectedTags.length > 0 && mode !== 'tags') setMode('tags')
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTags.length])
+  // Keep the selected tag / folder visible: selections made elsewhere (the
+  // Library tab's dropdown, Show in Library) can land far down a long list.
+  // Runs after the tab switch above has rendered.
+  const lastSelectedTag = selectedTags[selectedTags.length - 1] ?? null
+  useEffect(() => {
+    const key = mode === 'tags' ? lastSelectedTag : mode === 'folders' ? selectedFolderId : null
+    if (!key) return
+    const attr = mode === 'tags' ? 'data-sidebar-tag' : 'data-sidebar-folder'
+    const raf = requestAnimationFrame(() => {
+      document.querySelector(`[${attr}="${CSS.escape(key)}"]`)?.scrollIntoView({ block: 'nearest' })
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [mode, lastSelectedTag, selectedFolderId])
   const selectFolder = useLibraryStore((s) => s.selectFolder)
   const toggleSelectedTag = useLibraryStore((s) => s.toggleSelectedTag)
   const clearSelectedTags = useLibraryStore((s) => s.clearSelectedTags)
@@ -284,7 +306,7 @@ export function FolderPanel({ onAddFolder, onRescan }: Props): JSX.Element {
       {mode === 'folders' && (
         <>
           <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-surface-border shrink-0">
-            <svg className="w-3 h-3 text-gray-600 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg className="w-3 h-3 text-gray-500 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="5" cy="5" r="3.5" />
               <path d="M8 8l2.5 2.5" />
             </svg>
@@ -296,7 +318,7 @@ export function FolderPanel({ onAddFolder, onRescan }: Props): JSX.Element {
               className="flex-1 min-w-0 bg-transparent text-[11px] text-gray-300 placeholder-gray-700 outline-none"
             />
             {folderQuery ? (
-              <button type="button" onClick={() => setFolderQuery('')} className="text-gray-600 transition-colors hover:text-gray-400 shrink-0" title="Clear filter">
+              <button type="button" onClick={() => setFolderQuery('')} className="text-gray-500 transition-colors hover:text-gray-400 shrink-0" title="Clear filter">
                 <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                   <path d="M2 2l8 8M10 2l-8 8" />
                 </svg>
@@ -313,7 +335,7 @@ export function FolderPanel({ onAddFolder, onRescan }: Props): JSX.Element {
             }`}
           >
             <span className="text-[11px] font-medium">All Files</span>
-            <span className="text-[10px] text-gray-600 tabular-nums">{totalFiles}</span>
+            <span className="text-[10px] text-gray-500 tabular-nums">{totalFiles}</span>
           </button>
           {userAccount && unmatchedCount > 0 && (
             <button
@@ -335,7 +357,7 @@ export function FolderPanel({ onAddFolder, onRescan }: Props): JSX.Element {
       <div className="flex flex-col flex-1 min-h-0">
         {mode === 'tags' && (
           <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-surface-border shrink-0">
-            <svg className="w-3 h-3 text-gray-600 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg className="w-3 h-3 text-gray-500 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="5" cy="5" r="3.5" />
               <path d="M8 8l2.5 2.5" />
             </svg>
@@ -347,7 +369,7 @@ export function FolderPanel({ onAddFolder, onRescan }: Props): JSX.Element {
               className="flex-1 min-w-0 bg-transparent text-[11px] text-gray-300 placeholder-gray-700 outline-none"
             />
             {tagQuery ? (
-              <button type="button" onClick={() => setTagQuery('')} className="text-gray-600 transition-colors hover:text-gray-400 shrink-0" title="Clear filter">
+              <button type="button" onClick={() => setTagQuery('')} className="text-gray-500 transition-colors hover:text-gray-400 shrink-0" title="Clear filter">
                 <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                   <path d="M2 2l8 8M10 2l-8 8" />
                 </svg>
@@ -358,7 +380,7 @@ export function FolderPanel({ onAddFolder, onRescan }: Props): JSX.Element {
 
         {mode === 'playlists' && (
           <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-surface-border shrink-0">
-            <svg className="w-3 h-3 text-gray-600 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg className="w-3 h-3 text-gray-500 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="5" cy="5" r="3.5" />
               <path d="M8 8l2.5 2.5" />
             </svg>
@@ -370,7 +392,7 @@ export function FolderPanel({ onAddFolder, onRescan }: Props): JSX.Element {
               className="flex-1 min-w-0 bg-transparent text-[11px] text-gray-300 placeholder-gray-700 outline-none"
             />
             {playlistSearch ? (
-              <button type="button" onClick={() => setPlaylistSearch('')} className="text-gray-600 transition-colors hover:text-gray-400 shrink-0" title="Clear search">
+              <button type="button" onClick={() => setPlaylistSearch('')} className="text-gray-500 transition-colors hover:text-gray-400 shrink-0" title="Clear search">
                 <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                   <path d="M2 2l8 8M10 2l-8 8" />
                 </svg>
@@ -385,10 +407,11 @@ export function FolderPanel({ onAddFolder, onRescan }: Props): JSX.Element {
           filteredFolders.length === 0 && folderQuery ? (
             <p className="px-3 py-3 text-[10px] text-gray-500">No matching folders</p>
           ) : filteredFolders.map((folder) => {
-            const count = files.filter((f) => f.filePath.startsWith(folder.path)).length
+            const count = files.filter((f) => isInFolder(f.filePath, folder.path)).length
             return (
               <button
                 key={folder.id}
+                data-sidebar-folder={folder.id}
                 title={folder.path}
                 onClick={() => selectFolder(folder.id)}
                 onContextMenu={(e) => {
@@ -403,12 +426,12 @@ export function FolderPanel({ onAddFolder, onRescan }: Props): JSX.Element {
                 }`}
               >
                 <div className="flex items-center min-w-0 gap-2">
-                  <svg className="w-3 h-3 text-gray-600 shrink-0" viewBox="0 0 12 12" fill="currentColor">
+                  <svg className="w-3 h-3 text-gray-500 shrink-0" viewBox="0 0 12 12" fill="currentColor">
                     <path d="M1 3.5A1.5 1.5 0 012.5 2h2l1.5 1.5H9.5A1.5 1.5 0 0111 5v4A1.5 1.5 0 019.5 10.5h-7A1.5 1.5 0 011 9V3.5z" />
                   </svg>
                   <span className="text-[11px] truncate">{folder.label}</span>
                 </div>
-                <span className="text-[10px] text-gray-600 tabular-nums shrink-0 ml-1">{count}</span>
+                <span className="text-[10px] text-gray-500 tabular-nums shrink-0 ml-1">{count}</span>
               </button>
             )
           })
@@ -422,6 +445,7 @@ export function FolderPanel({ onAddFolder, onRescan }: Props): JSX.Element {
               return (
               <button
                 key={tag}
+                data-sidebar-tag={tag}
                 type="button"
                 aria-pressed={isOn}
                 draggable
@@ -448,18 +472,18 @@ export function FolderPanel({ onAddFolder, onRescan }: Props): JSX.Element {
                   </svg>
                   <span className="text-[11px] truncate">{tag}</span>
                 </div>
-                <span className="text-[10px] text-gray-600 tabular-nums shrink-0 ml-1">{count}</span>
+                <span className="text-[10px] text-gray-500 tabular-nums shrink-0 ml-1">{count}</span>
               </button>
               )
             })
           )
         ) : mode === 'sessions' ? (
           !userAccount ? (
-            <p className="px-3 py-4 text-[11px] text-gray-600 text-center leading-relaxed">
+            <p className="px-3 py-4 text-[11px] text-gray-500 text-center leading-relaxed">
               Build and play a mix for free.<br />Recording &amp; saving sessions<br />is a Pro feature.
             </p>
           ) : mixSessions.length === 0 ? (
-            <p className="px-3 py-4 text-[11px] text-gray-600 text-center leading-relaxed">
+            <p className="px-3 py-4 text-[11px] text-gray-500 text-center leading-relaxed">
               No sessions yet.<br />Create one to build a mix.
             </p>
           ) : mixSessions.map((s) => (
@@ -476,13 +500,13 @@ export function FolderPanel({ onAddFolder, onRescan }: Props): JSX.Element {
                 </svg>
                 <span className="text-[11px] truncate">{s.name}</span>
               </div>
-              <span className="text-[10px] text-gray-600 mt-0.5 pl-5">
+              <span className="text-[10px] text-gray-500 mt-0.5 pl-5">
                 {new Date(s.startedAt).toLocaleDateString()} · {fmtSessionDuration(s.durationMs)} · {s.played.length} tracks
               </span>
             </button>
           ))
         ) : !userAccount ? (
-          <p className="px-3 py-4 text-[11px] text-gray-600 text-center leading-relaxed">
+          <p className="px-3 py-4 text-[11px] text-gray-500 text-center leading-relaxed">
             Sign in to view your<br /> Music for Breathwork playlists
           </p>
         ) : loadingPlaylists ? (
@@ -513,7 +537,7 @@ export function FolderPanel({ onAddFolder, onRescan }: Props): JSX.Element {
                     } ${
                       active
                         ? 'border-accent/50 bg-accent/15 text-accent'
-                        : 'border-surface-border text-gray-600 hover:text-gray-400 hover:bg-surface-hover'
+                        : 'border-surface-border text-gray-500 hover:text-gray-400 hover:bg-surface-hover'
                     }`}
                   >
                     {label}
@@ -538,7 +562,7 @@ export function FolderPanel({ onAddFolder, onRescan }: Props): JSX.Element {
             </div>
             {/* Track search across all playlists */}
             <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-surface-border/50 shrink-0 bg-surface-panel/60 sticky top-[1.625rem] z-10">
-              <svg className="w-3 h-3 text-gray-700 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg className="w-3 h-3 text-gray-600 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="5" cy="5" r="3.5" />
                 <path d="M8 8l2.5 2.5" />
               </svg>
@@ -550,7 +574,7 @@ export function FolderPanel({ onAddFolder, onRescan }: Props): JSX.Element {
                 className="flex-1 min-w-0 bg-transparent text-[11px] text-gray-400 placeholder-gray-700 outline-none"
               />
               {playlistTrackQuery ? (
-                <button type="button" onClick={() => setPlaylistTrackQuery('')} className="text-gray-600 transition-colors hover:text-gray-400 shrink-0" title="Clear">
+                <button type="button" onClick={() => setPlaylistTrackQuery('')} className="text-gray-500 transition-colors hover:text-gray-400 shrink-0" title="Clear">
                   <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                     <path d="M2 2l8 8M10 2l-8 8" />
                   </svg>
@@ -580,7 +604,7 @@ export function FolderPanel({ onAddFolder, onRescan }: Props): JSX.Element {
                   {playlist.image_url ? (
                     <img src={playlist.image_url} alt="" className="object-cover w-4 h-4 rounded shrink-0" />
                   ) : (
-                    <svg className="w-3 h-3 text-gray-600 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <svg className="w-3 h-3 text-gray-500 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M1 3h8M1 6h6M1 9h4" />
                     </svg>
                   )}
@@ -626,7 +650,7 @@ export function FolderPanel({ onAddFolder, onRescan }: Props): JSX.Element {
           </button>
         )}
         {mode === 'tags' && selectedTags.length === 0 && sidebarTags.length > 0 && (
-          <p className="text-center text-[10px] text-gray-600 py-0.5">
+          <p className="text-center text-[10px] text-gray-500 py-0.5">
             {sidebarTags.length} tag{sidebarTags.length === 1 ? '' : 's'}
           </p>
         )}
@@ -759,7 +783,15 @@ export function FolderPanel({ onAddFolder, onRescan }: Props): JSX.Element {
             <button
               type="button"
               className="w-full px-3 py-1.5 text-left text-red-400 hover:bg-surface-hover transition-colors"
-              onClick={() => { removeWatchedFolder(folder.id); setContextMenu(null) }}
+              onClick={async () => {
+                setContextMenu(null)
+                const ok = await window.electronAPI.confirm({
+                  message: `Remove "${folder.label}" from your library?`,
+                  detail: 'Its tracks, tags and Music for Breathwork matches will be removed from Limina. Files on disk are not touched.',
+                  confirmLabel: 'Remove Folder',
+                })
+                if (ok) removeWatchedFolder(folder.id)
+              }}
             >
               Remove Folder
             </button>

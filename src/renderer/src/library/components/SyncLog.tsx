@@ -25,7 +25,7 @@ const STATUS_ICON: Record<MfbRefreshItem['status'], JSX.Element> = {
     </svg>
   ),
   queued: (
-    <svg className="w-3 h-3 text-gray-600 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <svg className="w-3 h-3 text-gray-500 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
       <circle cx="6" cy="6" r="4" />
     </svg>
   ),
@@ -59,10 +59,10 @@ export function SyncLog({ onClose, onSelectFile }: Props): JSX.Element {
         <div className="flex justify-between items-center px-4 py-3 border-b border-surface-border shrink-0">
           <span className="text-[11px] font-semibold text-gray-300 uppercase tracking-wider">MFB Sync Log</span>
           <div className="flex gap-3 items-center">
-            <span className="text-[10px] text-gray-600 tabular-nums">
+            <span className="text-[10px] text-gray-500 tabular-nums">
               {running ? `${done}/${total} · ` : ''}{synced} synced{failed > 0 ? ` · ${failed} failed` : ''}{queued > 0 ? ` · ${queued} queued` : ''}
             </span>
-            <button type="button" onClick={onClose} className="text-gray-500 transition-colors hover:text-gray-400">
+            <button type="button" onClick={onClose} aria-label="Close" title="Close" className="text-gray-500 transition-colors hover:text-gray-300">
               <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                 <path d="M2 2l8 8M10 2l-8 8" />
               </svg>
@@ -71,7 +71,7 @@ export function SyncLog({ onClose, onSelectFile }: Props): JSX.Element {
         </div>
 
         <div className="overflow-y-auto flex-1">
-          <p className="px-4 pt-3 pb-1 text-[10px] text-gray-600 uppercase tracking-wider">
+          <p className="px-4 pt-3 pb-1 text-[10px] text-gray-500 uppercase tracking-wider">
             Refreshing audio features &amp; tags — {total}
           </p>
           {items.map((it) => (
@@ -82,10 +82,10 @@ export function SyncLog({ onClose, onSelectFile }: Props): JSX.Element {
             >
               {STATUS_ICON[it.status]}
               <div className="flex-1 min-w-0">
-                <p className={`text-[11px] truncate ${it.status === 'queued' ? 'text-gray-600' : 'text-gray-300'}`}>{it.title}</p>
-                {it.fileName !== it.title && <p className="text-[10px] text-gray-600 truncate">{it.fileName}</p>}
+                <p className={`text-[11px] truncate ${it.status === 'queued' ? 'text-gray-500' : 'text-gray-300'}`}>{it.title}</p>
+                {it.fileName !== it.title && <p className="text-[10px] text-gray-500 truncate">{it.fileName}</p>}
               </div>
-              <span className="text-[9px] uppercase tracking-wider text-gray-600 opacity-0 group-hover:opacity-100 shrink-0">View</span>
+              <span className="text-[9px] uppercase tracking-wider text-gray-500 opacity-0 group-hover:opacity-100 shrink-0">View</span>
             </div>
           ))}
           {items.length === 0 && (

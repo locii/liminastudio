@@ -1,3 +1,4 @@
+import { useDialog } from '../../../useDialog'
 interface Props {
   savedAt: string
   onRestore: () => void
@@ -15,9 +16,11 @@ function formatAge(iso: string): string {
 }
 
 export function AutosaveRestoreModal({ savedAt, onRestore, onDiscard }: Props): JSX.Element {
+  // Escape must not silently discard recovered work — the user picks explicitly.
+  const { ref: dialogRef, dialogProps } = useDialog(true, () => {}, false)
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="bg-surface-panel border border-surface-border rounded-lg shadow-2xl w-96 p-6 flex flex-col gap-4">
+      <div ref={dialogRef} {...dialogProps} className="bg-surface-panel border border-surface-border rounded-lg shadow-2xl w-96 p-6 flex flex-col gap-4">
         <div className="flex items-start gap-3">
           <svg className="w-5 h-5 text-amber-400 mt-0.5 shrink-0" viewBox="0 0 20 20" fill="currentColor">
             <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />

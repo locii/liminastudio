@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 interface ContextMenuState {
   fileId: string
@@ -14,7 +14,6 @@ import {
   artistSortKey,
   displayedAlbum,
   displayedArtist,
-  hasPendingPathGuess,
 } from '../lib/libraryTrackDisplay'
 import type { LibraryFile, MfbPlaylistTrack } from '../types'
 import { mfbTrackUrl, phaseColorForTag } from '../types'
@@ -22,6 +21,8 @@ import { useLibraryStore } from '../store/libraryStore'
 import { syncLibraryToMfb } from '../lib/syncLibrary'
 import { addLibraryFileToMix } from '../../mix/utils/addLibraryFileToMix'
 import { analyzeFileFeatures, analyzingFeatureIds, subscribeAnalyzing } from '../lib/featureScan'
+import { isInFolder } from '../lib/isInFolder'
+import { isEditableFocused } from '../../isEditableFocused'
 
 const COLUMN_STORAGE_KEY = 'library-file-list-column-widths-v7'
 const GRIP_PX = 8
@@ -385,7 +386,7 @@ export function FileList(): JSX.Element {
   // Cmd+C copies the selected file to clipboard
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent): void {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'c' && selectedFileId) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'c' && selectedFileId && !isEditableFocused()) {
         const f = allFiles.find((x) => x.id === selectedFileId)
         if (f) window.electronAPI.copyFile(f.filePath)
       }
@@ -418,8 +419,13 @@ export function FileList(): JSX.Element {
     }
   }, [contextMenu])
 
+  // Everything below is derived from store data + filter/sort state. It's
+  // memoised because `scrollTop` lives in state for row virtualisation, so the
+  // component re-renders on every scroll event — re-filtering and re-sorting a
+  // 20k-track library each time made scrolling janky.
+
   // Build set of file IDs that share an mfbTrackId with at least one other file
-  const duplicateIds = (() => {
+  const duplicateIds = useMemo(() => {
     const byMfbId = new Map<number, string[]>()
     for (const f of allFiles) {
       if (f.mfbTrackId !== null) {
@@ -433,70 +439,75 @@ export function FileList(): JSX.Element {
       if (ids.length > 1) for (const id of ids) result.add(id)
     }
     return result
-  })()
+  }, [allFiles])
 
   // Compute playlist missing tracks (before filtering modifies `files`)
   const selectedPlaylistDetail = useLibraryStore((s) => s.selectedPlaylistDetail)
-  const missingPlaylistTracks: MfbPlaylistTrack[] = (() => {
+  const missingPlaylistTracks: MfbPlaylistTrack[] = useMemo(() => {
     if (selectedPlaylistId === null || !selectedPlaylistDetail) return []
     const libraryIds = new Set(allFiles.map((f) => f.mfbTrackId).filter((id): id is number => id !== null))
     return selectedPlaylistDetail.segments.flatMap((s) => s.tracks).filter((t) => !libraryIds.has(t.id))
-  })()
+  }, [selectedPlaylistId, selectedPlaylistDetail, allFiles])
 
-  // Apply folder, tag, or playlist filter
-  let files = allFiles
-  if (selectedPlaylistId !== null) {
-    const playlist = playlists.find((p) => p.id === selectedPlaylistId)
-    files = playlist
-      ? files.filter((f) => f.mfbTrackId !== null && playlist.trackIds.includes(f.mfbTrackId))
-      : []
-  } else if (selectedFolderId !== null) {
-    const folder = watchedFolders.find((w) => w.id === selectedFolderId)
-    files = folder ? files.filter((f) => f.filePath.startsWith(folder.path)) : []
-  } else if (selectedTags.length > 0) {
-    files = files.filter((f) => selectedTags.every((t) => f.tags.includes(t)))
-  }
+  const unmatchedCount = useMemo(() => allFiles.filter((f) => f.mfbTrackId == null).length, [allFiles])
 
-  const unmatchedCount = allFiles.filter((f) => f.mfbTrackId == null).length
-
-  // Apply pending filter
-  if (pendingOnly) files = files.filter((f) => !!pendingMatches[f.id])
-
-  // Apply duplicate filter
-  if (duplicateOnly) files = files.filter((f) => duplicateIds.has(f.id))
-
-  // Apply unmatched filter
-  if (unmatchedOnly) files = files.filter((f) => f.mfbTrackId == null)
-
-  // Apply search query
   const q = query.trim().toLowerCase()
-  if (q) {
-    files = files.filter((f) => {
-      const nameHit = f.fileName.toLowerCase().includes(q)
-      const tagHit = f.tags.some((t) => t.toLowerCase().includes(q))
-      const artistBlob = `${f.artist}\n${f.artistPathGuess}\n${displayedArtist(f)}`.toLowerCase()
-      const albumBlob = `${f.album}\n${f.albumPathGuess}\n${displayedAlbum(f)}`.toLowerCase()
-      return (
-        nameHit ||
-        tagHit ||
-        artistBlob.includes(q) ||
-        albumBlob.includes(q)
-      )
-    })
-  }
 
-  files = sortFiles(files, sortState)
+  const files = useMemo(() => {
+    // Apply folder, tag, or playlist filter
+    let result = allFiles
+    if (selectedPlaylistId !== null) {
+      const playlist = playlists.find((p) => p.id === selectedPlaylistId)
+      result = playlist
+        ? result.filter((f) => f.mfbTrackId !== null && playlist.trackIds.includes(f.mfbTrackId))
+        : []
+    } else if (selectedFolderId !== null) {
+      const folder = watchedFolders.find((w) => w.id === selectedFolderId)
+      result = folder ? result.filter((f) => isInFolder(f.filePath, folder.path)) : []
+    } else if (selectedTags.length > 0) {
+      result = result.filter((f) => selectedTags.every((t) => f.tags.includes(t)))
+    }
+
+    // Apply pending filter
+    if (pendingOnly) result = result.filter((f) => !!pendingMatches[f.id])
+
+    // Apply duplicate filter
+    if (duplicateOnly) result = result.filter((f) => duplicateIds.has(f.id))
+
+    // Apply unmatched filter
+    if (unmatchedOnly) result = result.filter((f) => f.mfbTrackId == null)
+
+    // Apply search query
+    if (q) {
+      result = result.filter((f) => {
+        const nameHit = f.fileName.toLowerCase().includes(q)
+        const tagHit = f.tags.some((t) => t.toLowerCase().includes(q))
+        const artistBlob = `${f.artist}\n${f.artistPathGuess}\n${displayedArtist(f)}`.toLowerCase()
+        const albumBlob = `${f.album}\n${f.albumPathGuess}\n${displayedAlbum(f)}`.toLowerCase()
+        return (
+          nameHit ||
+          tagHit ||
+          artistBlob.includes(q) ||
+          albumBlob.includes(q)
+        )
+      })
+    }
+
+    return sortFiles(result, sortState)
+  }, [allFiles, selectedPlaylistId, playlists, selectedFolderId, watchedFolders, selectedTags, pendingOnly, pendingMatches, duplicateOnly, duplicateIds, unmatchedOnly, q, sortState])
   filesRef.current = files
   const multiSort = sortState.length > 1
 
   // Until the user manually drags the hour column, auto-fit it to all chips.
-  let hourAutoFit = COLUMN_MIN.hour
-  if (!storedWidths.hourUserSet) {
+  const hourAutoFit = useMemo(() => {
+    let w = COLUMN_MIN.hour
+    if (storedWidths.hourUserSet) return w
     for (const f of files) {
-      const w = hourCellWidth(hourTagsForFile(f.tags))
-      if (w > hourAutoFit) hourAutoFit = w
+      const cell = hourCellWidth(hourTagsForFile(f.tags))
+      if (cell > w) w = cell
     }
-  }
+    return w
+  }, [files, storedWidths.hourUserSet])
 
   const cw: ColumnWidths = {
     name: storedWidths.name,
@@ -589,22 +600,22 @@ export function FileList(): JSX.Element {
 
     return (
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <SearchBar query={query} onChange={setQuery} pendingOnly={pendingOnly} onTogglePending={() => setPendingOnly((v) => !v)} pendingCount={Object.keys(pendingMatches).length} duplicateOnly={duplicateOnly} onToggleDuplicate={() => setDuplicateOnly((v) => !v)} duplicateCount={duplicateIds.size} showRemoved={showRemoved} onToggleRemoved={() => setShowRemoved((v) => !v)} removedCount={removedFiles.length} unmatchedOnly={unmatchedOnly} onToggleUnmatched={() => setUnmatchedOnly((v) => !v)} unmatchedCount={unmatchedCount} />
+        <SearchBar query={query} onChange={setQuery} pendingOnly={pendingOnly} onTogglePending={() => setPendingOnly((v) => !v)} pendingCount={Object.keys(pendingMatches).length} duplicateOnly={duplicateOnly} onToggleDuplicate={() => setDuplicateOnly((v) => !v)} duplicateCount={duplicateIds.size} showRemoved={showRemoved} onToggleRemoved={() => setShowRemoved((v) => !v)} removedCount={removedFiles.length} unmatchedOnly={unmatchedOnly} onToggleUnmatched={() => setUnmatchedOnly(!unmatchedOnly)} unmatchedCount={unmatchedCount} />
         <div className="flex items-center px-3 h-7 border-b border-surface-border text-[10px] uppercase tracking-wider select-none shrink-0">
-          <button type="button" onClick={() => toggleRemovedSort('name')} className={`flex items-center gap-0.5 flex-1 min-w-0 transition-colors ${removedSort === 'name' ? 'text-gray-300' : 'text-gray-600 hover:text-gray-400'}`}>
+          <button type="button" onClick={() => toggleRemovedSort('name')} className={`flex items-center gap-0.5 flex-1 min-w-0 transition-colors ${removedSort === 'name' ? 'text-gray-300' : 'text-gray-500 hover:text-gray-400'}`}>
             Name <SortArrow col="name" />
           </button>
-          <button type="button" onClick={() => toggleRemovedSort('artist')} className={`flex items-center gap-0.5 w-[120px] shrink-0 transition-colors ${removedSort === 'artist' ? 'text-gray-300' : 'text-gray-600 hover:text-gray-400'}`}>
+          <button type="button" onClick={() => toggleRemovedSort('artist')} className={`flex items-center gap-0.5 w-[120px] shrink-0 transition-colors ${removedSort === 'artist' ? 'text-gray-300' : 'text-gray-500 hover:text-gray-400'}`}>
             Artist <SortArrow col="artist" />
           </button>
-          <button type="button" onClick={() => toggleRemovedSort('file')} className={`flex items-center gap-0.5 w-[120px] shrink-0 transition-colors ${removedSort === 'file' ? 'text-gray-300' : 'text-gray-600 hover:text-gray-400'}`}>
+          <button type="button" onClick={() => toggleRemovedSort('file')} className={`flex items-center gap-0.5 w-[120px] shrink-0 transition-colors ${removedSort === 'file' ? 'text-gray-300' : 'text-gray-500 hover:text-gray-400'}`}>
             Filename <SortArrow col="file" />
           </button>
           <div className="w-14 shrink-0" />
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto">
           {filteredRemoved.length === 0 ? (
-            <p className="px-4 py-4 text-[11px] text-gray-600">{q ? 'No results' : 'No removed files'}</p>
+            <p className="px-4 py-4 text-[11px] text-gray-500">{q ? 'No results' : 'No removed files'}</p>
           ) : (
             filteredRemoved.map((f) => {
               const isPreviewing = previewFileId === f.id
@@ -613,7 +624,7 @@ export function FileList(): JSX.Element {
                   <button
                     type="button"
                     onClick={() => isPreviewing ? setPreview(null, []) : setPreview(f.id, filteredRemoved.map((r) => r.id))}
-                    className={`shrink-0 w-4 h-4 flex items-center justify-center rounded-full border transition-colors ${isPreviewing ? 'opacity-100 border-accent text-accent' : 'text-gray-600 border-gray-600 opacity-0 hover:border-accent hover:text-accent group-hover:opacity-100'}`}
+                    className={`shrink-0 w-4 h-4 flex items-center justify-center rounded-full border transition-colors ${isPreviewing ? 'opacity-100 border-accent text-accent' : 'text-gray-500 border-gray-600 opacity-0 hover:border-accent hover:text-accent group-hover:opacity-100'}`}
                     title={isPreviewing ? 'Stop preview' : 'Preview'}
                   >
                     {isPreviewing ? (
@@ -628,8 +639,8 @@ export function FileList(): JSX.Element {
                     )}
                   </button>
                   <span className="flex-1 min-w-0 text-[11px] text-gray-500 truncate">{f.trackTitle || f.fileName}</span>
-                  <span className="text-[10px] text-gray-600 truncate shrink-0 w-[120px]">{f.artist}</span>
-                  <span className="text-[10px] text-gray-600 truncate shrink-0 w-[120px]">{f.fileName}</span>
+                  <span className="text-[10px] text-gray-500 truncate shrink-0 w-[120px]">{f.artist}</span>
+                  <span className="text-[10px] text-gray-500 truncate shrink-0 w-[120px]">{f.fileName}</span>
                   <button
                     type="button"
                     onClick={() => restoreFile(f.id)}
@@ -649,8 +660,8 @@ export function FileList(): JSX.Element {
   if (scanning && files.length === 0) {
     return (
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <SearchBar query={query} onChange={setQuery} pendingOnly={pendingOnly} onTogglePending={() => setPendingOnly((v) => !v)} pendingCount={Object.keys(pendingMatches).length} duplicateOnly={duplicateOnly} onToggleDuplicate={() => setDuplicateOnly((v) => !v)} duplicateCount={duplicateIds.size} showRemoved={showRemoved} onToggleRemoved={() => setShowRemoved((v) => !v)} removedCount={removedFiles.length} unmatchedOnly={unmatchedOnly} onToggleUnmatched={() => setUnmatchedOnly((v) => !v)} unmatchedCount={unmatchedCount} />
-        <div className="flex items-center justify-center flex-1 text-xs text-gray-600">
+        <SearchBar query={query} onChange={setQuery} pendingOnly={pendingOnly} onTogglePending={() => setPendingOnly((v) => !v)} pendingCount={Object.keys(pendingMatches).length} duplicateOnly={duplicateOnly} onToggleDuplicate={() => setDuplicateOnly((v) => !v)} duplicateCount={duplicateIds.size} showRemoved={showRemoved} onToggleRemoved={() => setShowRemoved((v) => !v)} removedCount={removedFiles.length} unmatchedOnly={unmatchedOnly} onToggleUnmatched={() => setUnmatchedOnly(!unmatchedOnly)} unmatchedCount={unmatchedCount} />
+        <div className="flex items-center justify-center flex-1 text-xs text-gray-500">
           Scanning…
         </div>
       </div>
@@ -659,7 +670,7 @@ export function FileList(): JSX.Element {
 
   return (
     <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-      <SearchBar query={query} onChange={setQuery} pendingOnly={pendingOnly} onTogglePending={() => setPendingOnly((v) => !v)} pendingCount={Object.keys(pendingMatches).length} duplicateOnly={duplicateOnly} onToggleDuplicate={() => setDuplicateOnly((v) => !v)} duplicateCount={duplicateIds.size} showRemoved={showRemoved} onToggleRemoved={() => setShowRemoved((v) => !v)} removedCount={removedFiles.length} unmatchedOnly={unmatchedOnly} onToggleUnmatched={() => setUnmatchedOnly((v) => !v)} unmatchedCount={unmatchedCount} />
+      <SearchBar query={query} onChange={setQuery} pendingOnly={pendingOnly} onTogglePending={() => setPendingOnly((v) => !v)} pendingCount={Object.keys(pendingMatches).length} duplicateOnly={duplicateOnly} onToggleDuplicate={() => setDuplicateOnly((v) => !v)} duplicateCount={duplicateIds.size} showRemoved={showRemoved} onToggleRemoved={() => setShowRemoved((v) => !v)} removedCount={removedFiles.length} unmatchedOnly={unmatchedOnly} onToggleUnmatched={() => setUnmatchedOnly(!unmatchedOnly)} unmatchedCount={unmatchedCount} />
 
       {/* Scroll container — both axes; header is sticky inside so it scrolls with rows horizontally */}
       <div
@@ -705,7 +716,7 @@ export function FileList(): JSX.Element {
         </div>
 
         {files.length === 0 ? (
-          <div className="flex items-center justify-center h-16 text-xs text-gray-600">
+          <div className="flex items-center justify-center h-16 text-xs text-gray-500">
             {q ? 'No results' : 'No files'}
           </div>
         ) : (() => {
@@ -745,7 +756,7 @@ export function FileList(): JSX.Element {
                       selectFile(file.id === selectedFileId ? null : file.id)
                     }
                   }}
-                  onDoubleClick={() => window.electronAPI.showInFolder(file.filePath)}
+                  onDoubleClick={() => setPreview(file.id, files.map((f) => f.id))}
                   onContextMenu={(e) => {
                     e.preventDefault()
                     setContextMenu({ fileId: file.id, filePath: file.filePath, x: e.clientX, y: e.clientY })
@@ -784,7 +795,7 @@ export function FileList(): JSX.Element {
                         setTimeout(() => setQueuedIds((prev) => { const next = new Set(prev); next.delete(file.id); return next }), 1200)
                       }}
                       title="Add to queue"
-                      className={`shrink-0 w-4 h-4 flex items-center justify-center rounded transition-colors opacity-0 group-hover:opacity-100 ${queuedIds.has(file.id) ? 'text-accent' : 'text-gray-600 hover:text-accent'}`}
+                      className={`shrink-0 w-4 h-4 flex items-center justify-center rounded transition-colors opacity-0 group-hover:opacity-100 ${queuedIds.has(file.id) ? 'text-accent' : 'text-gray-500 hover:text-accent'}`}
                     >
                       {queuedIds.has(file.id) ? (
                         <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -817,7 +828,7 @@ export function FileList(): JSX.Element {
                               : 'text-white opacity-0 group-hover:opacity-100'
                             : previewFileId === file.id
                               ? 'rounded-full border border-accent text-accent opacity-100'
-                              : 'rounded-full border border-gray-600 text-gray-600 hover:border-accent hover:text-accent opacity-0 group-hover:opacity-100'
+                              : 'rounded-full border border-gray-600 text-gray-500 hover:border-accent hover:text-accent opacity-0 group-hover:opacity-100'
                         }`}
                         title={previewFileId === file.id ? 'Stop preview' : 'Preview'}
                       >
@@ -938,16 +949,16 @@ export function FileList(): JSX.Element {
                     {formatDuration(file.duration)}
                   </span>
                   <GripSpacer />
-                  <span className="text-[10px] text-left shrink-0 uppercase text-gray-600" style={{ width: cw.format }}>
+                  <span className="text-[10px] text-left shrink-0 uppercase text-gray-500" style={{ width: cw.format }}>
                     {file.format}
                   </span>
                   <GripSpacer />
-                  <span className="text-[11px] text-left shrink-0 tabular-nums text-gray-600" style={{ width: cw.size }}>
+                  <span className="text-[11px] text-left shrink-0 tabular-nums text-gray-500" style={{ width: cw.size }}>
                     {formatSize(file.fileSize)}
                   </span>
                   <GripSpacer />
                   <span
-                    className="text-[11px] text-left shrink-0 tabular-nums text-gray-600"
+                    className="text-[11px] text-left shrink-0 tabular-nums text-gray-500"
                     style={{ width: cw.added }}
                     title={formatDateAddedFull(file.dateAdded)}
                   >
@@ -981,7 +992,7 @@ export function FileList(): JSX.Element {
                   {track.album_image_url ? (
                     <img src={track.album_image_url} alt="" className="object-cover w-4 h-4 rounded opacity-60 shrink-0" />
                   ) : (
-                    <div className="flex items-center justify-center w-4 h-4 text-gray-600 border border-gray-700 rounded-full shrink-0">
+                    <div className="flex items-center justify-center w-4 h-4 text-gray-500 border border-gray-700 rounded-full shrink-0">
                       <svg className="w-2.5 h-2.5" viewBox="0 0 10 10" fill="currentColor">
                         <path d="M2 1.5l7 3.5-7 3.5V1.5z" />
                       </svg>
@@ -1023,7 +1034,7 @@ export function FileList(): JSX.Element {
                     type="button"
                     onClick={(e) => { e.stopPropagation(); window.open(mfbTrackUrl(track.id, track.title)) }}
                     title="View on Music for Breathwork"
-                    className="flex items-center justify-center w-4 h-4 text-gray-600 transition-all opacity-0 group-hover:opacity-100 hover:text-accent"
+                    className="flex items-center justify-center w-4 h-4 text-gray-500 transition-all opacity-0 group-hover:opacity-100 hover:text-accent"
                   >
                     <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M5.5 2.5H3A1.5 1.5 0 0 0 1.5 4v5A1.5 1.5 0 0 0 3 10.5h5A1.5 1.5 0 0 0 9.5 9V6.5M7 1.5H10.5V5M10.5 1.5L5.5 6.5" />
@@ -1183,7 +1194,7 @@ export function FileList(): JSX.Element {
                 {afFields.map(([label, val]) => (
                   val != null && Number.isFinite(val) ? (
                     <div key={label} className="flex items-center gap-1">
-                      <span className="w-16 text-gray-600 shrink-0">{label}</span>
+                      <span className="w-16 text-gray-500 shrink-0">{label}</span>
                       <div className="flex-1 h-1 overflow-hidden rounded bg-white/10">
                         <div className="h-full rounded bg-accent/60" style={{ width: `${Math.min(100, Math.max(0, (val as number) * 100))}%` }} />
                       </div>
@@ -1198,7 +1209,7 @@ export function FileList(): JSX.Element {
       })()}
 
       {/* Footer count */}
-      <div className="h-6 shrink-0 flex items-center justify-between px-3 border-t border-surface-border text-[10px] text-gray-600 select-none">
+      <div className="h-6 shrink-0 flex items-center justify-between px-3 border-t border-surface-border text-[10px] text-gray-500 select-none">
         <span>
           {files.length} file{files.length === 1 ? '' : 's'}
           {q && allFiles.length > files.length && (
@@ -1207,7 +1218,7 @@ export function FileList(): JSX.Element {
           {scanning && <span className="ml-2 text-accent">Scanning…</span>}
         </span>
         {allFiles.length > 0 && (
-          <span className="text-gray-600">
+          <span className="text-gray-500">
             <span className={allFiles.length - unmatchedCount === allFiles.length ? 'text-accent' : 'text-gray-400'}>{allFiles.length - unmatchedCount}</span>
             {' / '}{allFiles.length} matched
           </span>
@@ -1304,7 +1315,7 @@ function SearchBar({ query, onChange, pendingOnly, onTogglePending, pendingCount
 }): JSX.Element {
   return (
     <div data-tour="search-bar" className="flex items-center h-8 gap-2 px-3 border-b border-surface-border bg-surface-panel shrink-0">
-      <svg className="w-3 h-3 text-gray-600 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <svg className="w-3 h-3 text-gray-500 shrink-0" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="5" cy="5" r="3.5" />
         <path d="M8 8l2.5 2.5" />
       </svg>
@@ -1316,7 +1327,7 @@ function SearchBar({ query, onChange, pendingOnly, onTogglePending, pendingCount
         className="flex-1 bg-transparent text-[11px] text-gray-300 placeholder-gray-500 outline-none"
       />
       {query && (
-        <button onClick={() => onChange('')} className="text-gray-600 transition-colors hover:text-gray-400">
+        <button onClick={() => onChange('')} className="text-gray-500 transition-colors hover:text-gray-400">
           <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
             <path d="M2 2l8 8M10 2l-8 8" />
           </svg>
@@ -1329,7 +1340,7 @@ function SearchBar({ query, onChange, pendingOnly, onTogglePending, pendingCount
           className={`shrink-0 flex items-center gap-1 px-1.5 py-px text-[9px] font-medium rounded transition-colors ${
             pendingOnly
               ? 'bg-accent/30 text-accent border border-accent/40'
-              : 'bg-surface-hover text-gray-600 border border-surface-border hover:text-gray-300'
+              : 'bg-surface-hover text-gray-500 border border-surface-border hover:text-gray-300'
           }`}
         >
           pending
@@ -1343,7 +1354,7 @@ function SearchBar({ query, onChange, pendingOnly, onTogglePending, pendingCount
           className={`shrink-0 flex items-center gap-1 px-1.5 py-px text-[9px] font-medium rounded transition-colors ${
             duplicateOnly
               ? 'bg-yellow-500/25 text-yellow-300 border border-yellow-500/40'
-              : 'bg-surface-hover text-gray-600 border border-surface-border hover:text-gray-300'
+              : 'bg-surface-hover text-gray-500 border border-surface-border hover:text-gray-300'
           }`}
         >
           dupes
@@ -1357,7 +1368,7 @@ function SearchBar({ query, onChange, pendingOnly, onTogglePending, pendingCount
           className={`shrink-0 flex items-center gap-1 px-1.5 py-px text-[9px] font-medium rounded transition-colors ${
             unmatchedOnly
               ? 'bg-gray-500/25 text-gray-300 border border-gray-500/40'
-              : 'bg-surface-hover text-gray-600 border border-surface-border hover:text-gray-300'
+              : 'bg-surface-hover text-gray-500 border border-surface-border hover:text-gray-300'
           }`}
         >
           unlinked
@@ -1371,7 +1382,7 @@ function SearchBar({ query, onChange, pendingOnly, onTogglePending, pendingCount
           className={`shrink-0 flex items-center gap-1 px-1.5 py-px text-[9px] font-medium rounded transition-colors ${
             showRemoved
               ? 'bg-red-500/20 text-red-400 border border-red-500/40'
-              : 'bg-surface-hover text-gray-600 border border-surface-border hover:text-gray-300'
+              : 'bg-surface-hover text-gray-500 border border-surface-border hover:text-gray-300'
           }`}
         >
           removed

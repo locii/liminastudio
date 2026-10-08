@@ -61,13 +61,13 @@ export function KeyboardShortcuts({ open, onClose }: Props): JSX.Element | null 
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-surface-border">
           <span className="text-sm font-semibold text-gray-200">Keyboard Shortcuts</span>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-200 transition-colors text-lg leading-none">×</button>
+          <button onClick={onClose} aria-label="Close" title="Close" className="text-gray-500 hover:text-gray-200 transition-colors text-lg leading-none">×</button>
         </div>
         <div className="px-4 py-3 space-y-0.5">
           {SHORTCUTS.map((item, i) =>
             'group' in item ? (
               <div key={i} className="pt-3 pb-1 first:pt-0">
-                <span className="text-[9px] font-bold tracking-widest text-gray-600 uppercase">{item.group}</span>
+                <span className="text-[9px] font-bold tracking-widest text-gray-500 uppercase">{item.group}</span>
               </div>
             ) : (
               <div key={i} className="flex items-center justify-between py-1">

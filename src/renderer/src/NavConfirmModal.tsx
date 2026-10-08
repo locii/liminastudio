@@ -1,9 +1,11 @@
 import { useUIStore } from './uiStore'
 import { confirmPendingNav, cancelPendingNav } from './navigate'
+import { useDialog } from './useDialog'
 
 /** Shown when navigating away from a view that's actively playing audio. */
 export function NavConfirmModal(): JSX.Element | null {
   const open = useUIStore((s) => s.navConfirmOpen)
+  const { ref: dialogRef, dialogProps } = useDialog(open, cancelPendingNav)
   if (!open) return null
 
   return (
@@ -12,6 +14,9 @@ export function NavConfirmModal(): JSX.Element | null {
       onClick={cancelPendingNav}
     >
       <div
+        ref={dialogRef}
+        {...dialogProps}
+        aria-label="Stop playback?"
         className="flex flex-col gap-4 p-5 w-80 rounded-lg border shadow-xl border-surface-border bg-surface-panel"
         onClick={(e) => e.stopPropagation()}
       >

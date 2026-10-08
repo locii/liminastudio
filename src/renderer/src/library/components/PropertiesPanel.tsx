@@ -36,7 +36,7 @@ function SectionHeader({ label, open, onToggle }: { label: string; open: boolean
     <button type="button" onClick={onToggle} className="flex justify-between items-center w-full text-left group">
       <span className="text-[10px] text-gray-400 uppercase tracking-wider">{label}</span>
       <svg
-        className={`w-3 h-3 text-gray-600 group-hover:text-gray-400 transition-all shrink-0 ${open ? '':'-rotate-90'}`}
+        className={`w-3 h-3 text-gray-500 group-hover:text-gray-400 transition-all shrink-0 ${open ? '':'-rotate-90'}`}
         viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
       >
         <path d="M2 4l4 4 4-4" />
@@ -114,7 +114,7 @@ function EditableRow({ label, value, onSave }: { label: string; value: string; o
           className="text-[11px] text-gray-200 text-right truncate hover:text-white min-w-0 max-w-[180px]"
           title="Click to edit"
         >
-          {value.trim() || <span className="text-gray-600">—</span>}
+          {value.trim() || <span className="text-gray-500">—</span>}
         </button>
       )}
     </div>
@@ -336,7 +336,7 @@ export function PropertiesPanel(): JSX.Element {
                     className={`shrink-0 w-4 h-4 flex items-center justify-center rounded-full border transition-colors ${
                       previewFileId === lf.id
                         ? 'border-accent text-accent'
-                        : 'border-gray-600 text-gray-600 hover:border-accent hover:text-accent'
+                        : 'border-gray-600 text-gray-500 hover:border-accent hover:text-accent'
                     }`}
                   >
                     {previewFileId === lf.id ? (
@@ -371,7 +371,7 @@ export function PropertiesPanel(): JSX.Element {
               className={`shrink-0 w-6 h-6 flex items-center justify-center rounded-full border transition-colors disabled:opacity-40 ${
                 m4bPreviewPlaying
                   ? 'border-accent text-accent'
-                  : 'text-gray-600 border-gray-600 hover:border-accent hover:text-accent'
+                  : 'text-gray-500 border-gray-600 hover:border-accent hover:text-accent'
               }`}
             >
               {m4bPreviewLoading ? (
@@ -950,7 +950,7 @@ export function PropertiesPanel(): JSX.Element {
                     introEndMs: null, outroStartMs: null, fadeInCurve: 0, fadeOutCurve: 0,
                     clipStartMs: null, clipEndMs: null,
                   })}
-                  className="w-full py-1 text-[10px] text-gray-600 hover:text-gray-300 border border-surface-border rounded transition-colors"
+                  className="w-full py-1 text-[10px] text-gray-500 hover:text-gray-300 border border-surface-border rounded transition-colors"
                 >
                   Reset all cue points
                 </button>
@@ -1031,7 +1031,7 @@ function DupeRow({
           className={`shrink-0 w-4 h-4 flex items-center justify-center rounded-full border transition-colors ${
             isPlaying
               ? 'border-accent text-accent'
-              : 'text-gray-600 border-gray-600 hover:border-accent hover:text-accent'
+              : 'text-gray-500 border-gray-600 hover:border-accent hover:text-accent'
           }`}
           title={isPlaying ? 'Stop preview' : 'Preview'}
         >

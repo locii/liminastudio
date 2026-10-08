@@ -1,10 +1,12 @@
 import { useUIStore } from './uiStore'
 import { saveThenOpen, replaceAndOpen, cancelOpen } from './openGuard'
+import { useDialog } from './useDialog'
 
 /** Save / Replace / Cancel prompt shown when an "Open in…" would overwrite the
  *  existing contents of a Mix or Session. */
 export function OverwriteModal(): JSX.Element | null {
   const target = useUIStore((s) => s.overwritePrompt)
+  const { ref: dialogRef, dialogProps } = useDialog(!!target, cancelOpen)
   if (!target) return null
 
   const label = target === 'mix' ? 'Mix' : 'Session'
@@ -12,6 +14,9 @@ export function OverwriteModal(): JSX.Element | null {
   return (
     <div className="flex fixed inset-0 z-[500] justify-center items-center bg-black/60" onClick={cancelOpen}>
       <div
+        ref={dialogRef}
+        {...dialogProps}
+        aria-label={`Replace current ${label}?`}
         className="flex flex-col gap-4 p-5 w-96 rounded-lg border shadow-xl border-surface-border bg-surface-panel"
         onClick={(e) => e.stopPropagation()}
       >

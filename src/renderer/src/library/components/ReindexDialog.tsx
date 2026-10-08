@@ -29,7 +29,7 @@ export function ReindexDialog({ onClose, onConfirm }: Props): JSX.Element {
       >
         <div className="flex justify-between items-center px-4 py-3 border-b border-surface-border shrink-0">
           <span className="text-[11px] font-semibold text-gray-300 uppercase tracking-wider">Re-index catalogue</span>
-          <button type="button" onClick={onClose} className="text-gray-500 transition-colors hover:text-gray-400">
+          <button type="button" onClick={onClose} aria-label="Close" title="Close" className="text-gray-500 transition-colors hover:text-gray-300">
             <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
               <path d="M2 2l8 8M10 2l-8 8" />
             </svg>

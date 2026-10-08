@@ -15,9 +15,9 @@ export function WhatsNewModal({ open, onClose }: Props): JSX.Element | null {
     if (open) {
       const t = setTimeout(() => setVisible(true), 10)
       return () => clearTimeout(t)
-    } else {
-      setVisible(false)
     }
+    setVisible(false)
+    return undefined
   }, [open])
 
   useEffect(() => {
@@ -34,6 +34,7 @@ export function WhatsNewModal({ open, onClose }: Props): JSX.Element | null {
   if (!open) return null
 
   const [current, ...past] = CHANGELOG
+  if (!current) return null
 
   return (
     <div
@@ -55,15 +56,17 @@ export function WhatsNewModal({ open, onClose }: Props): JSX.Element | null {
                 <span className="text-[10px] font-bold tracking-widest uppercase text-accent/80">
                   What&apos;s new
                 </span>
-                <span className="text-[10px] font-mono text-gray-600">v{current.version}</span>
+                <span className="text-[10px] font-mono text-gray-500">v{current.version}</span>
               </div>
-              <h2 className="text-sm font-semibold text-gray-100">Limina Library updated</h2>
-              <p className="text-[10px] text-gray-600 mt-0.5">{current.date}</p>
+              <h2 className="text-sm font-semibold text-gray-100">Limina Studio updated</h2>
+              {current.date && <p className="text-[10px] text-gray-500 mt-0.5">{current.date}</p>}
             </div>
             <button
               ref={closeRef}
               onClick={onClose}
-              className="mt-0.5 shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-[11px] text-gray-600 hover:text-gray-300 hover:bg-white/8 transition-colors"
+              aria-label="Close"
+              title="Close"
+              className="mt-0.5 shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-[11px] text-gray-500 hover:text-gray-300 hover:bg-white/8 transition-colors"
             >
               ✕
             </button>
@@ -96,7 +99,7 @@ export function WhatsNewModal({ open, onClose }: Props): JSX.Element | null {
             <div className="mt-1">
               <button
                 onClick={() => setPastOpen((v) => !v)}
-                className="flex items-center gap-1.5 text-[10px] text-gray-600 hover:text-gray-400 transition-colors"
+                className="flex items-center gap-1.5 text-[10px] text-gray-500 hover:text-gray-400 transition-colors"
               >
                 <svg
                   className={`w-2.5 h-2.5 transition-transform ${pastOpen ? 'rotate-90' : ''}`}
@@ -112,15 +115,15 @@ export function WhatsNewModal({ open, onClose }: Props): JSX.Element | null {
                   {past.map((entry) => (
                     <div key={entry.version}>
                       <div className="flex items-center gap-2 mb-1.5">
-                        <span className="text-[10px] font-mono text-gray-600">v{entry.version}</span>
-                        <span className="text-[10px] text-gray-700">{entry.date}</span>
+                        <span className="text-[10px] font-mono text-gray-500">v{entry.version}</span>
+                        <span className="text-[10px] text-gray-600">{entry.date}</span>
                       </div>
                       {entry.sections.map((section) => (
                         <div key={section.title} className="mb-2 last:mb-0">
                           <p className="text-[10px] font-medium text-gray-500 mb-1">{section.title}</p>
                           <ul className="flex flex-col gap-0.5 pl-3">
                             {section.items.map((item) => (
-                              <li key={item} className="text-[10px] text-gray-600 leading-relaxed">· {item}</li>
+                              <li key={item} className="text-[10px] text-gray-500 leading-relaxed">· {item}</li>
                             ))}
                           </ul>
                         </div>

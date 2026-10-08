@@ -141,7 +141,7 @@ export function SessionTransportBar(): JSX.Element | null {
               <img src={albumImageUrl} alt="" className="object-cover w-10 h-10 rounded" />
             ) : (
               <div className="w-10 h-10 rounded bg-surface-hover flex items-center justify-center">
-                <svg className="w-4 h-4 text-gray-600" viewBox="0 0 24 24" fill="currentColor">
+                <svg className="w-4 h-4 text-gray-500" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 3v10.55A4 4 0 1014 17V7h4V3h-6z" />
                 </svg>
               </div>
@@ -173,9 +173,9 @@ export function SessionTransportBar(): JSX.Element | null {
         />
 
         {/* Time */}
-        <span className="font-mono text-[10px] tabular-nums text-gray-600 shrink-0 text-right w-20">
+        <span className="font-mono text-[10px] tabular-nums text-gray-500 shrink-0 text-right w-20">
           {fmt(state.currentTime)}
-          <span className="mx-0.5 text-gray-700">/</span>
+          <span className="mx-0.5 text-gray-600">/</span>
           {fmt(state.duration || file.duration)}
         </span>
       </div>
