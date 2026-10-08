@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.4.0
 
 - **A simpler way around the app** — The top bar is now Library, Playlists, Mix Mode and Session Mode, each with a dropdown that jumps straight in: a folder or tag, a playlist, a recent mix, or a recent session. Collections is split into Playlists and Sessions (templates and recorded sessions), and Home has a fresh look.
 - **Quick jump (⌘K)** — Press ⌘K anywhere to search tracks, playlists, sessions, templates, recent mixes, tags and folders, and jump straight there. ⌘1–4 switch between the four workspaces.
