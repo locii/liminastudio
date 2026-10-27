@@ -154,6 +154,8 @@ const api: ElectronAPI = {
   // ── MFB account (Library-style auth; shares the same auth.bin token) ────────
   authLogin: (email, password) => ipcRenderer.invoke('auth:login', email, password),
   authBeginOAuth: () => ipcRenderer.invoke('auth:beginOAuth'),
+  authCancelOAuth: () => ipcRenderer.invoke('auth:cancelOAuth'),
+  authReopenOAuth: () => ipcRenderer.invoke('auth:reopenOAuth'),
   authLogout: () => ipcRenderer.invoke('auth:logout'),
   authMe: () => ipcRenderer.invoke('auth:me'),
   getUserPlaylists: () => ipcRenderer.invoke('auth:getUserPlaylists'),

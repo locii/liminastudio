@@ -73,12 +73,25 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
       setShowModal(false)
     } catch (err) {
       const msg = err instanceof Error ? err.message : ''
-      if (/access_denied/i.test(msg)) setError('Sign-in was cancelled.')
+      if (/cancelled/i.test(msg)) setError('')
+      else if (/access_denied/i.test(msg)) setError('Sign-in was cancelled.')
       else if (/timeout/i.test(msg)) setError('Sign-in timed out. Please try again.')
+      else if (/browser_failed/i.test(msg)) setError('Couldn’t open your browser — please try again.')
       else setError('Sign-in failed — please try again.')
     } finally {
       setLoading(false)
     }
+  }
+
+  function handleCancelConnect(): void {
+    // Main rejects the pending authBeginOAuth with 'cancelled', which clears loading.
+    window.electronAPI.authCancelOAuth()
+  }
+
+  function closeModal(): void {
+    if (loading) handleCancelConnect()
+    setShowModal(false)
+    setError('')
   }
 
   async function handleLogout(): Promise<void> {
@@ -310,7 +323,7 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
                 </div>
                 <button
                   type="button"
-                  onClick={() => { setShowModal(false); setError('') }}
+                  onClick={closeModal}
                   className="text-gray-500 transition-colors hover:text-gray-400 mt-0.5"
                 >
                   <svg className="w-4 h-4" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -339,9 +352,27 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
                   )}
                 </button>
                 {loading && (
-                  <p className="text-[11px] text-gray-500 leading-relaxed">
-                    Complete sign-in in the browser window that just opened, then return here.
-                  </p>
+                  <div className="flex flex-col gap-2">
+                    <p className="text-[11px] text-gray-500 leading-relaxed">
+                      Complete sign-in in the browser window that just opened, then return here.
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => window.electronAPI.authReopenOAuth()}
+                        className="text-[11px] text-accent hover:text-accent/80 transition-colors underline underline-offset-2"
+                      >
+                        Reopen browser
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelConnect}
+                        className="text-[11px] text-gray-400 hover:text-gray-200 transition-colors underline underline-offset-2 decoration-gray-700 hover:decoration-gray-400"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
                 )}
                 {error && (
                   <p className="text-[11px] text-red-400">{error}</p>
@@ -357,7 +388,7 @@ export function AccountButton({ menuItems, pendingCount = 0, onApplyPending }: {
                 <span className="text-[11px] text-gray-500">Just want to work with your own files?</span>
                 <button
                   type="button"
-                  onClick={() => { setShowModal(false); setError('') }}
+                  onClick={closeModal}
                   className="text-[11px] font-medium text-gray-400 hover:text-gray-200 transition-colors underline underline-offset-2 decoration-gray-700 hover:decoration-gray-400"
                 >
                   Skip for now

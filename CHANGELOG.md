@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.2
+
+- **Sign-in can't get stuck any more** — If the browser window for signing in to Music for Breathwork is closed or doesn't load, the sign-in screen now offers **Reopen browser** and **Cancel** instead of waiting forever. Closing the sign-in screen also cancels, and a sign-in that's never finished gives up on its own after 3 minutes.
+- **Clearer sign-in errors** — If your browser can't be opened at all, you're told straight away, and requests to Music for Breathwork now give up after 30 seconds instead of hanging.
+
 ## v1.4.1
 
 - **A simpler way around the app** — The top bar is now Library, Playlists, Mix Mode and Session Mode, each with a dropdown that jumps straight in: a folder or tag, a playlist, a recent mix, or a recent session. Collections is split into Playlists and Sessions (templates and recorded sessions), and Home has a fresh look.

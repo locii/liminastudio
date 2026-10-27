@@ -14,7 +14,13 @@ const TOKEN_FILE = join(app.getPath('userData'), 'auth.bin')
 const OAUTH_CLIENT_ID = 'limina-desktop'
 
 /** Give up waiting for the browser callback after this long. */
-const OAUTH_TIMEOUT_MS = 5 * 60 * 1000
+const OAUTH_TIMEOUT_MS = 3 * 60 * 1000
+
+/** Abort any single API request (e.g. the code→token exchange) that stalls this long. */
+const API_TIMEOUT_MS = 30 * 1000
+
+/** The browser sign-in currently waiting on its loopback callback, if any. */
+let pendingOAuth: { authUrl: string; cancel: () => void } | null = null
 
 /** RFC 4648 §5 base64url (no padding) — used for the PKCE verifier/challenge and state. */
 function base64url(buf: Buffer): string {
@@ -86,6 +92,7 @@ function apiPost<T>(path: string, body: unknown, token?: string): Promise<T> {
       }
     )
     req.on('error', reject)
+    req.setTimeout(API_TIMEOUT_MS, () => req.destroy(new Error('timeout')))
     req.write(payload)
     req.end()
   })
@@ -136,6 +143,9 @@ export function registerAuthHandlers(): void {
   // authorizes on musicforbreathwork.com in their real browser — the app never
   // sees their password. See DesktopAuthController on the server side.
   ipcMain.handle('auth:beginOAuth', async () => {
+    // A retry supersedes any earlier attempt still waiting on its callback.
+    pendingOAuth?.cancel()
+
     const verifier = base64url(randomBytes(32))
     const challenge = base64url(createHash('sha256').update(verifier).digest())
     const state = base64url(randomBytes(16))
@@ -145,6 +155,22 @@ export function registerAuthHandlers(): void {
     const { code, redirectUri } = await new Promise<{ code: string; redirectUri: string }>(
       (resolve, reject) => {
         let redirectUri = ''
+        let settled = false
+        // Every exit path (callback, timeout, cancel, error) goes through here so
+        // the server is closed and pendingOAuth is cleared exactly once.
+        const finish = (err: Error | null, value?: { code: string; redirectUri: string }): void => {
+          if (settled) return
+          settled = true
+          clearTimeout(timeout)
+          if (pendingOAuth === entry) pendingOAuth = null
+          // Close after any in-flight response has been flushed so the page renders.
+          setImmediate(() => server.close())
+          if (err) reject(err)
+          else if (value) resolve(value)
+        }
+        const entry = { authUrl: '', cancel: () => finish(new Error('cancelled')) }
+        pendingOAuth = entry
+
         const server = createServer((req, res) => {
           const url = new URL(req.url ?? '/', 'http://127.0.0.1')
           if (url.pathname !== '/callback') {
@@ -158,21 +184,15 @@ export function registerAuthHandlers(): void {
 
           res.writeHead(ok ? 200 : 400, { 'Content-Type': 'text/html; charset=utf-8' })
           res.end(callbackPage(ok))
-          // Close after the response has been flushed so the page renders.
-          setImmediate(() => server.close())
 
-          if (errParam) return reject(new Error(errParam))
-          if (returnedState !== state) return reject(new Error('state_mismatch'))
-          if (!code) return reject(new Error('no_code'))
-          resolve({ code, redirectUri })
+          if (errParam) return finish(new Error(errParam))
+          if (returnedState !== state) return finish(new Error('state_mismatch'))
+          if (!code) return finish(new Error('no_code'))
+          finish(null, { code, redirectUri })
         })
 
-        const timeout = setTimeout(() => {
-          server.close()
-          reject(new Error('timeout'))
-        }, OAUTH_TIMEOUT_MS)
-        server.on('close', () => clearTimeout(timeout))
-        server.on('error', reject)
+        const timeout = setTimeout(() => finish(new Error('timeout')), OAUTH_TIMEOUT_MS)
+        server.on('error', (err) => finish(err))
 
         server.listen(0, '127.0.0.1', () => {
           const port = (server.address() as AddressInfo).port
@@ -188,7 +208,8 @@ export function registerAuthHandlers(): void {
               state,
               scope: 'limina',
             }).toString()
-          shell.openExternal(authUrl)
+          entry.authUrl = authUrl
+          shell.openExternal(authUrl).catch(() => finish(new Error('browser_failed')))
         })
       }
     )
@@ -199,6 +220,17 @@ export function registerAuthHandlers(): void {
     )
     await saveToken(result.token)
     return result.user
+  })
+
+  // Abandon a browser sign-in that's still waiting (user closed the tab, browser
+  // crashed, changed their mind). The pending auth:beginOAuth rejects with 'cancelled'.
+  ipcMain.handle('auth:cancelOAuth', () => {
+    pendingOAuth?.cancel()
+  })
+
+  // Re-open the authorize page for the waiting sign-in (e.g. its tab was closed).
+  ipcMain.handle('auth:reopenOAuth', async () => {
+    if (pendingOAuth?.authUrl) await shell.openExternal(pendingOAuth.authUrl)
   })
 
   ipcMain.handle('auth:logout', async () => {
