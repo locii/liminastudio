@@ -10,6 +10,10 @@ import type { AddressInfo } from 'net'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 
+// Version of an update that's downloaded and staged, kept so a renderer that
+// mounts (or reloads) after the event can still find out about it.
+let updateReadyVersion: string | null = null
+
 function initAutoUpdater(): void {
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
@@ -27,12 +31,19 @@ function initAutoUpdater(): void {
   })
   autoUpdater.on('update-downloaded', (info) => {
     console.log('[updater] downloaded', info.version)
+    updateReadyVersion = info.version
     mainWindow?.webContents.send('updater:downloaded', info.version)
   })
   ipcMain.on('updater:quitAndInstall', () => {
     autoUpdater.quitAndInstall()
   })
+  ipcMain.handle('updater:getReady', () => updateReadyVersion)
   ipcMain.handle('updater:check', async () => {
+    // Already staged: re-announce it rather than re-running the download.
+    if (updateReadyVersion) {
+      mainWindow?.webContents.send('updater:downloaded', updateReadyVersion)
+      return { hasUpdate: true, version: updateReadyVersion }
+    }
     const result = await autoUpdater.checkForUpdates()
     return { hasUpdate: !!result?.downloadPromise, version: result?.updateInfo.version ?? null }
   })

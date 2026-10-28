@@ -161,6 +161,8 @@ export interface ElectronAPI {
   // Auto-updater
   quitAndInstall: () => void
   checkForUpdates: () => Promise<{ hasUpdate: boolean; version: string | null }>
+  /** Version of an already-downloaded update waiting to install, if any. */
+  getUpdateReady: () => Promise<string | null>
   simulateUpdate: () => void
   onUpdateDownloading: (callback: (percent: number) => void) => () => void
   onUpdateDownloaded: (callback: (version: string) => void) => () => void

@@ -84,6 +84,7 @@ const api: ElectronAPI = {
   // Auto-updater
   quitAndInstall: () => ipcRenderer.send('updater:quitAndInstall'),
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+  getUpdateReady: () => ipcRenderer.invoke('updater:getReady'),
   simulateUpdate: () => ipcRenderer.send('updater:simulate'),
   onUpdateDownloading: (callback) => {
     const handler = (_: unknown, percent: number): void => callback(percent)

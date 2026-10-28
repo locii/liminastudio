@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.4.4
+
+- **Update prompt shows up everywhere** — When a new version finishes downloading, the "Restart to install" prompt now appears whichever screen you're on. Before, it could be missed if the download finished while you were on Home or Playlists, and clicking the version number didn't bring it back.
+
 ## v1.4.3
 
 - **A warmer welcome** — The first screens new users see, the welcome and "Add your music", now share Home's artwork backdrop and frosted-glass style, so first launch looks like the app it leads into.

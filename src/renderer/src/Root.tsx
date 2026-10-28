@@ -8,6 +8,7 @@ import { OverwriteModal } from './OverwriteModal'
 import { QuickJump } from './QuickJump'
 import { LibraryHealthDialog } from './library/components/LibraryHealthDialog'
 import { useUIStore } from './uiStore'
+import { useUpdaterStore } from './updaterStore'
 import { useLibraryStore } from './library/store/libraryStore'
 import { useCatalogueBootstrap } from './useCatalogueBootstrap'
 import { useLibraryAutoRescan } from './library/useLibraryAutoRescan'
@@ -33,6 +34,17 @@ export default function Root(): JSX.Element {
       useLibraryStore.getState().exitMixMode()
       useUIStore.getState().setSurface('mix')
     })
+  }, [])
+
+  // Auto-update progress, at the umbrella level so it's caught on every surface
+  // (Home and Playlists don't mount the Library/Mix apps). Also ask main for an
+  // update that finished downloading before we started listening.
+  useEffect(() => {
+    const { setDownloading, setReady } = useUpdaterStore.getState()
+    window.electronAPI.getUpdateReady().then((v) => { if (v) setReady(v) }).catch(() => {})
+    const offDownloading = window.electronAPI.onUpdateDownloading((percent) => setDownloading(percent))
+    const offDownloaded = window.electronAPI.onUpdateDownloaded((version) => setReady(version))
+    return () => { offDownloading(); offDownloaded() }
   }, [])
 
   // Cmd/Ctrl+A inside a text field. On macOS the native select-all needs the

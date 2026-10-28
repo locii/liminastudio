@@ -22,7 +22,6 @@ import { syncLibraryToMfb } from './lib/syncLibrary'
 import { runMfbRefresh, cancelMfbRefresh } from './lib/mfbSync'
 import { runCueScan } from './lib/cueScan'
 import { runFeatureScan, cancelFeatureScan } from './lib/featureScan'
-import { useUpdaterStore } from './store/updaterStore'
 import { useUIStore } from '../uiStore'
 import { WorkspaceSwitcher } from '../WorkspaceSwitcher'
 import { requestNavigate } from '../navigate'
@@ -36,17 +35,8 @@ import { isInFolder } from './lib/isInFolder'
 let whatsNewChecked = false
 
 export default function App(): JSX.Element {
-  const { setDownloading, setReady } = useUpdaterStore()
   const goHome = useUIStore((s) => s.setSurface)
   const devForceEmpty = useUIStore((s) => s.devForceEmpty)
-
-  useEffect(() => {
-    return window.electronAPI.onUpdateDownloading((percent) => setDownloading(percent))
-  }, [setDownloading])
-
-  useEffect(() => {
-    return window.electronAPI.onUpdateDownloaded((version) => setReady(version))
-  }, [setReady])
 
   const watchedFolders = useLibraryStore((s) => s.watchedFolders)
   const selectedFileId = useLibraryStore((s) => s.selectedFileId)
