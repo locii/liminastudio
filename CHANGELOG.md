@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.4.3
+
+- **A warmer welcome** — The first screens new users see, the welcome and "Add your music", now share Home's artwork backdrop and frosted-glass style, so first launch looks like the app it leads into.
+
 ## v1.4.2
 
 - **Sign-in can't get stuck any more** — If the browser window for signing in to Music for Breathwork is closed or doesn't load, the sign-in screen now offers **Reopen browser** and **Cancel** instead of waiting forever. Closing the sign-in screen also cancels, and a sign-in that's never finished gives up on its own after 3 minutes.

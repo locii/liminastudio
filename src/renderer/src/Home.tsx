@@ -21,6 +21,15 @@ const GLASS_ICON =
   'flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-gray-200 ' +
   'transition-colors group-hover:text-accent group-hover:border-accent/40 group-hover:bg-accent/10'
 
+// Static (non-hover) glass card for onboarding content.
+const GLASS_PANEL =
+  'rounded-2xl border border-white/[0.08] bg-black/50 backdrop-blur-xl ' +
+  'shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_8px_30px_-12px_rgba(0,0,0,0.7)]'
+
+// Keeps text legible where it sits directly on the artwork.
+const TEXT_SHADOW = 'drop-shadow-[0_1px_8px_rgba(0,0,0,0.6)]'
+const TEXT_SHADOW_SOFT = 'drop-shadow-[0_1px_6px_rgba(0,0,0,0.8)]'
+
 function TileArrow(): JSX.Element {
   return (
     <svg className="w-4 h-4 text-gray-500 transition-all -translate-x-1 opacity-0 shrink-0 group-hover:opacity-100 group-hover:translate-x-0 group-hover:text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -146,96 +155,75 @@ export function Home(): JSX.Element {
   // Step 1: sign in to M4B — directive, but skippable.
   if (!isLoggedIn && !loginSkipped) {
     return (
-      <div className="flex flex-col h-full text-gray-200 bg-surface-base">
-        {dragBar}
-        <div className="flex flex-col items-center justify-center flex-1 gap-8 px-8 select-none">
-          <div className="flex flex-col items-center gap-3">
-            <img src={logo} alt="Limina Studio" className="object-contain w-14 h-14 rounded-xl" draggable={false} />
-            <div className="text-center">
-              <h2 className="mt-2 text-xl font-semibold text-gray-100">Welcome to Limina Studio</h2>
-              <p className="text-[14px] text-gray-500 mt-2 max-w-xs mx-auto leading-relaxed">
-                Limina Studio is a library, session player and multi-track mixer for your work with music and expanded states of awareness.
-              </p>
-            </div>
+      <BackdropShell>
+        <div className="flex flex-col items-center gap-3">
+          <img src={logo} alt="Limina Studio" className="object-contain w-20 h-20 rounded-2xl" draggable={false} />
+          <div className="text-center">
+            <h1 className={`text-xl font-semibold tracking-wide text-white ${TEXT_SHADOW}`}>Welcome to Limina Studio</h1>
+            <p className={`text-[11px] text-gray-300/80 mt-1 ${TEXT_SHADOW_SOFT}`}>v{__APP_VERSION__} · for breathwork &amp; psychedelic facilitators</p>
           </div>
-          <div className="flex flex-col items-center gap-3">
+        </div>
+        <div className={`${GLASS_PANEL} flex flex-col items-center w-full max-w-sm gap-5 px-7 py-7`}>
+          <p className="text-[13px] text-center leading-relaxed text-gray-300/85">
+            A library, session player and multi-track mixer for your work with music and expanded states of awareness.
+          </p>
+          <div className="flex flex-col items-stretch w-full gap-2.5">
             <button
               type="button"
               onClick={() => {
                 useLibraryStore.getState().setShowLoginModal(true)
                 setSurface('library')
               }}
-              className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white rounded-lg bg-accent hover:bg-accent/80 transition-colors"
+              className="px-6 py-2.5 text-sm font-medium text-white rounded-xl bg-accent hover:bg-accent/85 transition-all shadow-[0_8px_30px_-10px_rgba(99,102,241,0.7)] hover:shadow-[0_12px_40px_-10px_rgba(99,102,241,0.85)] hover:-translate-y-0.5"
             >
-             Get Started
+              Get Started
             </button>
-
             <button
               type="button"
               onClick={() => setLoginSkipped(true)}
-              className="text-[12px] text-gray-500 hover:text-gray-400 transition-colors"
+              className="px-6 py-2.5 text-[13px] text-gray-300 rounded-xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.08] hover:border-white/20 hover:text-white transition-colors"
             >
-              Continue without an account →
+              Continue without an account
             </button>
-
-            <p className="text-[12px] text-center text-gray-500 mt-1 max-w-xs mx-auto leading-relaxed">
-              Built by the team behind<br />{' '}
-              <a target="_blank" className="text-accent hover:underline" href="https://musicforbreathwork.com">
-                Music for Breathwork
-              </a>.
-            </p>
           </div>
         </div>
-      </div>
+        <p className={`text-[12px] text-center text-gray-300/75 leading-relaxed ${TEXT_SHADOW_SOFT}`}>
+          Built by the team behind{' '}
+          <a target="_blank" rel="noreferrer" className="text-accent hover:underline" href="https://musicforbreathwork.com">
+            Music for Breathwork
+          </a>.
+        </p>
+      </BackdropShell>
     )
   }
 
   // Step 2: add a folder (no files yet) — a real drop zone.
   if (!hasFiles) {
     return (
-      <div className="flex flex-col h-full text-gray-200 bg-surface-base">
-        {dragBar}
-        <div className="flex flex-col items-center justify-center flex-1 gap-8 px-8 select-none">
-          <div className="text-center">
-            <p className="text-[10px] uppercase tracking-widest text-accent">Getting started</p>
-            <h2 className="mt-2 text-xl font-semibold text-gray-100">Add your music</h2>
-            <p className="text-[13px] text-gray-500 mt-2 max-w-sm mx-auto leading-relaxed">
-              Point Limina at a folder of audio files. It scans automatically and
-              keeps your library in sync.
-            </p>
-          </div>
-          <HomeDropZone onAdd={goAddFolder} />
-          <p className="text-[11px] text-gray-600 tracking-wide">
-            WAV · MP3 · AIFF · FLAC · M4A · OGG
+      <BackdropShell>
+        <div className="text-center">
+          <p className={`text-[10px] uppercase tracking-widest text-accent ${TEXT_SHADOW_SOFT}`}>Getting started</p>
+          <h1 className={`mt-2 text-xl font-semibold tracking-wide text-white ${TEXT_SHADOW}`}>Add your music</h1>
+          <p className={`text-[13px] text-gray-300/80 mt-2 max-w-sm mx-auto leading-relaxed ${TEXT_SHADOW_SOFT}`}>
+            Point Limina at a folder of audio files. It scans automatically and
+            keeps your library in sync.
           </p>
         </div>
-      </div>
+        <HomeDropZone onAdd={goAddFolder} />
+        <p className={`text-[11px] text-gray-400/80 tracking-wide ${TEXT_SHADOW_SOFT}`}>
+          WAV · MP3 · AIFF · FLAC · M4A · OGG
+        </p>
+      </BackdropShell>
     )
   }
 
   return (
-    <div className="relative flex flex-col h-full text-gray-200 bg-surface-base">
-      {/* Backdrop: Music for Holotropic Breathwork artwork, darkened so the
-          tiles and text stay readable. */}
-      <img
-        src={backdrop}
-        alt=""
-        aria-hidden
-        draggable={false}
-        className="absolute inset-0 object-cover w-full h-full pointer-events-none select-none"
-      />
-      <div className="absolute inset-0 pointer-events-none bg-black/40" />
-      <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_50%_40%,transparent_0%,rgba(10,10,12,0.55)_60%,rgba(10,10,12,0.92)_100%)]" />
-      <div className="relative flex items-center justify-end px-3 h-9 shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
-        <GlobalControls />
-      </div>
-      <div className="relative flex-1 min-h-0 overflow-y-auto">
-      <div className="flex flex-col items-center justify-center min-h-full gap-10 px-8 py-8 select-none">
+    <BackdropShell>
         <div className="flex flex-col items-center gap-3">
           <img src={logo} alt="Limina Studio" className="object-contain w-20 h-20 rounded-2xl" draggable={false} />
           <div className="text-center">
-            <h1 className="text-lg font-semibold tracking-wide text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.6)]">Limina Studio</h1>
-            <p className="text-[11px] text-gray-300/80 mt-1 drop-shadow-[0_1px_6px_rgba(0,0,0,0.8)]">v{__APP_VERSION__} · for breathwork &amp; psychedelic facilitators</p>
+            <h1 className={`text-lg font-semibold tracking-wide text-white ${TEXT_SHADOW}`}>Limina Studio</h1>
+            <p className={`text-[11px] text-gray-300/80 mt-1 ${TEXT_SHADOW_SOFT}`}>v{__APP_VERSION__} · for breathwork &amp; psychedelic facilitators</p>
           </div>
         </div>
         <div className="flex flex-col w-full max-w-3xl gap-3">
@@ -284,7 +272,33 @@ export function Home(): JSX.Element {
             ))}
           </div>
         </div>
+    </BackdropShell>
+  )
+}
+
+/** Full-bleed artwork backdrop shared by Home and the new-user onboarding steps,
+ *  so first launch already looks like the Home screen it leads to. */
+function BackdropShell({ children }: { children: React.ReactNode }): JSX.Element {
+  return (
+    <div className="relative flex flex-col h-full text-gray-200 bg-surface-base">
+      {/* Backdrop: Music for Holotropic Breathwork artwork, darkened so the
+          tiles and text stay readable. */}
+      <img
+        src={backdrop}
+        alt=""
+        aria-hidden
+        draggable={false}
+        className="absolute inset-0 object-cover w-full h-full pointer-events-none select-none"
+      />
+      <div className="absolute inset-0 pointer-events-none bg-black/40" />
+      <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_50%_40%,transparent_0%,rgba(10,10,12,0.55)_60%,rgba(10,10,12,0.92)_100%)]" />
+      <div className="relative flex items-center justify-end px-3 h-9 shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
+        <GlobalControls />
       </div>
+      <div className="relative flex-1 min-h-0 overflow-y-auto">
+        <div className="flex flex-col items-center justify-center min-h-full gap-10 px-8 py-8 select-none">
+          {children}
+        </div>
       </div>
     </div>
   )
@@ -327,10 +341,10 @@ function HomeDropZone({ onAdd }: { onAdd: (path?: string) => void }): JSX.Elemen
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
-      className={`w-full max-w-lg flex flex-col items-center gap-4 py-14 px-8 rounded-xl border-2 border-dashed transition-all cursor-pointer ${
+      className={`w-full max-w-lg flex flex-col items-center gap-4 py-14 px-8 rounded-2xl border-2 border-dashed backdrop-blur-xl transition-all cursor-pointer shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_8px_30px_-12px_rgba(0,0,0,0.7)] ${
         isDragOver
-          ? 'border-accent bg-accent/5 text-accent'
-          : 'border-surface-border bg-surface-panel hover:border-accent/40 hover:bg-surface-hover text-gray-500 hover:text-gray-400'
+          ? 'border-accent bg-accent/10 text-accent'
+          : 'border-white/15 bg-black/50 hover:border-accent/50 hover:bg-black/35 text-gray-400 hover:text-gray-300'
       }`}
     >
       <svg className="w-10 h-10 pointer-events-none" viewBox="0 0 40 40" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
